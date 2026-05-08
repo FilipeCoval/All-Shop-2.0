@@ -86,18 +86,4 @@ export const requestPushPermission = async (): Promise<string | null> => {
   return null;
 };
 
-import { doc, getDocFromServer } from 'firebase/firestore';
 
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(modularDb, 'test', 'connection'));
-    console.log("Firebase Connection Verified");
-  } catch (error) {
-    if(error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration.");
-    } else {
-      console.error("Firebase Connection Error:", error);
-    }
-  }
-}
-testConnection();

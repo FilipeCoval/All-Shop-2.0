@@ -56,7 +56,7 @@ import ProductComparator from './components/ProductComparator';
 import { ADMIN_EMAILS, STORE_NAME, LOYALTY_TIERS, LOGO_URL, INITIAL_PRODUCTS } from './constants';
 import { Product, CartItem, User, Order, Review, ProductVariant, UserTier, PointHistory, OrderItem } from './types';
 import {   auth, db, messaging , modularDb } from './services/firebaseConfig';
-import { doc, getDoc, setDoc, updateDoc, writeBatch, runTransaction, arrayUnion, collection, query, where, getDocs, onSnapshot, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, writeBatch, runTransaction, arrayUnion, collection, query, where, getDocs, onSnapshot, serverTimestamp, deleteDoc, or } from 'firebase/firestore';
 
 import { useStock } from './hooks/useStock'; 
 import { usePublicProducts } from './hooks/usePublicProducts';
@@ -373,14 +373,43 @@ const App: React.FC = () => {
                     console.error("Erro ao escutar dados do utilizador:", error);
                 });
                 
-                ordersUnsubscribe = onSnapshot(query(collection(modularDb, "orders"), where("userId", "==", firebaseUser.uid)), (snap) => {
-                        const fetchedOrders = snap.docs.map(doc => ({id: doc.id, ...doc.data() } as Order));
-                        fetchedOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                        setOrders(fetchedOrders);
-                    }, (error) => {
-                        console.error("Erro ao carregar encomendas:", error);
-                        setOrders([]);
+                const handleOrdersUpdate = (snap: any, type: 'uid' | 'email') => {
+                    const fetched = snap.docs.map((doc: any) => ({id: doc.id, ...doc.data() } as Order));
+                    setOrders(prev => {
+                        const newOrders = [...prev];
+                        // Remove old orders of this type (this is purely for syncing from streams)
+                        // Actually, it's safer to just maintain two lists.
+                        return newOrders; // Too complex for a single state if not careful.
                     });
+                };
+
+                let ordersById: Order[] = [];
+                let ordersByEmail: Order[] = [];
+
+                const updateCombinedOrders = () => {
+                    const combined = [...ordersById, ...ordersByEmail];
+                    const unique = Array.from(new Map(combined.map(o => [o.id, o])).values());
+                    unique.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                    setOrders(unique);
+                };
+
+                const unsubUid = onSnapshot(query(collection(modularDb, "orders"), where("userId", "==", firebaseUser.uid)), (snap) => {
+                    ordersById = snap.docs.map(doc => ({id: doc.id, ...doc.data() } as Order));
+                    updateCombinedOrders();
+                }, (error) => console.error("Erro UID:", error));
+
+                let unsubEmail = () => {};
+                if (firebaseUser.email) {
+                    unsubEmail = onSnapshot(query(collection(modularDb, "orders"), where("shippingInfo.email", "==", firebaseUser.email)), (snap) => {
+                        ordersByEmail = snap.docs.map(doc => ({id: doc.id, ...doc.data() } as Order));
+                        updateCombinedOrders();
+                    }, (error) => console.error("Erro Email:", error));
+                }
+
+                ordersUnsubscribe = () => {
+                    unsubUid();
+                    unsubEmail();
+                };
 
             } catch (error) {
                 console.error("Erro crítico durante a autenticação/sincronização do utilizador:", error);
