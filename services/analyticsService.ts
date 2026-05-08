@@ -45,19 +45,19 @@ export const trackVisit = async () => {
         const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
         const statsRef = doc(modularDb, 'online_users', `stats_${today}`);
 
-        await db.runTransaction(async (transaction) => {
-            const doc = await transaction.get(statsRef);
+        await runTransaction(modularDb, async (transaction) => {
+            const docSnap = await transaction.get(statsRef);
             
-            if (!doc.exists) {
+            if (!docSnap.exists()) {
                 transaction.set(statsRef, {
                     type: 'daily_stats', // Marker to identify stats docs
                     date: today,
                     totalVisits: 1,
                     locations: { [locationString]: 1 },
                     lastUpdated: serverTimestamp()
-                });
+                } as any);
             } else {
-                const data = doc.data();
+                const data = docSnap.data();
                 const currentLocations = data?.locations || {};
                 const newCount = (currentLocations[locationString] || 0) + 1;
                 
@@ -65,7 +65,7 @@ export const trackVisit = async () => {
                     totalVisits: increment(1),
                     [`locations.${locationString}`]: newCount,
                     lastUpdated: serverTimestamp()
-                });
+                } as any);
             }
         });
 

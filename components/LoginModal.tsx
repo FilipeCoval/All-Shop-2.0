@@ -4,7 +4,7 @@ import { X, Mail, Lock, Eye, EyeOff, CheckCircle, AlertCircle, ArrowRight } from
 import { User as UserType } from '../types';
 import {  auth, db , modularDb } from '../services/firebaseConfig';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile } from 'firebase/auth';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -47,7 +47,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin }) => 
     const safeEmail = email.trim().toLowerCase();
 
     try {
-        const userCredential = await auth.signInWithEmailAndPassword(safeEmail, password);
+        const userCredential = await signInWithEmailAndPassword(auth, safeEmail, password);
         const firebaseUser = userCredential.user;
 
         if (!firebaseUser) throw new Error("Falha ao obter utilizador");
@@ -124,12 +124,12 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin }) => 
     const safeEmail = email.trim().toLowerCase();
 
     try {
-        const userCredential = await auth.createUserWithEmailAndPassword(safeEmail, password);
+        const userCredential = await createUserWithEmailAndPassword(auth, safeEmail, password);
         const firebaseUser = userCredential.user;
 
         if (!firebaseUser) throw new Error("Falha ao criar utilizador");
 
-        await firebaseUser.updateProfile({ displayName: name });
+        await updateProfile(firebaseUser, { displayName: name });
 
         const newUser: UserType = {
             uid: firebaseUser.uid,
@@ -168,7 +168,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin }) => 
     const safeEmail = email.trim().toLowerCase();
 
     try {
-        await auth.sendPasswordResetEmail(safeEmail);
+        await sendPasswordResetEmail(auth, safeEmail);
         setSuccessMsg(`Email de recuperação enviado para ${safeEmail}.`);
         setTimeout(() => setView('login'), 5000);
     } catch (err: any) {

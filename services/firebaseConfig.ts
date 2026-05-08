@@ -13,13 +13,13 @@ import 'firebase/compat/storage';
 // Use environment variables instead of a JSON file which might not be present
 import rawConfig from '../firebase-applet-config.json';
 const firebaseConfig = {
-  apiKey: rawConfig.apiKey || import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: rawConfig.authDomain || import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: rawConfig.projectId || import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: rawConfig.storageBucket || import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: rawConfig.messagingSenderId || import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: rawConfig.appId || import.meta.env.VITE_FIREBASE_APP_ID,
-  firestoreDatabaseId: rawConfig.firestoreDatabaseId || import.meta.env.VITE_FIREBASE_DATABASE_ID || "(default)"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || rawConfig.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || rawConfig.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || rawConfig.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || rawConfig.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || rawConfig.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || rawConfig.appId,
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || rawConfig.firestoreDatabaseId || "(default)"
 };
 
 // Initialize Modular SDK
@@ -27,14 +27,14 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Services
 export const auth = getAuth(app);
-export const modularDb = getFirestore(app); // Modular DB for v9 syntax
+export const modularDb = getFirestore(app, firebaseConfig.firestoreDatabaseId); // Modular DB for v9 syntax
 export const storage = getStorage(app);
 
 // Initialize Compat SDK
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
-export const db = firebase.firestore(); // Old DB for v8 syntax
+export const db = firebase.app().firestore(firebaseConfig.firestoreDatabaseId); // Old DB for v8 syntax
 
 export let messaging: any = null;
 

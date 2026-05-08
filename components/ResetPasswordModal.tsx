@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Lock, Eye, EyeOff, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { auth } from '../services/firebaseConfig';
+import { verifyPasswordResetCode, confirmPasswordReset } from 'firebase/auth';
 
 interface ResetPasswordModalProps {
   oobCode: string;
@@ -21,7 +22,7 @@ const ResetPasswordModal: React.FC<ResetPasswordModalProps> = ({ oobCode, onClos
     // Verificar se o código é válido e obter o email do utilizador
     const verifyCode = async () => {
       try {
-        const userEmail = await auth.verifyPasswordResetCode(oobCode);
+        const userEmail = await verifyPasswordResetCode(auth, oobCode);
         setEmail(userEmail);
       } catch (err: any) {
         console.error("Erro ao verificar código:", err);
@@ -46,7 +47,7 @@ const ResetPasswordModal: React.FC<ResetPasswordModalProps> = ({ oobCode, onClos
     setError(null);
 
     try {
-      await auth.confirmPasswordReset(oobCode, newPassword);
+      await confirmPasswordReset(auth, oobCode, newPassword);
       setSuccess(true);
       
       // Limpar os parâmetros da URL para evitar que o modal abra novamente num refresh
