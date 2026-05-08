@@ -1,0 +1,7 @@
+{
+  "name": "All-Shop 2.0",
+  "description": "A sua loja virtual completa para eletrônicos e gadgets, com os melhores preços da Europa.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

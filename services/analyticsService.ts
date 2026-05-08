@@ -1,0 +1,107 @@
+import {   db , modularDb } from './firebaseConfig';
+import { doc, getDoc, setDoc, updateDoc, runTransaction, serverTimestamp, increment, collection, query, where, getDocs } from 'firebase/firestore';
+
+
+const SESSION_KEY = 'allshop_visit_tracked';
+
+interface LocationData {
+    city?: string;
+    country_name?: string;
+    region?: string;
+}
+
+export const trackVisit = async () => {
+    // 1. Check if already tracked in this session
+    if (sessionStorage.getItem(SESSION_KEY)) {
+        return;
+    }
+
+    try {
+        // 2. Mark as tracked immediately to prevent double-firing
+        sessionStorage.setItem(SESSION_KEY, 'true');
+
+        // 3. Get Location (Best effort)
+        let locationString = 'Desconhecido';
+        try {
+            const response = await fetch('https://ipapi.co/json/', { 
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                signal: AbortSignal.timeout(5000) // 5s timeout
+            });
+            
+            if (response.ok) {
+                const data: LocationData = await response.json();
+                if (data.city && data.country_name) {
+                    locationString = `${data.city}, ${data.country_name}`;
+                } else if (data.country_name) {
+                    locationString = data.country_name;
+                }
+            }
+        } catch (err) {
+            console.warn("Analytics: Could not fetch location", err);
+        }
+
+        // 4. Update Firestore (Using 'online_users' collection to avoid permission issues)
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const statsRef = doc(modularDb, 'online_users', `stats_${today}`);
+
+        await db.runTransaction(async (transaction) => {
+            const doc = await transaction.get(statsRef);
+            
+            if (!doc.exists) {
+                transaction.set(statsRef, {
+                    type: 'daily_stats', // Marker to identify stats docs
+                    date: today,
+                    totalVisits: 1,
+                    locations: { [locationString]: 1 },
+                    lastUpdated: serverTimestamp()
+                });
+            } else {
+                const data = doc.data();
+                const currentLocations = data?.locations || {};
+                const newCount = (currentLocations[locationString] || 0) + 1;
+                
+                transaction.update(statsRef, {
+                    totalVisits: increment(1),
+                    [`locations.${locationString}`]: newCount,
+                    lastUpdated: serverTimestamp()
+                });
+            }
+        });
+
+    } catch (error) {
+        console.error("Analytics Error:", error);
+        // Don't block the app if analytics fails
+    }
+};
+
+export interface DailyStats {
+    date: string;
+    totalVisits: number;
+    locations: Record<string, number>;
+}
+
+export const getAnalyticsData = async (days = 30): Promise<DailyStats[]> => {
+    try {
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - days);
+        
+        const startStr = startDate.toISOString().split('T')[0];
+        
+        // Fetch all stats (avoid composite index requirement)
+        // Since we only have 1 doc per day, fetching all and filtering in memory is efficient enough
+        const snapshot = await getDocs(query(collection(modularDb, 'online_users'), where('type', '==', 'daily_stats')));
+
+        const allStats = snapshot.docs.map(doc => doc.data() as DailyStats);
+        
+        // Filter and sort in memory
+        return allStats
+            .filter(stat => stat.date >= startStr)
+            .sort((a, b) => b.date.localeCompare(a.date)); // Newest first
+
+    } catch (error) {
+        console.error("Error fetching analytics:", error);
+        return [];
+    }
+};

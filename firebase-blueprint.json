@@ -1,0 +1,200 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile with PII.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 150 },
+        "photoURL": { "type": "string" },
+        "phone": { "type": "string" },
+        "nif": { "type": "string" },
+        "addresses": { "type": "array" },
+        "loyaltyPoints": { "type": "number" },
+        "pointsHistory": { "type": "array" },
+        "tier": { "type": "string" },
+        "totalSpent": { "type": "number" },
+        "wishlist": { "type": "array" },
+        "fcmToken": { "type": "string" },
+        "deviceTokens": { "type": "array" },
+        "notificationsEnabled": { "type": "boolean" },
+        "lastShareDate": { "type": "string" },
+        "birthday": { "type": "string" },
+        "isGuest": { "type": "boolean" }
+      }
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order containing items and shipping info.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "total": { "type": "number" },
+        "status": { "type": "string" },
+        "userId": { "type": "string" },
+        "shippingInfo": { "type": "object" }
+      }
+    },
+    "ProductPublic": {
+      "title": "Public Product",
+      "description": "Product data visible to everyone.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "number" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "price": { "type": "number" },
+        "stock": { "type": "number" }
+      }
+    },
+    "ProductInventory": {
+      "title": "Inventory Product",
+      "description": "Internal inventory records.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" }
+      }
+    },
+    "Review": {
+      "title": "Review",
+      "description": "User review of a product.",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "number" },
+        "userId": { "type": "string" }
+      }
+    },
+    "SupportTicket": {
+      "title": "Support Ticket",
+      "description": "Tickets for support.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "customerEmail": { "type": "string" }
+      }
+    },
+    "StockReservation": {
+      "title": "Stock Reservation",
+      "description": "Temporary stock holding in carts.",
+      "type": "object",
+      "properties": {
+         "productId": { "type": "number" }
+      }
+    },
+    "Coupon": {
+      "title": "Coupon",
+      "description": "Discount coupon.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" }
+      }
+    },
+    "StoreCategory": {
+      "title": "Store Category",
+      "description": "Product category metadata.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" }
+      }
+    },
+    "NewsletterSubscription": {
+       "title": "Newsletter Subscription",
+       "description": "Emails for newsletters.",
+       "type": "object",
+       "properties": { "email": { "type": "string" } }
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "Pre-registration lead.",
+      "type": "object",
+      "properties": { "email": { "type": "string" } }
+    },
+    "StockAlert": {
+      "title": "Stock Alert",
+      "description": "User wants to be notified when product is in stock.",
+      "type": "object",
+      "properties": { "email": { "type": "string" } }
+    },
+    "ImportShipment": {
+      "title": "Import Shipment",
+      "description": "Admin tool data.",
+      "type": "object",
+      "properties": {}
+    },
+    "StockMovement": {
+      "title": "Stock Movement",
+      "description": "Admin log of movements.",
+      "type": "object",
+      "properties": {}
+    },
+    "OnlineUser": {
+       "title": "Online User",
+       "description": "Stats on users.",
+       "type": "object",
+       "properties": {}
+    },
+    "PublicStockSummary": {
+       "title": "Public Stock Summary",
+       "description": "Stock cache.",
+       "type": "object",
+       "properties": {}
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles. Contains PII, should be readable mainly by admins or to the specific user."
+    },
+    "orders/{orderId}": {
+      "schema": "Order",
+      "description": "Orders placed by users. Readable by admins and the owner. Contains PII."
+    },
+    "products_public/{productId}": {
+      "schema": "ProductPublic",
+      "description": "Public catalog. Read by all, written by admin."
+    },
+    "products_inventory/{inventoryId}": {
+      "schema": "ProductInventory",
+      "description": "Admin inventory. Read/Write by admin."
+    },
+    "reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Product reviews. Read by all, written by signed-in users."
+    },
+    "support_tickets/{ticketId}": {
+      "schema": "SupportTicket",
+      "description": "Support workflow."
+    },
+    "stock_reservations/{reservationId}": {
+      "schema": "StockReservation",
+      "description": "Temporary stock lock."
+    },
+    "coupons/{couponId}": {
+       "schema": "Coupon",
+       "description": "Discounts. Listed by users for user-specific ones."
+    },
+    "store_categories/{categoryId}": {
+       "schema": "StoreCategory",
+       "description": "Categories."
+    },
+    "newsletter_subscriptions/{subId}": {
+       "schema": "NewsletterSubscription",
+       "description": "Public can add, only admin reads."
+    },
+    "leads/{leadId}": {
+       "schema": "Lead",
+       "description": "Public can add, only admin reads."
+    },
+    "stock_alerts/{alertId}": {
+       "schema": "StockAlert",
+       "description": "Public can add, only admin reads."
+    },
+    "import_shipments/{shipmentId}": { "schema": "ImportShipment", "description": "admin only" },
+    "stock_movements/{movementId}": { "schema": "StockMovement", "description": "admin only" },
+    "online_users/{userId}": { "schema": "OnlineUser", "description": "Public writes own stats, admin reads" },
+    "public_stock_summary/{summaryId}": { "schema": "PublicStockSummary", "description": "admin only (written by func)" }
+  }
+}

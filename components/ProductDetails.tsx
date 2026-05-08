@@ -1,0 +1,558 @@
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { Product, Review, User, ProductVariant, PointHistory, Order } from '../types';
+import { 
+    ShoppingCart, ArrowLeft, Check, Share2, ShieldCheck, 
+    Truck, AlertTriangle, XCircle, Heart, ArrowRight, 
+    Eye, Info, X, CalendarClock, Copy, Mail, Loader2, CheckCircle, Coins, Timer, Sparkles
+} from 'lucide-react';
+import ReviewSection from './ReviewSection';
+import PremiumBentoLayout from './PremiumBentoLayout';
+import { STORE_NAME, PUBLIC_URL, SHARE_URL } from '../constants';
+import {  db , modularDb } from '../services/firebaseConfig';
+import { doc, updateDoc, increment, arrayUnion, collection, addDoc } from 'firebase/firestore';
+
+const CountdownTimer: React.FC<{ targetDate: string }> = ({ targetDate }) => {
+    const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
+    const [isExpired, setIsExpired] = useState(false);
+
+    useEffect(() => {
+        const calculateTimeLeft = () => {
+            const difference = +new Date(targetDate) - +new Date();
+            
+            if (difference > 0) {
+                setTimeLeft({
+                    hours: Math.floor((difference / (1000 * 60 * 60))),
+                    minutes: Math.floor((difference / 1000 / 60) % 60),
+                    seconds: Math.floor((difference / 1000) % 60),
+                });
+                setIsExpired(false);
+            } else {
+                setIsExpired(true);
+            }
+        };
+
+        calculateTimeLeft();
+        const timer = setInterval(calculateTimeLeft, 1000);
+        return () => clearInterval(timer);
+    }, [targetDate]);
+
+    if (isExpired) return null;
+
+    return (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center justify-between text-red-700 animate-fade-in my-4">
+            <div className="flex items-center gap-2 font-bold text-sm uppercase tracking-wider">
+                <Timer size={18} className="animate-pulse"/> A Promoção termina em:
+            </div>
+            <div className="flex gap-2 font-mono font-bold text-lg">
+                <div className="bg-white px-2 rounded border border-red-100 shadow-sm">{String(timeLeft.hours).padStart(2, '0')}h</div>
+                <span>:</span>
+                <div className="bg-white px-2 rounded border border-red-100 shadow-sm">{String(timeLeft.minutes).padStart(2, '0')}m</div>
+                <span>:</span>
+                <div className="bg-white px-2 rounded border border-red-100 shadow-sm">{String(timeLeft.seconds).padStart(2, '0')}s</div>
+            </div>
+        </div>
+    );
+};
+
+interface ProductDetailsProps {
+  product: Product;
+  allProducts: Product[];
+  onAddToCart: (product: Product, variant?: ProductVariant) => void;
+  reviews: Review[];
+  onAddReview: (review: Review) => void;
+  currentUser: User | null;
+  getStock: (productId: number, variant?: string) => number;
+  wishlist: number[];
+  onToggleWishlist: (id: number) => void;
+  isProcessing?: boolean;
+  onUpdateUser?: (user: Partial<User>) => void; // Nova Prop
+  orders?: Order[]; // Nova Prop: Histórico de encomendas para validar compra
+}
+
+const ProductDetails: React.FC<ProductDetailsProps> = ({ 
+  product, allProducts, onAddToCart, reviews, onAddReview, currentUser, getStock, wishlist, onToggleWishlist, isProcessing = false, onUpdateUser, orders = []
+}) => {
+  const [selectedImage, setSelectedImage] = useState<string>(product.image);
+  const [selectedVariantName, setSelectedVariantName] = useState<string | undefined>();
+  const [shareFeedback, setShareFeedback] = useState<'idle' | 'copied' | 'shared' | 'points_earned'>('idle');
+  const [isPremiumLayout, setIsPremiumLayout] = useState(product.isPremium || false);
+  
+  // Update state ONLY when product ID changes
+  useEffect(() => {
+    setIsPremiumLayout(product.isPremium || false);
+  }, [product.id]);
+  
+  const [alertEmail, setAlertEmail] = useState(currentUser?.email || '');
+  const [alertStatus, setAlertStatus] = useState<'idle' | 'loading' | 'success'>('idle');
+
+  // Verifica se o utilizador comprou este produto
+  const hasPurchased = useMemo(() => {
+      if (!currentUser) return false;
+      return orders.some(order => 
+          (order.status === 'Entregue' || order.status === 'Enviado' || order.status === 'Levantamento em Loja') &&
+          order.items.some(item => {
+              if (typeof item === 'string') return false; // Ignora itens antigos (strings)
+              return item.productId === product.id;
+          })
+      );
+  }, [orders, product.id, currentUser]);
+
+  useEffect(() => {
+    // Não seleciona nenhuma variante por defeito, forçando o utilizador a escolher.
+    setSelectedVariantName(undefined);
+    setSelectedImage(product.image);
+    
+    setAlertStatus('idle');
+    setAlertEmail(currentUser?.email || '');
+    window.scrollTo(0, 0);
+    document.title = `${product.name} | ${STORE_NAME}`;
+    
+    return () => {
+        document.title = STORE_NAME;
+    };
+  }, [product, currentUser]);
+
+  const uniqueImages = useMemo(() => {
+    const imgs = new Set<string>();
+    if (product.image) imgs.add(product.image);
+    if (product.images) product.images.forEach(img => imgs.add(img));
+    if (product.variants) product.variants.forEach(v => {
+        if (v.image) imgs.add(v.image);
+    });
+    return Array.from(imgs);
+  }, [product]);
+
+  const selectedVariant = product.variants?.find(v => v.name === selectedVariantName);
+  
+  const promoEnded = product.promoEndsAt ? new Date(product.promoEndsAt) <= new Date() : false;
+
+  // Se a promoção acabou, reverte para o preço original (se existir e não for variante específica)
+  // Nota: Variantes não têm originalPrice no modelo atual, logo mantêm o preço da DB.
+  let currentPrice = selectedVariant?.price || product.price;
+  if (promoEnded && !selectedVariant && product.originalPrice) {
+      currentPrice = product.originalPrice;
+  }
+
+  const currentStock = getStock(product.id, selectedVariantName);
+  
+  const hasVariants = product.variants && product.variants.length > 0;
+  const isVariantSelected = !!selectedVariantName;
+  
+  const isOutOfStock = currentStock <= 0 && currentStock !== 999;
+  const isUnavailable = isOutOfStock || !!product.comingSoon;
+  const isLowStock = currentStock > 0 && currentStock <= 3 && currentStock !== 999 && !product.comingSoon;
+  const isFavorite = wishlist.includes(product.id);
+  
+  // Só mostra promoção se NÃO tiver acabado
+  const showPromo = !promoEnded && product.originalPrice && product.originalPrice > currentPrice;
+
+  const relatedProducts = (allProducts || [])
+    .filter(p => p.category === product.category && p.id !== product.id)
+    .slice(0, 4);
+
+  const handleVariantChange = (variant: ProductVariant) => {
+      setSelectedVariantName(variant.name);
+      if (variant.image) setSelectedImage(variant.image);
+  };
+
+  const handleAddToCart = () => {
+      if (isUnavailable || (hasVariants && !isVariantSelected) || isProcessing) return;
+      if (selectedVariant) onAddToCart(product, selectedVariant);
+      else onAddToCart(product);
+  };
+
+  const awardSharePoints = async () => {
+      if (!currentUser) return;
+      const today = new Date().toISOString().split('T')[0];
+      
+      // Verifica se já partilhou hoje
+      if (currentUser.lastShareDate && currentUser.lastShareDate.startsWith(today)) {
+          return; // Já ganhou pontos hoje
+      }
+
+      try {
+          const points = 5;
+          const newHistoryItem: PointHistory = {
+              id: `share-${Date.now()}`,
+              date: new Date().toISOString(),
+              amount: points,
+              reason: 'Partilha de Produto Diária'
+          };
+
+          // 1. Atualizar UI imediatamente (Optimistic Update)
+          if (onUpdateUser) {
+              onUpdateUser({
+                  loyaltyPoints: (currentUser.loyaltyPoints || 0) + points,
+                  lastShareDate: new Date().toISOString(),
+                  pointsHistory: [...(currentUser.pointsHistory || []), newHistoryItem]
+              });
+          }
+
+          // 2. Gravar no Firebase
+          await updateDoc(doc(modularDb, 'users', currentUser.uid), {
+              loyaltyPoints: increment(points),
+              pointsHistory: arrayUnion(newHistoryItem),
+              lastShareDate: new Date().toISOString()
+          });
+          
+          setShareFeedback('points_earned');
+          setTimeout(() => setShareFeedback('idle'), 4000);
+      } catch (e) {
+          console.error("Erro ao atribuir pontos de partilha:", e);
+      }
+  };
+
+  const handleShare = async () => {
+    // Usar SHARE_URL para o link de partilha
+    const shareUrl = `${SHARE_URL}/product/${product.id}`;
+    
+    const shareData: ShareData = {
+      title: product.name,
+      text: `Olha o que encontrei na ${STORE_NAME} por apenas ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(currentPrice)}!`,
+      url: shareUrl, 
+    };
+
+    try {
+      if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+        await navigator.share(shareData);
+        if (shareFeedback !== 'points_earned') setShareFeedback('shared');
+        awardSharePoints();
+      } else {
+        throw new Error("Web Share API unavailable");
+      }
+    } catch (err) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        if (shareFeedback !== 'points_earned') setShareFeedback('copied');
+        awardSharePoints();
+      } catch (clipboardErr) {
+        console.warn("Share fallback failed", clipboardErr);
+        prompt("Copie o link:", shareUrl);
+      }
+    }
+
+    if (shareFeedback !== 'points_earned') {
+        setTimeout(() => setShareFeedback('idle'), 3000);
+    }
+  };
+
+  const handleStockAlertSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!alertEmail) return;
+      setAlertStatus('loading');
+      try {
+          await addDoc(collection(modularDb, 'stock_alerts'), {
+              email: alertEmail,
+              productId: product.id,
+              productName: product.name,
+              variantName: selectedVariantName || null,
+              date: new Date().toISOString()
+          });
+          setAlertStatus('success');
+      } catch (error) {
+          console.error("Erro ao subscrever alerta de stock:", error);
+          setAlertStatus('idle'); // Permite tentar de novo
+      }
+  };
+
+
+  if (isPremiumLayout) {
+    return (
+      <div className="relative">
+        <button 
+          onClick={() => setIsPremiumLayout(false)}
+          className="fixed top-24 left-4 z-50 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-4 py-2 rounded-full shadow-lg font-bold text-sm flex items-center gap-2 border border-gray-200 dark:border-gray-700 hover:scale-105 transition-transform"
+        >
+          <ArrowLeft size={16} /> Voltar ao Layout Normal
+        </button>
+        <PremiumBentoLayout 
+          product={product} 
+          onBuyNow={() => {
+            console.log("ProductDetails: onBuyNow triggered");
+            setIsPremiumLayout(prev => {
+              console.log("Changing isPremiumLayout from", prev, "to false");
+              return false;
+            });
+            
+            setTimeout(() => {
+              console.log("Attempting scroll to variant-selector or buy-actions");
+              const variantElement = document.getElementById('variant-selector');
+              const buyElement = document.getElementById('buy-actions');
+              const target = variantElement || buyElement;
+              
+              if (target) {
+                console.log("Target found, scrolling...");
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              } else {
+                console.log("Target not found, scrolling to top");
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }
+            }, 500); // Increased timeout to 500ms
+          }} 
+          currentPrice={currentPrice} 
+          isUnavailable={isUnavailable} 
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8 animate-fade-in pb-32 md:pb-8 transition-colors duration-300">
+      <div className="flex items-center justify-between mb-8">
+        <a 
+          href="#/" 
+          onClick={(e) => { e.preventDefault(); window.location.hash = '/'; }}
+          className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-primary dark:hover:text-white font-medium transition-colors"
+        >
+          <ArrowLeft size={20} /> Voltar à Loja
+        </a>
+        
+        {/* Botão de Simulação Premium (Apenas Admin) */}
+        {currentUser?.email && (["filipe_coval_90@hotmail.com", "mcpoleca@gmail.com"].includes(currentUser.email)) && (
+            <button 
+              onClick={() => setIsPremiumLayout(true)}
+              className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:shadow-lg hover:scale-105 transition-all"
+            >
+              <Sparkles size={16} /> Simular Layout Premium
+            </button>
+        )}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+        <div className="space-y-4">
+          <div className="aspect-square bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700 relative group transition-colors">
+            <img 
+                src={selectedImage} 
+                alt={product.name} 
+                className={`w-full h-full object-contain p-4 transition-all duration-300 ${isUnavailable ? 'grayscale opacity-50' : ''}`} 
+            />
+            {isOutOfStock && !product.comingSoon && <div className="absolute inset-0 flex items-center justify-center"><span className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold text-xl shadow-lg transform -rotate-12 border-4 border-white dark:border-gray-800">ESGOTADO</span></div>}
+            {product.comingSoon && <div className="absolute inset-0 flex items-center justify-center bg-purple-900/10"><span className="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold text-xl shadow-lg transform rotate-3 border-4 border-white dark:border-gray-800">EM BREVE</span></div>}
+            <button onClick={() => onToggleWishlist(product.id)} className="absolute top-4 right-4 p-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur rounded-full shadow-sm hover:scale-110 transition-transform text-gray-400 hover:text-red-500"><Heart size={24} className={isFavorite ? "fill-red-500 text-red-500" : ""} /></button>
+          </div>
+          <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
+             {uniqueImages.map((img, idx) => (
+                <button key={idx} onClick={() => setSelectedImage(img)} className={`w-20 h-20 rounded-xl border-2 overflow-hidden flex-shrink-0 bg-white dark:bg-gray-800 transition-all duration-200 ${selectedImage === img ? 'border-primary ring-2 ring-primary/20 scale-105' : 'border-gray-100 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-500'}`}><img src={img} alt={`Thumbnail ${idx}`} className="w-full h-full object-contain p-1" /></button>
+             ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col">
+           <div className="flex items-start justify-between">
+                <div>
+                    <span className="text-sm font-bold text-primary tracking-wider uppercase">{product.category}</span>
+                    <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mt-2 mb-4 leading-tight">{product.name}</h1>
+                </div>
+                <div className="flex flex-col items-center">
+                    <button 
+                        onClick={handleShare} 
+                        className={`p-3 rounded-full transition-all flex items-center justify-center shadow-sm relative
+                            ${shareFeedback === 'idle' ? 'bg-gray-50 dark:bg-gray-800 text-gray-400 hover:text-primary' : 
+                            shareFeedback === 'points_earned' ? 'bg-yellow-100 text-yellow-600 animate-bounce' :
+                            shareFeedback === 'copied' ? 'bg-green-100 text-green-600' : 
+                            'bg-blue-100 text-blue-600'}
+                        `}
+                        title={shareFeedback === 'copied' ? 'Link Copiado' : 'Partilhar e Ganhar'}
+                    >
+                        {shareFeedback === 'idle' && <Share2 size={24} />}
+                        {shareFeedback === 'copied' && <Check size={24} />}
+                        {shareFeedback === 'shared' && <Check size={24} />}
+                        {shareFeedback === 'points_earned' && <Coins size={24} />}
+                        
+                        {/* Indicador de Pontos */}
+                        {currentUser && (!currentUser.lastShareDate || !currentUser.lastShareDate.startsWith(new Date().toISOString().split('T')[0])) && shareFeedback === 'idle' && (
+                            <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-[9px] font-bold px-1 rounded-full animate-pulse">+5</span>
+                        )}
+                    </button>
+                    {shareFeedback === 'points_earned' && <span className="text-[10px] font-bold text-yellow-600 mt-1">+5 Pontos!</span>}
+                </div>
+           </div>
+           
+           {product.promoEndsAt && !promoEnded && <CountdownTimer targetDate={product.promoEndsAt} />}
+
+           <div className="flex items-end gap-3 mb-6">
+               <span className={`text-4xl font-bold ${showPromo ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(currentPrice)}</span>
+               {showPromo && (
+                   <span className="text-xl text-gray-400 line-through mb-1.5">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.originalPrice!)}</span>
+               )}
+               {isOutOfStock && !product.comingSoon && <span className="text-red-500 font-bold mb-2">Indisponível</span>}
+               {product.comingSoon && <span className="text-purple-600 dark:text-purple-400 font-bold mb-2 uppercase tracking-wide">Pré-Lançamento</span>}
+           </div>
+
+           {hasVariants && product.variants && (
+               <div id="variant-selector" className="mb-8 scroll-mt-24">
+                   <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">{product.variantLabel || 'Escolha uma opção:'}</label>
+                   <div className="flex flex-wrap gap-3">
+                       {product.variants.map((v) => {
+                           const variantStock = getStock(product.id, v.name);
+                           const isSoldOut = variantStock <= 0 && variantStock !== 999;
+                           return (
+                               <button 
+                                   key={v.name} 
+                                   onClick={() => !isSoldOut && handleVariantChange(v)}
+                                   disabled={isSoldOut}
+                                   className={`px-4 py-3 rounded-lg border-2 text-sm font-bold transition-all relative
+                                       ${selectedVariantName === v.name 
+                                           ? 'border-primary bg-blue-50 dark:bg-blue-900/30 text-primary dark:text-blue-300 ring-2 ring-primary/20' 
+                                           : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'}
+                                       ${isSoldOut 
+                                           ? 'bg-gray-100 dark:bg-gray-900 !border-gray-200 dark:!border-gray-800 !text-gray-400 cursor-not-allowed line-through' 
+                                           : 'hover:border-gray-400 dark:hover:border-gray-500'}
+                                   `}
+                               >
+                                   {v.name}
+                               </button>
+                           );
+                       })}
+                   </div>
+               </div>
+           )}
+
+           <div className="mb-8">
+               {isUnavailable ? (
+                    <div className="bg-yellow-50 dark:bg-yellow-900/20 p-6 rounded-2xl border border-yellow-200 dark:border-yellow-900/50 animate-fade-in">
+                        {alertStatus === 'success' ? (
+                            <div className="text-center">
+                                <CheckCircle size={32} className="text-green-500 mx-auto mb-2" />
+                                <h4 className="font-bold text-green-800 dark:text-green-300 text-lg">Inscrição confirmada!</h4>
+                                <p className="text-sm text-green-700 dark:text-green-400">Será notificado em <span className="font-semibold">{alertEmail}</span> assim que houver stock.</p>
+                            </div>
+                        ) : (
+                            <>
+                                <h4 className="font-bold text-yellow-900 dark:text-yellow-300 text-lg mb-2 flex items-center gap-2">
+                                    <Mail size={20}/> 
+                                    {product.comingSoon ? 'Seja o primeiro a saber!' : 'Avise-me quando chegar!'}
+                                </h4>
+                                <p className="text-sm text-yellow-800 dark:text-yellow-400 mb-4">
+                                    {product.comingSoon ? 'Deixe o seu email para ser notificado assim que este produto for lançado.' : 'Deixe o seu email para ser notificado assim que este produto estiver disponível.'}
+                                </p>
+                                <form onSubmit={handleStockAlertSubmit} className="flex flex-col sm:flex-row gap-2">
+                                    <input 
+                                        type="email" 
+                                        required 
+                                        value={alertEmail}
+                                        onChange={(e) => setAlertEmail(e.target.value)}
+                                        placeholder="O seu melhor email" 
+                                        className="flex-1 px-4 py-2 rounded-lg border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-yellow-500 outline-none"
+                                    />
+                                    <button 
+                                        type="submit"
+                                        disabled={alertStatus === 'loading'}
+                                        className="bg-yellow-600 hover:bg-yellow-700 text-white px-5 py-2 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
+                                    >
+                                        {alertStatus === 'loading' ? <Loader2 className="animate-spin" size={16}/> : 'Notificar'}
+                                    </button>
+                                </form>
+                            </>
+                        )}
+                    </div>
+               ) : (
+                   <div className="flex flex-col gap-2">
+                       <div className="flex items-center gap-2 text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-4 py-3 rounded-lg border border-green-100 dark:border-green-900/50 w-fit">
+                           <Check size={20} /><span className="font-bold">Em Stock</span>
+                           {isLowStock && <span className="ml-2 text-orange-600 dark:text-orange-400 text-sm font-normal flex items-center gap-1"><AlertTriangle size={14} /> Restam apenas {currentStock}</span>}
+                       </div>
+                       {product.maxQuantityPerOrder && (
+                           <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1">
+                               <Info size={14} />
+                               Limite de {product.maxQuantityPerOrder} unidade(s) por encomenda.
+                           </p>
+                       )}
+                   </div>
+               )}
+           </div>
+
+           <div id="buy-actions" className="flex gap-4 mb-8 scroll-mt-24">
+               <button 
+                onClick={handleAddToCart} 
+                disabled={isUnavailable || (hasVariants && !isVariantSelected) || isProcessing} 
+                className={`flex-1 py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all transform active:scale-95 
+                    ${isUnavailable || (hasVariants && !isVariantSelected) || isProcessing
+                        ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed' 
+                        : 'bg-primary hover:bg-blue-600 text-white'
+                    }`}
+               >
+                   {isProcessing ? (
+                       <>
+                           <Loader2 size={24} className="animate-spin" />
+                           A processar...
+                       </>
+                   ) : (
+                       <>
+                           <ShoppingCart size={24} /> 
+                           {isUnavailable 
+                               ? (product.comingSoon ? 'Brevemente Disponível' : 'Indisponível') 
+                               : (hasVariants && !isVariantSelected) 
+                                   ? 'Selecione uma opção'
+                                   : 'Comprar Agora'}
+                       </>
+                   )}
+               </button>
+           </div>
+           
+           <div className="space-y-6 text-gray-600 dark:text-gray-300 leading-relaxed">
+               <p className="text-lg">{product.description}</p>
+               <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-6 border border-gray-100 dark:border-gray-700">
+                   <h3 className="font-bold text-gray-900 dark:text-white mb-4">Destaques</h3>
+                   <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">{product.features.map((feat, idx) => (<li key={idx} className="flex items-center gap-2 text-sm"><div className="w-1.5 h-1.5 bg-primary rounded-full"></div>{feat}</li>))}</ul>
+               </div>
+               <div className="flex flex-col sm:flex-row gap-6 pt-4 border-t border-gray-100 dark:border-gray-700 text-sm font-medium">
+                   <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Truck size={20} className="text-primary" /> Entrega 1-3 dias</div>
+                   <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400"><ShieldCheck size={20} className="text-green-600 dark:text-green-400" /> Garantia de 3 Anos</div>
+               </div>
+           </div>
+        </div>
+      </div>
+
+      <ReviewSection productId={product.id} reviews={reviews} onAddReview={onAddReview} currentUser={currentUser} hasPurchased={hasPurchased} />
+
+      {product.category === 'TV & Streaming' && (
+          <div className="mt-20 border-t border-gray-100 dark:border-gray-700 pt-16">
+              <div className="text-center mb-10">
+                  <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white">Qual a Box ideal para si?</h2>
+                  <p className="text-gray-500 dark:text-gray-400 mt-2">Compare as gerações da Xiaomi com a potência da H96 Max.</p>
+              </div>
+              <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl bg-white dark:bg-gray-800">
+                  <table className="w-full text-left border-collapse">
+                      <thead>
+                          <tr className="bg-gray-50 dark:bg-gray-900">
+                              <th className="p-4 md:p-6 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase border-b border-gray-200 dark:border-gray-700">Specs</th>
+                              <th className="p-4 md:p-6 border-b border-gray-200 dark:border-gray-700 text-center"><span className="block font-bold text-gray-900 dark:text-white text-sm">Xiaomi S (3ª Gen)</span><span className="text-[10px] text-primary font-bold">A MAIS RECENTE</span></th>
+                              <th className="p-4 md:p-6 border-b border-gray-200 dark:border-gray-700 text-center"><span className="block font-bold text-gray-900 dark:text-white text-sm">Xiaomi S (2ª Gen)</span><span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold">EQUILIBRADA</span></th>
+                              <th className="p-4 md:p-6 border-b border-gray-200 dark:border-gray-700 text-center"><span className="block font-bold text-gray-900 dark:text-white text-sm">H96 Max M2</span><span className="text-[10px] text-orange-500 font-bold">POTÊNCIA/APK</span></th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700 text-xs md:text-sm">
+                          <tr><td className="p-4 md:p-6 font-bold text-gray-700 dark:text-gray-300 bg-gray-50/30 dark:bg-gray-900/30">Ideal Para</td><td className="p-4 md:p-6 text-center text-blue-700 dark:text-blue-300">Netflix & Disney+ 8K</td><td className="p-4 md:p-6 text-center dark:text-gray-300">Netflix & Disney+ 4K</td><td className="p-4 md:p-6 text-center text-orange-700 dark:text-orange-300">IPTV & Apps Externos</td></tr>
+                          <tr><td className="p-4 md:p-6 font-bold text-gray-700 dark:text-gray-300 bg-gray-50/30 dark:bg-gray-900/30">RAM / ROM</td><td className="p-4 md:p-6 text-center dark:text-gray-300">2GB / 32GB (Novo)</td><td className="p-4 md:p-6 text-center dark:text-gray-300">2GB / 8GB</td><td className="p-4 md:p-6 text-center font-bold dark:text-gray-200">4GB / 64GB</td></tr>
+                          <tr><td className="p-4 md:p-6 font-bold text-gray-700 dark:text-gray-300 bg-gray-50/30 dark:bg-gray-900/30">Netflix Oficial</td><td className="p-4 md:p-6 text-center text-green-600 dark:text-green-400 font-bold">Sim</td><td className="p-4 md:p-6 text-center text-green-600 dark:text-green-400 font-bold">Sim</td><td className="p-4 md:p-6 text-center text-red-400 font-bold">Não</td></tr>
+                          <tr><td className="p-4 md:p-6 font-bold text-gray-700 dark:text-gray-300 bg-indigo-50/30 dark:bg-indigo-900/10">Escolha se...</td><td className="p-4 md:p-6 text-center italic dark:text-gray-400">Quer o melhor processador.</td><td className="p-4 md:p-6 text-center italic dark:text-gray-400">Quer o melhor preço oficial.</td><td className="p-4 md:p-6 text-center italic dark:text-gray-400">Instala apps externas/IPTV.</td></tr>
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+      )}
+
+      {relatedProducts.length > 0 && (
+          <div className="mt-20 border-t border-gray-100 dark:border-gray-700 pt-12">
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-8">Outras opções para si</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                  {relatedProducts.map(rel => (
+                      <a href={`#product/${rel.id}`} key={rel.id} className="group bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-all cursor-pointer">
+                          <div className="aspect-square bg-gray-100 dark:bg-gray-700 relative overflow-hidden">
+                              <img src={rel.image} alt={rel.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                          </div>
+                          <div className="p-4">
+                              <h3 className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 group-hover:text-primary transition-colors">{rel.name}</h3>
+                              <p className="text-primary font-bold mt-2">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(rel.price)}</p>
+                          </div>
+                      </a>
+                  ))}
+              </div>
+          </div>
+      )}
+    </div>
+  );
+};
+
+export default ProductDetails;

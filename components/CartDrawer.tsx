@@ -1,0 +1,671 @@
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { CartItem, UserCheckoutInfo, Order, Coupon, User } from '../types';
+import { X, Trash2, Check, Loader2, ChevronLeft, User as UserIcon, Clock, Tag, AlertCircle, Store, Truck, MapPin, Smartphone, Landmark, Banknote, Sparkles, PartyPopper, Info } from 'lucide-react';
+import { SELLER_PHONE, TELEGRAM_LINK } from '../constants';
+import {  db } from '../services/firebaseConfig';
+import OrderTutorial from './OrderTutorial';
+
+const ReservationBanner: React.FC<{ items: CartItem[] }> = ({ items }) => {
+    const [displayTime, setDisplayTime] = useState<string | null>(null);
+
+    useEffect(() => {
+        const findSoonest = () => {
+            const reserved = items
+                .filter(i => i.reservedUntil)
+                .map(i => new Date(i.reservedUntil!).getTime())
+                .filter(t => t > Date.now());
+
+            if (reserved.length === 0) return null;
+            return Math.min(...reserved);
+        };
+
+        const tick = () => {
+            const soonest = findSoonest();
+            if (!soonest) {
+                setDisplayTime(null);
+                return;
+            }
+
+            const diff = soonest - Date.now();
+            if (diff <= 0) {
+                setDisplayTime("Expirado");
+                return;
+            }
+
+            const mins = Math.floor(diff / 60000);
+            const secs = Math.floor((diff % 60000) / 1000);
+            setDisplayTime(`${mins}:${secs.toString().padStart(2, '0')}`);
+        };
+
+        tick(); 
+        const timer = setInterval(tick, 1000);
+        return () => clearInterval(timer);
+    }, [items]);
+
+    if (!displayTime) return null;
+
+    return (
+        <div className="bg-orange-50 dark:bg-orange-900/30 border-b border-orange-200 dark:border-orange-800 p-3 flex items-center gap-3 animate-fade-in shrink-0">
+            <div className="bg-orange-500 p-1.5 rounded-lg text-white animate-pulse">
+                <Clock size={16} />
+            </div>
+            <div className="flex-1">
+                <p className="font-bold text-xs text-orange-800 dark:text-orange-300 uppercase tracking-wider">Reserva de Stock Ativa</p>
+                <p className="text-[11px] text-orange-700 dark:text-orange-200">Conclua o pedido em <strong className="font-mono text-sm">{displayTime}</strong> para garantir os seus itens.</p>
+            </div>
+        </div>
+    );
+};
+
+interface CartDrawerProps {
+  isOpen: boolean;
+  onClose: () => void;
+  cartItems: CartItem[];
+  onRemoveItem: (id: string) => void;
+  onUpdateQuantity: (id: string, delta: number) => void;
+  total: number;
+  onCheckout: (order: Order, isAutoSave?: boolean) => Promise<boolean>;
+  user: User | null;
+  onOpenLogin: () => void;
+}
+
+const CartDrawer: React.FC<CartDrawerProps> = ({ 
+  isOpen, onClose, cartItems, onRemoveItem, onUpdateQuantity, total, onCheckout, user, onOpenLogin
+}) => {
+  const [checkoutStep, setCheckoutStep] = useState<'cart' | 'info' | 'platform' | 'tutorial' | 'success'>('cart');
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [currentOrderId, setCurrentOrderId] = useState(() => localStorage.getItem('as_cart_order_id') || '');
+  
+  useEffect(() => {
+     if (currentOrderId && cartItems.length > 0) {
+         localStorage.setItem('as_cart_order_id', currentOrderId);
+         // Guardar um hash simples do carrinho para invalidar se o utilizador alterar
+         localStorage.setItem('as_cart_hash', JSON.stringify(cartItems));
+     } else {
+         localStorage.removeItem('as_cart_order_id');
+         localStorage.removeItem('as_cart_hash');
+     }
+  }, [currentOrderId, cartItems]);
+
+  // Verificar se o carrinho mudou desde que o currentOrderId foi gerado
+  useEffect(() => {
+     if (currentOrderId && cartItems.length > 0) {
+         const savedHash = localStorage.getItem('as_cart_hash');
+         if (savedHash && savedHash !== JSON.stringify(cartItems)) {
+             // Utilizador alterou o carrinho (qts ou produtos), invalidar a encomenda pendente
+             setCurrentOrderId('');
+             localStorage.removeItem('as_cart_order_id');
+             localStorage.removeItem('as_cart_hash');
+             if (checkoutStep !== 'cart') setCheckoutStep('cart');
+         }
+     }
+  }, [cartItems]);
+
+  const [finalMessage, setFinalMessage] = useState('');
+  const [selectedPlatform, setSelectedPlatform] = useState<'wa' | 'tg'>('wa');
+  const [pendingOrder, setPendingOrder] = useState<Order | null>(null);
+  
+  // State para o método de entrega
+  const [deliveryMethod, setDeliveryMethod] = useState<'Shipping' | 'Pickup'>('Shipping');
+  
+  const [userInfo, setUserInfo] = useState<UserCheckoutInfo>({
+    name: user?.name || '', 
+    email: user?.email || '', 
+    street: '', 
+    doorNumber: '', 
+    zip: '', 
+    city: '', 
+    phone: user?.phone || '', 
+    nif: user?.nif || '',
+    paymentMethod: 'MB Way'
+  });
+  
+  // Atualizar info se o utilizador fizer login entretanto
+  useEffect(() => {
+      if (user) {
+          setUserInfo(prev => ({
+              ...prev,
+              name: prev.name || user.name,
+              email: prev.email || user.email,
+              phone: prev.phone || user.phone || '',
+              nif: prev.nif || user.nif || '',
+              // Se tiver moradas guardadas, usar a primeira como default
+              ...(user.addresses && user.addresses.length > 0 && !prev.street ? {
+                  street: user.addresses[0].street,
+                  city: user.addresses[0].city,
+                  zip: user.addresses[0].zip
+              } : {})
+          }));
+      }
+  }, [user]);
+
+  // Coupon State
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [couponError, setCouponError] = useState('');
+  const [isCheckingCoupon, setIsCheckingCoupon] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setTimeout(() => {
+          setCheckoutStep('cart');
+          setIsFinalizing(false);
+          setCouponCode('');
+          setAppliedCoupon(null);
+          setCouponError('');
+          setDeliveryMethod('Shipping'); // Reset para envio por defeito
+      }, 300);
+    }
+  }, [isOpen]);
+
+  const handleApplyCoupon = async () => {
+      if (!couponCode.trim()) return;
+      setIsCheckingCoupon(true);
+      setCouponError('');
+      setAppliedCoupon(null);
+
+      try {
+          const snapshot = await db.collection('coupons')
+              .where('code', '==', couponCode.trim().toUpperCase())
+              .limit(1)
+              .get();
+
+          if (snapshot.empty) {
+              console.warn(`[CartDrawer] Cupão não encontrado: "${couponCode.trim().toUpperCase()}"`);
+              setCouponError('Cupão inválido. Verifique se copiou corretamente.');
+              setIsCheckingCoupon(false);
+              return;
+          }
+
+          const coupon = snapshot.docs[0].data() as Coupon;
+          coupon.id = snapshot.docs[0].id; // Ensure ID is captured
+
+          if (!coupon.isActive) {
+              setCouponError('Este cupão expirou.');
+              setIsCheckingCoupon(false);
+              return;
+          }
+
+          if (coupon.maxUsages && (coupon.usageCount || 0) >= coupon.maxUsages) {
+              setCouponError('Este cupão já foi utilizado.');
+              setIsCheckingCoupon(false);
+              return;
+          }
+
+          if (total < coupon.minPurchase) {
+              setCouponError(`Mínimo de compra: ${formatCurrency(coupon.minPurchase)}`);
+              setIsCheckingCoupon(false);
+              return;
+          }
+
+          // Lógica de restrição de produto
+          if (coupon.validProductId) {
+              const hasProduct = cartItems.some(item => item.id === coupon.validProductId);
+              if (!hasProduct) {
+                  setCouponError('Cupão exclusivo para um produto que não está no carrinho.');
+                  setIsCheckingCoupon(false);
+                  return;
+              }
+          }
+
+          setAppliedCoupon(coupon);
+      } catch (error) {
+          console.error("Erro cupão:", error);
+          setCouponError('Erro ao validar cupão.');
+      } finally {
+          setIsCheckingCoupon(false);
+      }
+  };
+
+  // Cálculo do desconto
+  const discountAmount = useMemo(() => {
+      if (!appliedCoupon) return 0;
+      let amount = 0;
+      if (appliedCoupon.validProductId) {
+          const eligibleItems = cartItems.filter(item => item.id === appliedCoupon.validProductId);
+          const eligibleTotal = eligibleItems.reduce((acc, item) => acc + (item.price * item.quantity), 0);
+          if (appliedCoupon.type === 'PERCENTAGE') {
+              amount = eligibleTotal * (appliedCoupon.value / 100);
+          } else {
+              amount = Math.min(appliedCoupon.value, eligibleTotal);
+          }
+      } else {
+          if (appliedCoupon.type === 'PERCENTAGE') {
+              amount = total * (appliedCoupon.value / 100);
+          } else {
+              amount = appliedCoupon.value;
+          }
+      }
+      return Math.min(amount, total); 
+  }, [appliedCoupon, total, cartItems]);
+
+  // Cálculo Portes (Atualizado para Cobrança)
+  const shippingCost = useMemo(() => {
+      if (deliveryMethod === 'Pickup') return 0;
+      
+      const payableTotal = total - discountAmount;
+      
+      // Lógica específica para Pagamento à Cobrança
+      if (userInfo.paymentMethod === 'Cobrança') {
+          // Se < 50€: Custo 12€
+          // Se >= 50€: Custo 7€ (Custo extra aplicado sobre o "grátis")
+          return payableTotal < 50 ? 12 : 7;
+      }
+
+      // Lógica Normal (Outros métodos)
+      // < 50€: 4.99€
+      // >= 50€: Grátis
+      return payableTotal >= 50 ? 0 : 4.99;
+  }, [total, discountAmount, deliveryMethod, userInfo.paymentMethod]);
+
+  const finalTotal = Math.max(0, total - discountAmount + shippingCost);
+
+  const handleProceed = () => {
+    if (checkoutStep === 'cart') setCheckoutStep('info');
+    else if (checkoutStep === 'info') {
+        // Validação
+        if (!userInfo.name || !userInfo.phone || !userInfo.email) {
+            alert("Por favor, preencha o Nome, Email e Telemóvel.");
+            return;
+        }
+        // Se for envio, exige morada completa
+        if (deliveryMethod === 'Shipping' && (!userInfo.street || !userInfo.doorNumber || !userInfo.zip || !userInfo.city)) {
+            alert("Por favor, preencha a morada completa (incluindo Nº Porta).");
+            return;
+        }
+
+        if (!currentOrderId) {
+            const id = `#AS-${Math.floor(100000 + Math.random() * 900000)}`;
+            setCurrentOrderId(id);
+        }
+        setCheckoutStep('platform');
+    }
+  };
+
+  const handleStartCheckout = async (platform: 'wa' | 'tg') => {
+    setIsFinalizing(true);
+    
+    // Atualizar uso do cupão
+    if (appliedCoupon && appliedCoupon.id) {
+        try {
+            const newUsageCount = (appliedCoupon.usageCount || 0) + 1;
+            const updateData: any = { usageCount: newUsageCount };
+            
+            // Se atingiu o limite de usos, desativar o cupão
+            if (appliedCoupon.maxUsages && newUsageCount >= appliedCoupon.maxUsages) {
+                updateData.isActive = false;
+            }
+
+            await db.collection('coupons').doc(appliedCoupon.id).update(updateData);
+        } catch (e) { console.error("Erro ao atualizar cupão", e); }
+    }
+
+    // Preparar dados finais 
+    const finalUserInfo: any = { ...userInfo, deliveryMethod };
+    
+    // Remover valores undefined que causam erro no Firebase
+    Object.keys(finalUserInfo).forEach(key => {
+        if (finalUserInfo[key] === undefined) {
+            delete finalUserInfo[key];
+        }
+    });
+
+    if (deliveryMethod === 'Pickup') {
+        finalUserInfo.street = "Levantamento na Loja (All-Shop)";
+        finalUserInfo.city = "Leiria";
+        finalUserInfo.zip = "2400-135";
+        finalUserInfo.doorNumber = "-";
+    }
+
+    const newOrder: Order = {
+        id: currentOrderId,
+        date: new Date().toISOString(),
+        total: finalTotal,
+        status: 'Pendente',
+        stockDeducted: false,
+        items: cartItems.map(i => ({ productId: i.id, name: i.name, price: i.price, quantity: i.quantity, selectedVariant: i.selectedVariant || '', image: i.image, addedAt: new Date().toISOString() })),
+        shippingInfo: finalUserInfo,
+        userId: user?.uid || null,
+        storeShippingCost: 5.40, // Valor por defeito do custo de envio para a loja
+    };
+
+    if (discountAmount > 0) {
+        newOrder.discountValue = discountAmount;
+    }
+    if (appliedCoupon) {
+        newOrder.couponCode = appliedCoupon.code;
+    }
+
+    let msg = `🛍️ Pedido ${currentOrderId}\n`;
+    msg += `Método: ${deliveryMethod === 'Pickup' ? '🏪 Levantamento em Loja (Leiria)' : '🚚 Envio CTT'}\n`;
+    msg += `Pagamento: ${userInfo.paymentMethod}\n`;
+    msg += `Cliente: ${userInfo.name} (${userInfo.phone})\n`;
+    msg += `Itens:\n${cartItems.map(i => `• ${i.quantity}x ${i.name} ${i.selectedVariant ? `(${i.selectedVariant})` : ''}`).join('\n')}\n`;
+    if (discountAmount > 0) msg += `Desconto (${appliedCoupon?.code}): -${formatCurrency(discountAmount)}\n`;
+    msg += `Portes: ${shippingCost === 0 ? 'Grátis' : formatCurrency(shippingCost)}\n`;
+    msg += `Total Final: *${formatCurrency(finalTotal)}*`;
+    
+    setPendingOrder(newOrder);
+    setFinalMessage(msg);
+    setSelectedPlatform(platform);
+    setCheckoutStep('tutorial');
+    setIsFinalizing(false);
+    
+    // Auto-save the order as Pendente immediately when starting checkout
+    onCheckout(newOrder, true);
+  };
+
+  const handleConfirmSent = async (isAutoSave: boolean = false) => {
+      if (!pendingOrder) return;
+      setIsFinalizing(true);
+
+      let orderToSave = { ...pendingOrder };
+      if (!isAutoSave) {
+          orderToSave.status = 'Processamento';
+          orderToSave.statusHistory = [
+              ...(orderToSave.statusHistory || []),
+              { status: 'Processamento', date: new Date().toISOString(), notes: 'Pedido confirmado pelo utilizador via tutorial.' }
+          ];
+      }
+
+      // Pass isAutoSave to onCheckout so it knows whether to clear the cart and send notifications
+      const success = await onCheckout(orderToSave, isAutoSave);
+      if (success) {
+          if (!isAutoSave) {
+              setCheckoutStep('success');
+              setCurrentOrderId('');
+          }
+      }
+      setIsFinalizing(false);
+  };
+
+  return (
+    <>
+      <div className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-40 transition-opacity ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={onClose} />
+      <div className={`fixed top-0 right-0 h-full w-full sm:w-[450px] bg-white dark:bg-[#0f172a] shadow-2xl z-50 transform transition-transform duration-300 flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        
+        {checkoutStep !== 'success' && checkoutStep !== 'tutorial' && (
+            <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-[#0f172a] shrink-0">
+            <div className="flex items-center gap-2">
+                {checkoutStep !== 'cart' && <button onClick={() => setCheckoutStep('cart')} className="p-1 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full dark:text-white"><ChevronLeft size={20}/></button>}
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Carrinho</h2>
+            </div>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-gray-500 dark:text-gray-400"><X size={24} /></button>
+            </div>
+        )}
+
+        {/* --- TEMPORIZADOR --- */}
+        {checkoutStep === 'cart' && <ReservationBanner items={cartItems} />}
+
+        {/* --- BARRA DE PORTES GRÁTIS --- */}
+        {checkoutStep === 'cart' && cartItems.length > 0 && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-100 dark:border-blue-800 p-4 animate-fade-in shrink-0">
+                <div className="flex justify-between items-end mb-2">
+                    <p className="text-xs font-bold text-blue-800 dark:text-blue-300 uppercase tracking-wider">
+                        {total - discountAmount >= 50 
+                            ? <span className="flex items-center gap-1 text-green-600 dark:text-green-400"><PartyPopper size={14}/> Portes Grátis Conseguidos!</span>
+                            : <span>Faltam {formatCurrency(50 - (total - discountAmount))} para Portes Grátis</span>
+                        }
+                    </p>
+                    <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400">{Math.min(100, ((total - discountAmount) / 50) * 100).toFixed(0)}%</span>
+                </div>
+                <div className="w-full bg-blue-200 dark:bg-blue-800 h-1.5 rounded-full overflow-hidden">
+                    <div 
+                        className={`h-full transition-all duration-500 ${total - discountAmount >= 50 ? 'bg-green-500' : 'bg-blue-600'}`} 
+                        style={{ width: `${Math.min(100, ((total - discountAmount) / 50) * 100)}%` }}
+                    ></div>
+                </div>
+            </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto p-4 bg-white dark:bg-[#0f172a]">
+          {checkoutStep === 'cart' && (
+            <div className="space-y-4">
+              <div className="divide-y divide-gray-100 dark:divide-slate-800">
+                {cartItems.length === 0 ? (
+                  <div className="text-center py-20 text-gray-400">O seu carrinho está vazio.</div>
+                ) : (
+                  cartItems.map(item => (
+                    <div key={item.cartItemId} className="py-4 flex gap-4">
+                      <img src={item.image} className="w-16 h-16 object-contain bg-gray-50 dark:bg-slate-800 rounded" alt="" />
+                      <div className="flex-1">
+                        <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{item.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{item.selectedVariant}</p>
+                        <div className="flex items-center gap-3 mt-2">
+                          <button onClick={() => onUpdateQuantity(item.cartItemId, -1)} className="w-6 h-6 border dark:border-slate-700 rounded-full font-bold dark:text-white flex items-center justify-center">-</button>
+                          <span className="text-sm font-bold dark:text-white">{item.quantity}</span>
+                          <button onClick={() => onUpdateQuantity(item.cartItemId, 1)} className="w-6 h-6 border dark:border-slate-700 rounded-full font-bold dark:text-white flex items-center justify-center">+</button>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-sm dark:text-white">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(item.price * item.quantity)}</p>
+                        <button onClick={() => onRemoveItem(item.cartItemId)} className="text-red-400 hover:text-red-600 mt-2"><Trash2 size={16} /></button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Área de Cupão */}
+              {cartItems.length > 0 && (
+                  <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-100 dark:border-slate-700 mt-4">
+                      {!appliedCoupon ? (
+                          <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                <input 
+                                    type="text" 
+                                    placeholder="Código Promocional" 
+                                    value={couponCode} 
+                                    onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                                    className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 dark:bg-slate-700 dark:text-white text-sm uppercase font-bold focus:ring-2 focus:ring-primary outline-none"
+                                />
+                                <Tag size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                              </div>
+                              <button 
+                                onClick={handleApplyCoupon} 
+                                disabled={isCheckingCoupon || !couponCode}
+                                className="bg-gray-900 dark:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-50"
+                              >
+                                  {isCheckingCoupon ? <Loader2 size={14} className="animate-spin"/> : 'Aplicar'}
+                              </button>
+                          </div>
+                      ) : (
+                          <div className="flex justify-between items-center text-green-600 dark:text-green-400 text-sm font-bold bg-green-50 dark:bg-green-900/20 p-2 rounded-lg border border-green-100 dark:border-green-800">
+                              <span className="flex items-center gap-2"><Check size={16}/> Cupão {appliedCoupon.code} aplicado!</span>
+                              <button onClick={() => { setAppliedCoupon(null); setCouponCode(''); }} className="text-red-500 hover:text-red-700"><X size={16}/></button>
+                          </div>
+                      )}
+                      {couponError && <p className="text-xs text-red-500 mt-2 flex items-center gap-1"><AlertCircle size={12}/> {couponError}</p>}
+                  </div>
+              )}
+            </div>
+          )}
+
+          {checkoutStep === 'info' && (
+            <div className="space-y-6 animate-fade-in">
+              <h3 className="font-bold text-lg dark:text-white">Dados de Entrega</h3>
+              
+              {/* Seletor de Método de Entrega */}
+              <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    onClick={() => setDeliveryMethod('Shipping')}
+                    className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${deliveryMethod === 'Shipping' ? 'border-primary bg-blue-50 dark:bg-blue-900/30 text-primary' : 'border-gray-200 dark:border-slate-700 dark:text-gray-400 hover:border-gray-300'}`}
+                  >
+                      <Truck size={24} />
+                      <span className="font-bold text-sm">Envio CTT</span>
+                  </button>
+                  <button 
+                    onClick={() => setDeliveryMethod('Pickup')}
+                    className={`p-4 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${deliveryMethod === 'Pickup' ? 'border-primary bg-blue-50 dark:bg-blue-900/30 text-primary' : 'border-gray-200 dark:border-slate-700 dark:text-gray-400 hover:border-gray-300'}`}
+                  >
+                      <Store size={24} />
+                      <span className="font-bold text-sm">Levantar na Loja</span>
+                  </button>
+              </div>
+
+              <div className="space-y-4">
+                  {/* SELETOR DE PAGAMENTO ADICIONADO AQUI */}
+                  <div>
+                      <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Método de Pagamento</label>
+                      <div className="grid grid-cols-4 gap-2">
+                          <button
+                              onClick={() => setUserInfo({...userInfo, paymentMethod: 'MB Way'})}
+                              className={`p-3 rounded-xl text-xs font-bold border transition-all flex flex-col items-center gap-1 ${userInfo.paymentMethod === 'MB Way' ? 'border-primary bg-blue-50 dark:bg-blue-900/30 text-primary' : 'border-gray-200 dark:border-slate-700 text-gray-500 dark:text-gray-400'}`}
+                          >
+                              <Smartphone size={18} />
+                              MB Way
+                          </button>
+                          <button
+                              onClick={() => setUserInfo({...userInfo, paymentMethod: 'Transferência'})}
+                              className={`p-3 rounded-xl text-xs font-bold border transition-all flex flex-col items-center gap-1 ${userInfo.paymentMethod === 'Transferência' ? 'border-primary bg-blue-50 dark:bg-blue-900/30 text-primary' : 'border-gray-200 dark:border-slate-700 text-gray-500 dark:text-gray-400'}`}
+                          >
+                              <Landmark size={18} />
+                              Transf.
+                          </button>
+                          <button
+                              onClick={() => setUserInfo({...userInfo, paymentMethod: 'Cobrança'})}
+                              className={`p-3 rounded-xl text-xs font-bold border transition-all flex flex-col items-center gap-1 ${userInfo.paymentMethod === 'Cobrança' ? 'border-primary bg-blue-50 dark:bg-blue-900/30 text-primary' : 'border-gray-200 dark:border-slate-700 text-gray-500 dark:text-gray-400'}`}
+                          >
+                              <Banknote size={18} />
+                              Cobrança
+                          </button>
+                          <button
+                              onClick={() => setUserInfo({...userInfo, paymentMethod: 'Outro'})}
+                              className={`p-3 rounded-xl text-xs font-bold border transition-all flex flex-col items-center gap-1 ${userInfo.paymentMethod === 'Outro' ? 'border-primary bg-blue-50 dark:bg-blue-900/30 text-primary' : 'border-gray-200 dark:border-slate-700 text-gray-500 dark:text-gray-400'}`}
+                          >
+                              <Sparkles size={18} />
+                              Outro
+                          </button>
+                      </div>
+                      {userInfo.paymentMethod === 'Outro' && (
+                          <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-[10px] text-blue-700 dark:text-blue-400 flex items-start gap-1">
+                              <Info size={12} className="shrink-0 mt-0.5" />
+                              <span>Aceitamos PayPal, Revolut, N26, Entidade e Referência. Detalhes serão enviados na confirmação.</span>
+                          </div>
+                      )}
+                      {userInfo.paymentMethod === 'Cobrança' && deliveryMethod !== 'Pickup' && (
+                          <div className="mt-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-[10px] text-yellow-700 dark:text-yellow-400 flex items-start gap-1">
+                              <AlertCircle size={12} className="shrink-0 mt-0.5" />
+                              <span>Taxa adicional: +12€ (pedidos &lt;50€) ou +7€ (pedidos &ge;50€).</span>
+                          </div>
+                      )}
+                  </div>
+
+                  <div>
+                      <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Dados Pessoais</label>
+                      <input type="text" placeholder="Nome Completo *" className="w-full p-3 border dark:border-slate-700 rounded-xl dark:bg-slate-800 dark:text-white mb-3" value={userInfo.name} onChange={e => setUserInfo({...userInfo, name: e.target.value})} />
+                      <input type="email" placeholder="Email *" className="w-full p-3 border dark:border-slate-700 rounded-xl dark:bg-slate-800 dark:text-white mb-3" value={userInfo.email} onChange={e => setUserInfo({...userInfo, email: e.target.value})} />
+                      <input type="tel" placeholder="Telemóvel *" className="w-full p-3 border dark:border-slate-700 rounded-xl dark:bg-slate-800 dark:text-white mb-3" value={userInfo.phone} onChange={e => setUserInfo({...userInfo, phone: e.target.value})} />
+                      <input type="text" placeholder="NIF (Opcional)" className="w-full p-3 border dark:border-slate-700 rounded-xl dark:bg-slate-800 dark:text-white" value={userInfo.nif} onChange={e => setUserInfo({...userInfo, nif: e.target.value})} />
+                  </div>
+
+                  {deliveryMethod === 'Shipping' ? (
+                      <div className="animate-fade-in">
+                          <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Morada de Entrega</label>
+                          <div className="grid grid-cols-3 gap-2 mb-3">
+                              <div className="col-span-2">
+                                  <input type="text" placeholder="Rua *" className="w-full p-3 border dark:border-slate-700 rounded-xl dark:bg-slate-800 dark:text-white" value={userInfo.street} onChange={e => setUserInfo({...userInfo, street: e.target.value})} />
+                              </div>
+                              <div>
+                                  <input type="text" placeholder="Nº Porta *" className="w-full p-3 border dark:border-slate-700 rounded-xl dark:bg-slate-800 dark:text-white" value={userInfo.doorNumber} onChange={e => setUserInfo({...userInfo, doorNumber: e.target.value})} />
+                              </div>
+                          </div>
+                          <div className="mb-3">
+                              <input type="text" placeholder="Andar, Bloco, Lote (Opcional)" className="w-full p-3 border dark:border-slate-700 rounded-xl dark:bg-slate-800 dark:text-white" value={userInfo.addressExtra || ''} onChange={e => setUserInfo({...userInfo, addressExtra: e.target.value})} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <input type="text" placeholder="Localidade *" className="w-full p-3 border dark:border-slate-700 rounded-xl dark:bg-slate-800 dark:text-white" value={userInfo.city} onChange={e => setUserInfo({...userInfo, city: e.target.value})} />
+                            <input type="text" placeholder="Cód. Postal *" className="w-full p-3 border dark:border-slate-700 rounded-xl dark:bg-slate-800 dark:text-white" value={userInfo.zip} onChange={e => setUserInfo({...userInfo, zip: e.target.value})} />
+                          </div>
+                      </div>
+                  ) : (
+                      <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl border border-green-200 dark:border-green-800 animate-fade-in">
+                          <div className="flex items-start gap-3">
+                              <MapPin className="text-green-600 dark:text-green-400 shrink-0 mt-1" size={20} />
+                              <div>
+                                  <h4 className="font-bold text-green-800 dark:text-green-300 text-sm">Ponto de Recolha</h4>
+                                  <p className="text-green-700 dark:text-green-400 text-sm mt-1">
+                                      All-Shop Store<br/>
+                                      Rua Dr. José Jardim, Lote 5<br/>
+                                      Leiria, Portugal
+                                  </p>
+                                  <p className="text-xs text-green-600 dark:text-green-500 mt-2 font-medium">Horário: Seg-Sex, 10h-19h</p>
+                              </div>
+                          </div>
+                      </div>
+                  )}
+              </div>
+            </div>
+          )}
+
+          {checkoutStep === 'platform' && (
+            <div className="space-y-6 text-center animate-fade-in">
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-2xl text-blue-800 dark:text-blue-300 border border-blue-100 dark:border-blue-900">
+                <p className="font-bold mb-2">Quase lá!</p>
+                <p className="text-sm">Escolha por onde quer enviar o pedido. A nossa equipa irá confirmar os dados e pagamento consigo.</p>
+              </div>
+              <button onClick={() => handleStartCheckout('wa')} className="w-full bg-green-600 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-green-700 transition-colors">Enviar via WhatsApp</button>
+              <button onClick={() => handleStartCheckout('tg')} className="w-full bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg hover:bg-blue-600 transition-colors">Enviar via Telegram</button>
+            </div>
+          )}
+
+          {checkoutStep === 'tutorial' && (
+              <OrderTutorial 
+                  message={finalMessage} 
+                  platform={selectedPlatform} 
+                  actionUrl={selectedPlatform === 'wa' ? `https://wa.me/${SELLER_PHONE}?text=${encodeURIComponent(finalMessage)}` : TELEGRAM_LINK}
+                  onComplete={handleConfirmSent}
+                  isLoading={isFinalizing}
+              />
+          )}
+
+          {checkoutStep === 'success' && (
+            <div className="text-center py-10 animate-fade-in flex flex-col items-center justify-center h-full relative overflow-hidden">
+                {/* Efeito de Confetti (CSS Puro) */}
+                <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute top-0 left-1/4 w-2 h-2 bg-red-500 rounded-full animate-bounce delay-100"></div>
+                    <div className="absolute top-10 right-1/4 w-2 h-2 bg-blue-500 rounded-full animate-bounce delay-300"></div>
+                    <div className="absolute top-20 left-1/2 w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+                </div>
+
+                <div className="w-24 h-24 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mb-6 shadow-lg shadow-green-100 dark:shadow-none animate-bounce-slow">
+                    <PartyPopper size={48} className="text-green-600 dark:text-green-400" />
+                </div>
+                
+                <h3 className="text-3xl font-black mb-2 text-gray-900 dark:text-white">Pedido Registado!</h3>
+                <p className="text-gray-500 dark:text-gray-400 max-w-xs mx-auto mb-8">
+                    Obrigado pela sua compra. A nossa equipa entrará em contacto brevemente.
+                </p>
+
+                <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-100 dark:border-slate-700 w-full mb-8">
+                    <p className="text-xs text-gray-400 uppercase font-bold mb-1">Referência do Pedido</p>
+                    <p className="text-xl font-mono font-bold text-primary">{currentOrderId}</p>
+                </div>
+
+                <button onClick={onClose} className="bg-gray-900 dark:bg-slate-700 text-white px-8 py-4 rounded-xl font-bold w-full shadow-xl hover:scale-[1.02] transition-transform">
+                    Voltar à Loja
+                </button>
+            </div>
+          )}
+        </div>
+
+        {cartItems.length > 0 && checkoutStep !== 'success' && checkoutStep !== 'platform' && checkoutStep !== 'tutorial' && (
+          <div className="p-4 border-t border-gray-100 dark:border-slate-800 bg-white dark:bg-[#0f172a] shrink-0">
+            <div className="flex justify-between text-gray-500 dark:text-gray-400 text-sm mb-2"><span>Subtotal</span><span>{formatCurrency(total)}</span></div>
+            {discountAmount > 0 && (
+                <div className="flex justify-between text-green-600 dark:text-green-400 text-sm mb-2 font-medium"><span>Desconto</span><span>-{formatCurrency(discountAmount)}</span></div>
+            )}
+            <div className="flex justify-between text-gray-500 dark:text-gray-400 text-sm mb-4"><span>Portes</span><span>{shippingCost === 0 ? 'Grátis' : formatCurrency(shippingCost)}</span></div>
+            <div className="flex justify-between text-xl font-black text-gray-900 dark:text-white mb-6 border-t dark:border-slate-800 pt-4"><span>Total</span><span>{formatCurrency(finalTotal)}</span></div>
+            <button onClick={handleProceed} className="w-full bg-primary text-white font-bold py-4 rounded-xl text-lg shadow-xl shadow-blue-100 dark:shadow-none hover:scale-[1.02] transition-transform">Continuar Compra</button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+};
+
+const formatCurrency = (val: number) => new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(val);
+
+export default CartDrawer;
