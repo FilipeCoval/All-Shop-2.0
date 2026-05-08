@@ -229,7 +229,7 @@ const App: React.FC = () => {
   // --- FOREGROUND NOTIFICATION LISTENER ---
   useEffect(() => {
       if (messaging) {
-          const unsubscribe = messaging.onMessage((payload) => {
+          const unsubscribe = messaging.onMessage((payload: any) => {
               console.log('Mensagem recebida em primeiro plano: ', payload);
               setIncomingNotification({
                   title: payload.notification?.title || 'Nova Mensagem',
@@ -314,8 +314,8 @@ const App: React.FC = () => {
                 const orderIds = new Set<string>();
                 userOrdersSnap.forEach(doc => { if (!orderIds.has(doc.id)) { allUserOrders.push({ id: doc.id, ...doc.data() } as Order); orderIds.add(doc.id); }});
                 guestOrdersSnap.forEach(doc => { if (!orderIds.has(doc.id)) { allUserOrders.push({ id: doc.id, ...doc.data() } as Order); orderIds.add(doc.id); }});
-                const freshUserDoc = await userDocRef.get();
-                if (freshUserDoc.exists) {
+                const freshUserDoc = await getDoc(userDocRef);
+                if (freshUserDoc.exists()) {
                     const userData = freshUserDoc.data() as User;
                     const historicalTotalSpent = allUserOrders.filter(o => o.status !== 'Cancelado').reduce((sum, order) => sum + (order.total || 0), 0);
                     let correctTier: UserTier = 'Bronze';
@@ -506,7 +506,7 @@ const App: React.FC = () => {
               if (user?.uid) resData.userId = user.uid;
 
               if (myCurrentResDoc) {
-                  batch.update(myCurrentResDoc.ref, resData);
+                  batch.update(doc(modularDb, 'stock_reservations', myCurrentResDoc.id), resData);
               } else {
                   const newRef = doc(collection(modularDb, 'stock_reservations'));
                   batch.set(newRef, resData);
@@ -638,10 +638,10 @@ const App: React.FC = () => {
           const cleanOrder = JSON.parse(JSON.stringify(newOrder));
           cleanOrder.stockDeducted = true; // Indica que o stock público já foi deduzido na altura da compra
           
-          const alreadyExists = await db.runTransaction(async (transaction) => {
+          const alreadyExists = await runTransaction(modularDb, async (transaction) => {
               const orderRef = doc(modularDb, "orders", cleanOrder.id);
               const existingOrderDoc = await transaction.get(orderRef);
-              const exists = existingOrderDoc.exists;
+              const exists = existingOrderDoc.exists();
 
               // 1. Validar e preparar decremento de stock (apenas se a encomenda for nova)
               const productUpdates = [];
@@ -652,7 +652,7 @@ const App: React.FC = () => {
                       const productRef = doc(modularDb, 'products_public', item.productId.toString());
                       const productDoc = await transaction.get(productRef);
                       
-                      if (!productDoc.exists) {
+                      if (!productDoc.exists()) {
                           throw new Error(`Produto ${item.name} não encontrado.`);
                       }
                       const productData = productDoc.data() as Product;
@@ -722,8 +722,8 @@ const App: React.FC = () => {
           try {
               const reservationQuery = await getDocs(query(collection(modularDb, 'stock_reservations'), where('sessionId', '==', sessionId)));
               if (!reservationQuery.empty) {
-                  const batch = db.batch();
-                  reservationQuery.forEach(doc => batch.delete(doc.ref));
+                  const batch = writeBatch(modularDb);
+                  reservationQuery.forEach(docSnap => batch.delete(doc(modularDb, 'stock_reservations', docSnap.id)));
                   await batch.commit();
               }
               
@@ -760,9 +760,9 @@ const App: React.FC = () => {
           
           if (user?.uid && !alreadyExists) {
             const userRef = doc(modularDb, "users", user.uid);
-            await db.runTransaction(async (transaction) => {
+            await runTransaction(modularDb, async (transaction) => {
               const userDoc = await transaction.get(userRef);
-              if (!userDoc.exists) return;
+              if (!userDoc.exists()) return;
               const userData = userDoc.data() as User;
               const newTotalSpent = (userData.totalSpent || 0) + newOrder.total;
               let newTier: UserTier = userData.tier || 'Bronze';

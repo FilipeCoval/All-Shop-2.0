@@ -13,7 +13,7 @@ import { extractSerialNumberFromImage, generateProductContent } from '../service
 import { INITIAL_PRODUCTS, LOYALTY_TIERS, STORE_NAME } from '../constants';
 import {   db, storage , modularDb } from '../services/firebaseConfig';
 import { collection, doc, updateDoc, onSnapshot, query, orderBy, limit, doc as docRef, setDoc, deleteDoc, getDoc, runTransaction } from 'firebase/firestore';
-import { ref } from 'firebase/storage';
+import { ref, deleteObject } from 'firebase/storage';
 
 import ClientDetailsModal from './ClientDetailsModal';
 import ProfitCalculatorModal from './ProfitCalculatorModal';

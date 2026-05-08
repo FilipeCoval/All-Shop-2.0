@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Product, ProductVariant, Review } from '../types';
 import { X, Save, Image as ImageIcon, Plus, Trash2, Star, Layers, ListPlus, Settings, Upload, Loader2, MessageSquare, Globe, ArrowRight as ArrowRightIcon } from 'lucide-react';
-import {  db, storage } from '../services/firebaseConfig';
+import {  db, storage, modularDb } from '../services/firebaseConfig';
+import { deleteDoc, doc } from 'firebase/firestore';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 
 interface CatalogModalProps {
@@ -277,7 +278,7 @@ const CatalogModal: React.FC<CatalogModalProps> = ({ isOpen, onClose, product, o
   const handleDeleteReview = async (reviewId: string) => {
     if (!window.confirm('Tem a certeza que deseja apagar esta avaliação?')) return;
     try {
-      await db.collection('reviews').doc(reviewId).delete();
+      await deleteDoc(doc(modularDb, 'reviews', reviewId));
       setReviews(prev => prev.filter(r => r.id !== reviewId));
     } catch (error) {
       console.error("Erro ao apagar avaliação:", error);

@@ -18,6 +18,7 @@ const formatCurrency = (value: number) =>
 
 const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({ user, orders, onClose, onUpdateUser }) => {
     const [isRecalculatingClient, setIsRecalculatingClient] = useState(false);
+    const [isRedeeming, setIsRedeeming] = useState<string | null>(null);
     
     // Merge States
     const [mergeSearchEmail, setMergeSearchEmail] = useState('');
@@ -185,14 +186,14 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({ user, orders, o
         }
     };
 
-    const handleRedeemReward = async (reward: typeof LOYALTY_REWARDS[0]) => {
+    const handleRedeemReward = async (reward: any) => {
         const currentPoints = user.loyaltyPoints || 0;
         if (currentPoints < reward.cost) { alert("Pontos insuficientes."); return; }
         if (!window.confirm(`Trocar ${reward.cost} pontos por um vale de ${reward.value}€?`)) return;
         setIsRedeeming(reward.id);
         try {
             const code = `REWARD-${user.uid?.substring(0,4).toUpperCase()}-${Date.now().toString().substring(7)}`;
-            const newCoupon: Coupon = { code, type: 'FIXED', value: reward.value, minPurchase: reward.minPurchase, isActive: true, usageCount: 0, userId: user.uid };
+            const newCoupon: any = { code, type: 'FIXED', value: reward.value, minPurchase: reward.minPurchase, isActive: true, usageCount: 0, userId: user.uid };
             await addDoc(collection(modularDb, 'coupons'), newCoupon);
             const newHistoryItem: PointHistory = { id: Date.now().toString(), date: new Date().toISOString(), amount: -reward.cost, reason: `Resgate: ${reward.title}` };
             const updatedPoints = currentPoints - reward.cost;

@@ -10,7 +10,7 @@ import {
 import { STORE_NAME, LOGO_URL, LOYALTY_TIERS, LOYALTY_REWARDS } from '../constants';
 import {   db, storage, requestPushPermission, messaging , modularDb } from '../services/firebaseConfig';
 import { collection, doc, updateDoc, addDoc, arrayUnion, arrayRemove, deleteField, onSnapshot, query, where } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, deleteObject, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 import { cancelOrderItem } from '../services/returnService';
 import LoyaltyPage from './LoyaltyPage';

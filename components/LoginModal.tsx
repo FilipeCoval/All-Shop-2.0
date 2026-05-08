@@ -4,6 +4,7 @@ import { X, Mail, Lock, Eye, EyeOff, CheckCircle, AlertCircle, ArrowRight } from
 import { User as UserType } from '../types';
 import {  auth, db , modularDb } from '../services/firebaseConfig';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 
 interface LoginModalProps {
   isOpen: boolean;
