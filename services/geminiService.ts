@@ -4,7 +4,17 @@ import { STORE_NAME, BOT_NAME } from '../constants';
 import { InventoryProduct, Product, SupportTicket, Order, OrderItem } from '../types';
 import { db } from './firebaseConfig';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+const getAI = () => {
+  if (!aiInstance) {
+    if (!process.env.GEMINI_API_KEY) {
+      console.warn("GEMINI_API_KEY is not set. AI features will be disabled.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "missing-key" });
+  }
+  return aiInstance;
+};
+
 let chatHistory: any[] = [];
 
 const getSystemInstruction = (products: Product[], userOrders: Order[] = []): string => {
@@ -63,7 +73,7 @@ export const sendMessageToGemini = async (message: string, currentProducts: Prod
       parts: Array.isArray(msg.parts) ? msg.parts : [{ text: msg.parts }]
     }));
 
-    const result = await ai.models.generateContent({
+    const result = await getAI().models.generateContent({
         model: 'gemini-2.5-flash',
         contents: [
             ...formattedHistory,
@@ -118,7 +128,7 @@ export const getInventoryAnalysis = async (products: InventoryProduct[], userPro
             - Mantenha um tom profissional mas encorajador.
           `;
 
-        const result = await ai.models.generateContent({ 
+        const result = await getAI().models.generateContent({ 
            model: 'gemini-2.5-pro',
            contents: prompt 
         });
@@ -147,7 +157,7 @@ export const extractSerialNumberFromImage = async (base64Image: string): Promise
             cleanBase64 = base64Image.split('base64,')[1];
         }
 
-        const result = await ai.models.generateContent({
+        const result = await getAI().models.generateContent({
             model: 'gemini-2.5-flash',
             contents: [
               {
@@ -199,7 +209,7 @@ export const generateProductContent = async (name: string, category: string): Pr
             }
           `;
       
-        const result = await ai.models.generateContent({ 
+        const result = await getAI().models.generateContent({ 
             model: 'gemini-2.5-flash',
             contents: prompt 
         });
