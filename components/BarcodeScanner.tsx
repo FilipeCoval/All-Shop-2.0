@@ -80,10 +80,10 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onCodeSubmit, onClose, 
                        const track = stream.getVideoTracks()[0];
                        if (track) {
                            trackRef.current = track;
-                           const capabilities = track.getCapabilities && track.getCapabilities();
+                           const capabilities = (track as any).getCapabilities && (track as any).getCapabilities();
                            if (capabilities && capabilities.zoom) {
                                setHasZoom(true);
-                               setMaxZoom(capabilities.zoom.max);
+                               setMaxZoom((capabilities as any).zoom.max);
                            }
                        }
                    }

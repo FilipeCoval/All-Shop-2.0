@@ -3,6 +3,7 @@ import { Product, ProductVariant, Review } from '../types';
 import { X, Save, Image as ImageIcon, Plus, Trash2, Star, Layers, ListPlus, Settings, Upload, Loader2, MessageSquare, Globe, ArrowRight as ArrowRightIcon } from 'lucide-react';
 import {  db, storage, modularDb } from '../services/firebaseConfig';
 import { deleteDoc, doc } from 'firebase/firestore';
+import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 
 interface CatalogModalProps {
@@ -217,8 +218,8 @@ const CatalogModal: React.FC<CatalogModalProps> = ({ isOpen, onClose, product, o
       const newImageUrls: string[] = [];
       const uploadPromises = Array.from(files).map(file => {
           return new Promise<string>((resolve, reject) => {
-              const storageRef = storage.ref(`products_public/${Date.now()}_${file.name}`);
-              const uploadTask = storageRef.put(file);
+              const storageRef = ref(storage, `products_public/${Date.now()}_${file.name}`);
+              const uploadTask = uploadBytesResumable(storageRef, file);
 
               uploadTask.on('state_changed', 
                   (snapshot) => {
@@ -228,7 +229,7 @@ const CatalogModal: React.FC<CatalogModalProps> = ({ isOpen, onClose, product, o
                   (error) => reject(error),
                   async () => {
                       try {
-                          const downloadURL = await uploadTask.snapshot.ref.getDownloadURL();
+                          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
                           resolve(downloadURL);
                       } catch (err) {
                           reject(err);

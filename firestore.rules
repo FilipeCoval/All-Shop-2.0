@@ -36,47 +36,37 @@ service cloud.firestore {
     // -- VALIDATORS -- //
 
     function isValidUser(data) {
-      return data.keys().hasAll(["email"]) && 
-             data.email is string && data.email.size() <= 150;
+      return (data.get('email', '') is string && data.get('email', '').size() <= 150);
     }
 
     function isValidOrder(data) {
-       return data.keys().hasAll(["total", "status"]) &&
-              data.total is number &&
-              data.status is string && data.status.size() <= 100;
+       return (data.get('total', 0) is number) &&
+              (data.get('status', '') is string && data.get('status', '').size() <= 100);
     }
 
     function isValidReview(data) {
-       return data.keys().hasAll(["productId", "userId"]) &&
-              data.productId is number &&
-              data.userId is string && data.userId.size() <= 128 &&
-              data.userId == request.auth.uid;
+       return (data.get('productId', 0) is number) &&
+              (data.get('userId', '') is string && data.get('userId', '').size() <= 128);
     }
 
     function isValidTicket(data) {
-      return data.keys().hasAll(["userId"]) &&
-             data.userId is string && data.userId.size() <= 128 &&
-             data.userId == request.auth.uid;
+      return (data.get('userId', '') is string && data.get('userId', '').size() <= 128);
     }
 
     function isValidReservation(data) {
-       return data.keys().hasAll(["productId"]) &&
-              data.productId is number;
+       return (data.get('productId', 0) is number);
     }
     
     function isValidNewsletter(data) {
-       return data.keys().hasAll(["email"]) &&
-              data.email is string && data.email.size() <= 150;
+       return (data.get('email', '') is string && data.get('email', '').size() <= 150);
     }
 
     function isValidLead(data) {
-       return data.keys().hasAll(["email"]) &&
-              data.email is string && data.email.size() <= 150;
+       return (data.get('email', '') is string && data.get('email', '').size() <= 150);
     }
 
     function isValidStockAlert(data) {
-       return data.keys().hasAll(["email"]) &&
-              data.email is string && data.email.size() <= 150;
+       return (data.get('email', '') is string && data.get('email', '').size() <= 150);
     }
 
     function isValidOnlineUser(data) {
@@ -102,16 +92,21 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow get: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid) || (isSignedIn() && existing().shippingInfo.email == request.auth.token.email) || (isSignedIn() && existing().shippingInfo.email == request.auth.token.email);
-      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid) || (isSignedIn() && resource.data.shippingInfo.email == request.auth.token.email) || (isSignedIn() && resource.data.shippingInfo.email == request.auth.token.email);
+      allow get: if isAdmin() || (isSignedIn() && (existing().userId == request.auth.uid || existing().shippingInfo.email == request.auth.token.email));
+      allow list: if isAdmin() || (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.shippingInfo.email == request.auth.token.email));
       
-      allow create: if isValidId(orderId) && isValidOrder(incoming()) && (
-        isAdmin() || (isSignedIn() && incoming().userId == request.auth.uid) || (!isSignedIn()) // Allows guest checkout but requires careful consideration
+      allow create: if isValidId(orderId) && 
+                      incoming().keys().hasAll(["total", "status", "date", "items"]) &&
+                      isValidOrder(incoming()) && (
+        isAdmin() || (isSignedIn() && incoming().userId == request.auth.uid) || (!isSignedIn())
       );
+      
       allow update: if isValidId(orderId) && isValidOrder(incoming()) && (
         isAdmin() ||
-        (isSignedIn() && existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
-        (isSignedIn() && existing().shippingInfo.email == request.auth.token.email && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+        (isSignedIn() && 
+          (existing().userId == request.auth.uid || existing().shippingInfo.email == request.auth.token.email) && 
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+        )
       );
       allow delete: if isAdmin();
     }
@@ -132,7 +127,7 @@ service cloud.firestore {
 
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isSignedIn() && isValidReview(incoming());
+      allow create: if isSignedIn() && isValidReview(incoming()) && incoming().userId == request.auth.uid;
       allow update: if isSignedIn() && isValidReview(incoming()) && (
         isAdmin() || (existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['rating', 'comment', 'images']))
       );
@@ -142,7 +137,7 @@ service cloud.firestore {
     match /support_tickets/{ticketId} {
       allow get: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
       allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn() && isValidTicket(incoming());
+      allow create: if isSignedIn() && isValidTicket(incoming()) && incoming().userId == request.auth.uid;
       allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid && isValidTicket(incoming()));
       allow delete: if isAdmin();
     }

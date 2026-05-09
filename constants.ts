@@ -31,6 +31,7 @@ export const BOT_AVATAR_URL = "https://firebasestorage.googleapis.com/v0/b/allsh
  */
 export const ADMIN_EMAILS = [
   "filipe_coval_90@hotmail.com",
+  "filipecoval90@gmail.com",
   "mcpoleca@gmail.com",
   "filipe@teste.com"
 ];

@@ -24,15 +24,22 @@ interface ScannedItem {
 }
 
 const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, inventoryProducts, onClose, onSuccess }) => {
+    console.log("OrderFulfillmentModal rendering for order:", order?.id);
+    
+    // Garantir que order e inventoryProducts existem
+    if (!order) return null;
+
     const [scannedItems, setScannedItems] = useState<ScannedItem[]>([]);
     const [currentInput, setCurrentInput] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isScannerOpen, setIsScannerOpen] = useState(false);
-    const [showManualSelection, setShowManualSelection] = useState<string | null>(null); // ID do item da encomenda para seleção manual
+    const [showManualSelection, setShowManualSelection] = useState<string | null>(null); 
     
-    const hasPackages = order.packages && order.packages.length > 0;
-    const [activePackageId, setActivePackageId] = useState<string | null>(hasPackages ? order.packages![0].id : null);
+    const hasPackages = Boolean(order.packages && order.packages.length > 0);
+    const [activePackageId, setActivePackageId] = useState<string | null>(
+        hasPackages && order.packages?.[0]?.id ? order.packages[0].id : null
+    );
 
     // Normalizar itens da encomenda para facilitar o processamento
     const orderItems = useMemo(() => {
@@ -199,12 +206,12 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
         setError(null);
 
         try {
-            await db.runTransaction(async (transaction) => {
-                const timestamp = new Date().toISOString(); // Mantemos ISO para compatibilidade com interfaces atuais, mas validado na transação
+            await runTransaction(modularDb, async (transaction) => {
+                const timestamp = new Date().toISOString(); 
                 const adminId = auth.currentUser?.uid || 'admin';
                 const adminEmail = auth.currentUser?.email || 'admin';
 
-                // 1. Leituras (Reads) - Têm de ser feitas ANTES de qualquer escrita
+                // 1. Leituras (Reads)
                 const orderRef = doc(modularDb, 'orders', order.id);
                 const orderDoc = await transaction.get(orderRef);
 
@@ -313,7 +320,7 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
 
                 // C. Atribuir Pontos (Se for levantamento em loja)
                 let pointsWereAwarded = false;
-                if (isPickup && userDoc && userDoc.exists && userRef) {
+                if (isPickup && userDoc && userDoc.exists() && userRef) {
                     const userData = userDoc.data() as User;
                     const tier = userData.tier || 'Bronze';
                     let multiplier = 1;

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {  db, storage } from '../services/firebaseConfig';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Category } from '../types';
 import { Plus, Trash2, Save, Image as ImageIcon, Upload, Loader2 } from 'lucide-react';
 import { useStoreCategories } from '../hooks/useStoreCategories';
@@ -21,9 +22,9 @@ export default function CategoriesTab() {
       
       setIsUploading(true);
       try {
-          const storageRef = storage.ref(`categories/${Date.now()}_${file.name}`);
-          const uploadTask = await storageRef.put(file);
-          const downloadUrl = await uploadTask.ref.getDownloadURL();
+          const storageRef = ref(storage, `categories/${Date.now()}_${file.name}`);
+          const uploadTask = await uploadBytes(storageRef, file);
+          const downloadUrl = await getDownloadURL(uploadTask.ref);
           setFormData(prev => ({ ...prev, image: downloadUrl }));
       } catch (error) {
           console.error("Error uploading logo", error);

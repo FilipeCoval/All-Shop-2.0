@@ -190,7 +190,12 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
                                 <td className="px-6 py-4 text-right flex justify-end items-center gap-2">
                                     {isAdmin && ['Processamento', 'Pago', 'Levantamento em Loja'].includes(order.status) && (
                                         <button 
-                                            onClick={() => onOpenFulfillment(order)} 
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                console.log('Button "Expedir" clicked for order:', order.id);
+                                                onOpenFulfillment(order);
+                                            }} 
                                             className="bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded text-xs font-bold hover:bg-blue-200 dark:hover:bg-blue-900/50 flex items-center gap-1 shadow-sm mr-2 transition-colors" 
                                             title="Preparar Envio/Levantamento e Stock"
                                         >

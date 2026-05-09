@@ -12,8 +12,8 @@ import { InventoryProduct, ProductStatus, CashbackStatus, SaleRecord, Order, Cou
 import { extractSerialNumberFromImage, generateProductContent } from '../services/geminiService';
 import { INITIAL_PRODUCTS, LOYALTY_TIERS, STORE_NAME } from '../constants';
 import {   db, storage , modularDb } from '../services/firebaseConfig';
-import { collection, doc, updateDoc, onSnapshot, query, orderBy, limit, doc as docRef, setDoc, deleteDoc, getDoc, runTransaction } from 'firebase/firestore';
-import { ref, deleteObject } from 'firebase/storage';
+import { collection, doc, updateDoc, onSnapshot, query, orderBy, limit, doc as docRef, setDoc, deleteDoc, getDoc, runTransaction, arrayUnion, writeBatch, where, getDocs, addDoc } from 'firebase/firestore';
+import { ref, deleteObject, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 
 import ClientDetailsModal from './ClientDetailsModal';
 import ProfitCalculatorModal from './ProfitCalculatorModal';
@@ -107,7 +107,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       setIsSoundEnabled(newValue);
       if (user) {
           try {
-              await db.collection('users').doc(user.uid).update({
+              await updateDoc(doc(modularDb, 'users', user.uid), {
                   notificationsEnabled: newValue
               });
           } catch (e) {
@@ -239,7 +239,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       if(!isAdmin) return; 
       
       const mountTime = Date.now(); 
-      const unsubscribe = db.collection('orders').orderBy('date', 'desc').limit(10).onSnapshot(snapshot => { 
+      const ordersQuery = query(collection(modularDb, 'orders'), orderBy('date', 'desc'), limit(10));
+       const unsubscribe = onSnapshot(ordersQuery, snapshot => { 
           snapshot.docChanges().forEach(change => { 
               if (change.type === 'added') { 
                   const order = change.doc.data() as Order; 
@@ -264,15 +265,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       return () => unsubscribe(); 
   }, [isAdmin, isSoundEnabled]);
 
-  useEffect(() => { if (!isAdmin) return; const unsubscribe = db.collection('products_public').onSnapshot(snap => { const loadedProducts: Product[] = []; snap.forEach(doc => { const id = parseInt(doc.id, 10); const data = doc.data(); if (!isNaN(id)) loadedProducts.push({ ...data, id: data.id || id } as Product); }); setPublicProductsList(loadedProducts); }); return () => unsubscribe(); }, [isAdmin]);
-  useEffect(() => { if(!isAdmin) return; const unsubscribe = db.collection('online_users').onSnapshot(snapshot => { const now = Date.now(); const activeUsers: any[] = []; snapshot.forEach(doc => { const data = doc.data(); if (data && typeof data.lastActive === 'number' && (now - data.lastActive < 30000)) { activeUsers.push({ id: doc.id, ...data }); } }); setOnlineUsers(activeUsers); }); return () => unsubscribe(); }, [isAdmin]);
-  useEffect(() => { if(!isAdmin) return; const unsubscribe = db.collection('orders').orderBy('date', 'desc').onSnapshot(snapshot => { setAllOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order))); setIsOrdersLoading(false); }); return () => unsubscribe(); }, [isAdmin]);
+  useEffect(() => { if (!isAdmin) return; const unsubscribe = onSnapshot(collection(modularDb, 'products_public'), snap => { const loadedProducts: Product[] = []; snap.forEach(doc => { const id = parseInt(doc.id, 10); const data = doc.data(); if (!isNaN(id)) loadedProducts.push({ ...data, id: data.id || id } as Product); }); setPublicProductsList(loadedProducts); }); return () => unsubscribe(); }, [isAdmin]);
+  useEffect(() => { if(!isAdmin) return; const unsubscribe = onSnapshot(collection(modularDb, 'online_users'), snapshot => { const now = Date.now(); const activeUsers: any[] = []; snapshot.forEach(doc => { const data = doc.data(); if (data && typeof data.lastActive === 'number' && (now - data.lastActive < 30000)) { activeUsers.push({ id: doc.id, ...data }); } }); setOnlineUsers(activeUsers); }); return () => unsubscribe(); }, [isAdmin]);
+  useEffect(() => { if(!isAdmin) return; const ordersQuery = query(collection(modularDb, 'orders'), orderBy('date', 'desc')); const unsubscribe = onSnapshot(ordersQuery, snapshot => { setAllOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order))); setIsOrdersLoading(false); }); return () => unsubscribe(); }, [isAdmin]);
   
   useEffect(() => { 
       // Carregar utilizadores sempre que precisarmos de dados para notificações ou gestão
       if (isAdmin) { 
           setIsUsersLoading(true); 
-          const unsubscribeUsers = db.collection('users').onSnapshot(snapshot => { 
+          const unsubscribeUsers = onSnapshot(collection(modularDb, 'users'), snapshot => { 
               setAllUsers(snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserType))); 
               setIsUsersLoading(false); 
           }); 
@@ -280,7 +281,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
           let unsubscribeCoupons = () => {};
           if(activeTab === 'coupons') {
               setIsCouponsLoading(true);
-              unsubscribeCoupons = db.collection('coupons').onSnapshot(snapshot => { 
+              unsubscribeCoupons = onSnapshot(collection(modularDb, 'coupons'), snapshot => { 
                   const allCoupons = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})) as Coupon[];
                   // Filtrar cupões de clientes (que têm userId) para mostrar apenas campanhas
                   const adminCoupons = allCoupons.filter(c => !c.userId);
@@ -293,7 +294,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       } 
   }, [activeTab, isAdmin]);
   
-  useEffect(() => { if (!isAdmin) return; const unsubscribe = db.collection('stock_alerts').onSnapshot(snapshot => { const alerts: any[] = []; snapshot.forEach(doc => alerts.push({ id: doc.id, ...doc.data() })); setStockAlerts(alerts); }); return () => unsubscribe(); }, [isAdmin]);
+  useEffect(() => { if (!isAdmin) return; const unsubscribe = onSnapshot(collection(modularDb, 'stock_alerts'), snapshot => { const alerts: any[] = []; snapshot.forEach(doc => alerts.push({ id: doc.id, ...doc.data() })); setStockAlerts(alerts); }); return () => unsubscribe(); }, [isAdmin]);
 
   // HANDLERS
   const copyToClipboard = (text: string) => { navigator.clipboard.writeText(text); return true; };
@@ -303,7 +304,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   // ... (Manual Order & Push Functions remain the same) ...
   const handleManualOrderConfirm = async (order: Order, deductions: { batchId: string, quantity: number, saleRecord: SaleRecord }[]) => {
       try {
-        await db.collection('orders').doc(order.id).set(order);
+        await setDoc(doc(modularDb, 'orders', order.id), order);
         for (const ded of deductions) {
             const product = products.find(p => p.id === ded.batchId);
             if (product) {
@@ -353,13 +354,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const checkAndProcessStockAlerts = async (publicProductId: number | null, productName: string, newStock: number) => {
       if (!publicProductId) return;
       try {
-          const snapshot = await db.collection('stock_alerts').where('productId', '==', publicProductId).get();
+          const alertsQuery = query(collection(modularDb, 'stock_alerts'), where('productId', '==', publicProductId));
+          const snapshot = await getDocs(alertsQuery);
           if (snapshot.empty) { if (newStock === 999) alert("Não existem clientes na lista de espera para este produto."); return; }
-          const alerts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          const alerts = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
           const emails = alerts.map((a: any) => a.email);
           const uniqueEmails = [...new Set(emails)];
           let targetUserIds: string[] = [];
-          if (allUsers.length > 0) { targetUserIds = allUsers.filter(u => uniqueEmails.includes(u.email)).map(u => u.uid); } else { const limitEmails = uniqueEmails.slice(0, 10); if (limitEmails.length > 0) { const usersQuery = await db.collection('users').where('email', 'in', limitEmails).get(); usersQuery.forEach(doc => targetUserIds.push(doc.id)); } }
+          if (allUsers.length > 0) { 
+              targetUserIds = allUsers.filter(u => uniqueEmails.includes(u.email)).map(u => u.uid); 
+          } else { 
+              const limitEmails = uniqueEmails.slice(0, 10); 
+              if (limitEmails.length > 0) { 
+                  const usersQuery = await getDocs(query(collection(modularDb, 'users'), where('email', 'in', limitEmails))); 
+                  usersQuery.forEach(docSnap => targetUserIds.push(docSnap.id)); 
+              } 
+          }
           const bccString = uniqueEmails.join(', ');
           setNotificationModalData({ productName: productName, productId: publicProductId, subject: `Chegou: ${productName} já disponível na All-Shop!`, body: `Olá,\n\nO produto que aguardava (${productName}) acabou de chegar ao nosso stock!\n\nPode comprar agora em: https://www.all-shop.net/#product/${publicProductId}\n\nObrigado,\nEquipa All-Shop`, bcc: bccString, alertsToDelete: alerts, targetUserIds: targetUserIds });
       } catch (error) { console.error("Erro ao processar alertas de stock:", error); }
@@ -454,12 +464,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const handleDeleteGroup = async (groupId: string, items: InventoryProduct[]) => { 
       if (!window.confirm(`Apagar grupo "${items[0].name}" e ${items.length} lotes?`)) return; 
       try { 
-          const batch = db.batch(); 
-          items.forEach(item => batch.delete(db.collection('products_inventory').doc(item.id))); 
+          const batch = writeBatch(modularDb); 
+          items.forEach(item => batch.delete(doc(modularDb, 'products_inventory', item.id))); 
           if (items[0].publicProductId) {
-              const publicQuery = await db.collection('products_public').where('id', '==', Number(items[0].publicProductId)).limit(1).get();
-              if (!publicQuery.empty) {
-                  batch.delete(publicQuery.docs[0].ref);
+              const publicQuery = query(collection(modularDb, 'products_public'), where('id', '==', Number(items[0].publicProductId)), limit(1));
+              const publicSnap = await getDocs(publicQuery);
+              if (!publicSnap.empty) {
+                  batch.delete(publicSnap.docs[0].ref);
               }
           }
           await batch.commit(); 
@@ -470,12 +481,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
     if(!editingId || !window.confirm("Anular venda e repor stock?")) return; 
     
     try {
-      await db.runTransaction(async (transaction) => {
-        const productRef = db.collection('products_inventory').doc(editingId);
+      await runTransaction(modularDb, async (transaction) => {
+        const productRef = doc(modularDb, 'products_inventory', editingId);
         const productDoc = await transaction.get(productRef);
-        if (!productDoc.exists) throw new Error("Produto não encontrado.");
+        if (!productDoc.exists()) throw new Error("Produto não encontrado.");
         
-        const product = { id: productDoc.id, ...productDoc.data() } as InventoryProduct;
+        const productData = productDoc.data() as InventoryProduct;
+        const product = { ...productData, id: productDoc.id } as InventoryProduct;
         let newSold = product.quantitySold || 0;
         let newHistory = product.salesHistory || [];
         let newUnits = [...(product.units || [])];
@@ -491,10 +503,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
             newUnits = newUnits.map(u => sale.serialNumbers?.includes(u.id) ? { ...u, status: 'AVAILABLE' as const } : u);
           }
         } else {
-          const orderRef = db.collection('orders').doc(saleId);
+          const orderRef = doc(modularDb, 'orders', saleId);
           const orderDoc = await transaction.get(orderRef);
-          if (!orderDoc.exists) throw new Error("Encomenda não encontrada no sistema.");
-          const order = { id: orderDoc.id, ...orderDoc.data() } as Order;
+          if (!orderDoc.exists()) throw new Error("Encomenda não encontrada no sistema.");
+          const orderData = orderDoc.data() as Order;
+          const order = { ...orderData, id: orderDoc.id } as Order;
           
           const safeItems = getSafeItems(order.items);
           const relevantItems = safeItems.filter(item => 
@@ -525,10 +538,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               pointsAwarded: false,
               items: order.items.map(item => {
                   if (typeof item === 'string') return item;
-                  if (item.productId?.toString() === product.publicProductId?.toString() && (!product.variant || item.selectedVariant === product.variant)) {
-                      return { ...item, serialNumbers: [], unitIds: [] };
+                  const i = item as OrderItem;
+                  if (i.productId?.toString() === product.publicProductId?.toString() && (!product.variant || i.selectedVariant === product.variant)) {
+                      return { ...i, serialNumbers: [], unitIds: [] };
                   }
-                  return item;
+                  return i;
               })
           });
         }
@@ -559,9 +573,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
         } 
         await updateProduct(selectedProductForSale.id, { quantitySold: currentSold, salesHistory: [...(selectedProductForSale.salesHistory || []), newSale], status: status as ProductStatus, units: updatedUnits }); 
         if (linkedOrderId) { 
-            const orderRef = db.collection('orders').doc(linkedOrderId); 
-            const orderDoc = await orderRef.get(); 
-            if (orderDoc.exists) { 
+            const orderRef = doc(modularDb, 'orders', linkedOrderId); 
+            const orderDoc = await getDoc(orderRef); 
+            if (orderDoc.exists()) { 
                 const orderData = orderDoc.data() as Order; 
                 const updatedItems = orderData.items.map((item: any) => { 
                     const isMatch = item.productId === selectedProductForSale.publicProductId && ((!item.selectedVariant && !selectedProductForSale.variant) || (item.selectedVariant === selectedProductForSale.variant)); 
@@ -578,7 +592,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                 }); 
                 const additionalCost = qty * (selectedProductForSale.purchasePrice || 0);
                 const newTotalCost = (orderData.totalProductCost || 0) + additionalCost;
-                await orderRef.update({ items: updatedItems, stockDeducted: true, totalProductCost: newTotalCost }); 
+                await updateDoc(orderRef, { items: updatedItems, stockDeducted: true, totalProductCost: newTotalCost }); 
             } 
         } 
         setIsSaleModalOpen(false); 
@@ -615,10 +629,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
     setIsUploading(true); 
     setUploadProgress(0); 
 
-    const storageRef = storage.ref(`products/${Date.now()}_${file.name}`); 
-    let uploadTask: firebase.storage.UploadTask;
+    const storageRef = ref(storage, `products/${Date.now()}_${file.name}`); 
+    let uploadTask: any;
     try {
-      uploadTask = storageRef.put(file); 
+      uploadTask = uploadBytesResumable(storageRef, file); 
     } catch (putError) {
       console.error("Erro ao iniciar put no storage:", putError);
       setIsUploading(false);
@@ -628,12 +642,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
     }
 
     uploadTask.on('state_changed', 
-      (snapshot) => { 
+      (snapshot: any) => { 
         const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100; 
         setUploadProgress(progress); 
         console.log(`Upload progress (inventário): ${Math.round(progress)}%`);
       }, 
-      (error) => { 
+      (error: any) => { 
         console.error("Erro no upload de inventário:", error); 
         setIsUploading(false); 
         setUploadProgress(null); 
@@ -641,7 +655,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       }, 
       async () => { 
         try {
-          const downloadURL = await uploadTask.snapshot.ref.getDownloadURL(); 
+          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref); 
           console.log("Upload de inventário concluído:", downloadURL);
           setFormData(prev => {
               const updated = { ...prev, images: [...prev.images, downloadURL] };
@@ -709,18 +723,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       }
       
       const batches = [];
-      let currentBatch = db.batch();
+      let currentBatch = writeBatch(modularDb);
       let operationsInBatch = 0;
       let totalUpdated = 0;
       
       for (const pid of publicIds) {
           // 1. Calcular inventário físico
-          const inventorySnap = await db.collection('products_inventory').where('publicProductId', '==', Number(pid)).get();
+          const inventoryQuery = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', Number(pid)));
+          const inventorySnap = await getDocs(inventoryQuery);
           let physicalStock = 0;
           let variantStock: Record<string, number> = {};
 
-          inventorySnap.forEach(doc => {
-              const data = doc.data() as InventoryProduct;
+          inventorySnap.forEach(docSnap => {
+              const data = docSnap.data() as InventoryProduct;
               const qty = Math.max(0, (data.quantityBought || 0) - (data.quantitySold || 0));
               physicalStock += qty;
               
@@ -746,15 +761,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
           });
 
           // 3. Stock Final a sincronizar
-          // Enviamos o stock físico total. A loja pública encarrega-se de subtrair 
-          // reservas de carrinhos ativos e encomendas pendentes em tempo real.
           const available = Math.max(0, physicalStock);
           console.log(`[Sync] Produto #${pid}: Físico Total=${physicalStock}, Sincronizando=${available}`);
 
           // Update the public document
-          const productQuery = await db.collection('products_public').where('id', '==', Number(pid)).limit(1).get();
-          if (!productQuery.empty) {
-              const docSnap = productQuery.docs[0];
+          const productQuery = query(collection(modularDb, 'products_public'), where('id', '==', Number(pid)), limit(1));
+          const productQuerySnap = await getDocs(productQuery);
+          
+          if (!productQuerySnap.empty) {
+              const docSnap = productQuerySnap.docs[0];
               const publicData = docSnap.data() as Product;
               
               const updatedVariants: any[] = [];
@@ -767,7 +782,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
 
               allVariantNames.forEach(vName => {
                   const physical = variantStock[vName] || 0;
-                  // Nota: Não subtraímos o pendente aqui, pois o App.tsx já o faz
                   const variantAvailable = Math.max(0, physical);
                   
                   const existing = currentVariantsMap.get(vName) || {};
@@ -798,7 +812,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               
               if (operationsInBatch >= 500) {
                   batches.push(currentBatch);
-                  currentBatch = db.batch();
+                  currentBatch = writeBatch(modularDb);
                   operationsInBatch = 0;
               }
           }
@@ -823,27 +837,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   };
   const handleOrderStatusChange = async (orderId: string, newStatus: string) => { 
       try { 
-          const orderRef = db.collection('orders').doc(orderId); 
-          const orderDoc = await orderRef.get(); 
-          if(!orderDoc.exists) return; 
-          const currentOrder = orderDoc.data() as Order; 
+          const orderRef = doc(modularDb, 'orders', orderId); 
+          const orderSnap = await getDoc(orderRef); 
+          if(!orderSnap.exists()) return; 
+          const currentOrder = orderSnap.data() as Order; 
           const updates: any = { 
               status: newStatus, 
-              statusHistory: firebase.firestore.FieldValue.arrayUnion({ 
+              statusHistory: arrayUnion({ 
                   status: newStatus, 
                   date: new Date().toISOString(), 
                   notes: 'Estado alterado via Backoffice' 
               }) 
           }; 
 
-          await db.runTransaction(async (transaction) => {
+          await runTransaction(modularDb, async (transaction) => {
               // 1. Gather all reads
               const reads: any = { updates: [], userUpdate: null };
               
               if (newStatus === 'Entregue' && !currentOrder.pointsAwarded && currentOrder.userId) { 
-                  const userRef = db.collection('users').doc(currentOrder.userId); 
+                  const userRef = doc(modularDb, 'users', currentOrder.userId); 
                   const userDoc = await transaction.get(userRef); 
-                  if (userDoc.exists) { 
+                  if (userDoc.exists()) { 
                       const userData = userDoc.data() as UserType; 
                       const tier = userData.tier || 'Bronze'; 
                       let multiplier = 1; 
@@ -873,9 +887,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               if (newStatus === 'Cancelado' && currentOrder.status !== 'Cancelado') {
                   for (const item of currentOrder.items) {
                       if (typeof item !== 'object' || item === null) continue;
-                      const productDocRef = db.collection('products_public').doc(item.productId.toString());
+                      const productDocRef = doc(modularDb, 'products_public', item.productId.toString());
                       const productDoc = await transaction.get(productDocRef);
-                      if (productDoc.exists) {
+                      if (productDoc.exists()) {
                           const productData = productDoc.data() as Product;
                           
                           let updatedVariants = productData.variants;
@@ -901,9 +915,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                   }
 
                   if (currentOrder.pointsAwarded && currentOrder.userId) {
-                      const userRef = db.collection('users').doc(currentOrder.userId);
+                      const userRef = doc(modularDb, 'users', currentOrder.userId);
                       const userDoc = await transaction.get(userRef);
-                      if (userDoc.exists) {
+                      if (userDoc.exists()) {
                           const userData = userDoc.data() as UserType;
                           const tier = userData.tier || 'Bronze';
                           let multiplier = 1;
@@ -952,19 +966,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const handleDeleteOrder = async (orderId: string) => { 
       if(!window.confirm("ATENÇÃO: Apagar a encomenda é irreversível. Deseja continuar?")) return; 
       try { 
-          const orderRef = db.collection('orders').doc(orderId);
-          const orderDoc = await orderRef.get();
-          if (orderDoc.exists) {
+          const orderRef = doc(modularDb, 'orders', orderId);
+          const orderDoc = await getDoc(orderRef);
+          if (orderDoc.exists()) {
               const orderData = orderDoc.data() as Order;
               if (orderData.status !== 'Cancelado' && orderData.fulfillmentStatus !== 'COMPLETED') {
-                  await db.runTransaction(async (transaction) => {
+                  await runTransaction(modularDb, async (transaction) => {
                       const reads: any = { updates: [], userUpdate: null };
 
                       for (const item of orderData.items) {
                           if (typeof item !== 'object' || item === null) continue;
-                          const productDocRef = db.collection('products_public').doc(item.productId.toString());
+                          const productDocRef = doc(modularDb, 'products_public', item.productId.toString());
                           const productDoc = await transaction.get(productDocRef);
-                          if (productDoc.exists) {
+                          if (productDoc.exists()) {
                               const productData = productDoc.data() as Product;
                               
                               let updatedVariants = productData.variants;
@@ -991,9 +1005,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
 
                       // Remover pontos se já tinham sido atribuídos
                       if (orderData.pointsAwarded && orderData.userId) {
-                          const userRef = db.collection('users').doc(orderData.userId);
+                          const userRef = doc(modularDb, 'users', orderData.userId);
                           const userDoc = await transaction.get(userRef);
-                          if (userDoc.exists) {
+                          if (userDoc.exists()) {
                               const userData = userDoc.data() as UserType;
                               const tier = userData.tier || 'Bronze';
                               let multiplier = 1;
@@ -1028,15 +1042,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                       transaction.delete(orderRef);
                   });
               } else {
-                  await orderRef.delete();
+                  await deleteDoc(orderRef);
               }
+              setAllOrders(prev => prev.filter(o => o.id !== orderId));
+              alert("Encomenda apagada com sucesso.");
           }
-          setAllOrders(prev => prev.filter(o => o.id !== orderId)); 
-      } catch(e) { 
-          alert("Erro ao apagar encomenda."); 
+      } catch (error) { 
+          console.error("Erro ao apagar encomenda:", error); 
+          alert("Erro ao apagar. Esta encomenda pode estar vinculada a outros registos."); 
       } 
   };
-  const handleUpdateTracking = async (orderId: string, tracking: string) => { try { await db.collection('orders').doc(orderId).update({ trackingNumber: tracking }); if (selectedOrderDetails) setSelectedOrderDetails({...selectedOrderDetails, trackingNumber: tracking}); } catch (e) { alert("Erro ao gravar rastreio"); } };
+  const handleUpdateTracking = async (orderId: string, tracking: string) => { try { await updateDoc(doc(modularDb, 'orders', orderId), { trackingNumber: tracking }); if (selectedOrderDetails) setSelectedOrderDetails({...selectedOrderDetails, trackingNumber: tracking}); } catch (e) { alert("Erro ao gravar rastreio"); } };
   const handleAddUnit = (code: string) => { if (modalUnits.some(u => u.id === code)) return alert("Este código já foi adicionado."); setModalUnits(prev => [...prev, { id: code, status: 'AVAILABLE', addedAt: new Date().toISOString() }]); };
   const handleRemoveUnit = (id: string) => setModalUnits(prev => prev.filter(u => u.id !== id));
   const handleGenerateCodes = () => { const newCodes: string[] = []; for(let i=0; i < generateQty; i++) { const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase(); newCodes.push(`INT-${randomPart}`); } setGeneratedCodes(prev => [...prev, ...newCodes]); if (isModalOpen) { const newUnits = newCodes.map(code => ({ id: code, status: 'AVAILABLE' as const, addedAt: new Date().toISOString() })); setModalUnits(prev => [...prev, ...newUnits]); } };
@@ -1044,19 +1060,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const handleVerifyProduct = (code: string) => { if (!selectedProductForSale) return; const cleanCode = code.trim().toUpperCase(); if (cleanCode === selectedProductForSale.publicProductId?.toString() || selectedProductForSale.units?.some(u => u.id.toUpperCase() === cleanCode)) { setSecurityCheckPassed(true); setVerificationCode(code); } else { alert(`Código ${code} NÃO corresponde a este produto! Verifique se pegou na caixa correta.`); setSecurityCheckPassed(false); } };
   
   const handleNotifySubscribers = (productId: number, productName: string, variantName?: string) => { /* ... */ };
-  const handleClearSentAlerts = async () => { if (!notificationModalData) return; if (!window.confirm("Isto irá apagar os alertas da base de dados. Confirma que já enviou o email?")) return; try { const batch = db.batch(); notificationModalData.alertsToDelete.forEach(alert => { batch.delete(db.collection('stock_alerts').doc(alert.id)); }); await batch.commit(); setNotificationModalData(null); alert("Lista de espera limpa com sucesso!"); } catch(e) { alert("Erro ao limpar alertas."); } };
+  const handleClearSentAlerts = async () => { if (!notificationModalData) return; if (!window.confirm("Isto irá apagar os alertas da base de dados. Confirma que já enviou o email?")) return; try { const batch = writeBatch(modularDb); notificationModalData.alertsToDelete.forEach(alertItem => { batch.delete(doc(modularDb, 'stock_alerts', alertItem.id)); }); await batch.commit(); setNotificationModalData(null); alert("Lista de espera limpa com sucesso!"); } catch(e) { alert("Erro ao limpar alertas."); } };
   
   const handleAddCoupon = async (e: React.FormEvent) => { 
       e.preventDefault();
       try {
-          await db.collection('coupons').add(newCoupon);
+          await addDoc(collection(modularDb, 'coupons'), newCoupon);
           setNewCoupon({ code: '', type: 'PERCENTAGE', value: 10, minPurchase: 0, isActive: true, usageCount: 0, validProductId: undefined });
           alert("Cupão criado!");
       } catch(e) { alert("Erro ao criar cupão."); }
   };
   
-  const handleToggleCoupon = async (coupon: Coupon) => { if(!coupon.id) return; try { await db.collection('coupons').doc(coupon.id).update({ isActive: !coupon.isActive }); } catch(e) { alert("Erro ao atualizar cupão."); } };
-  const handleDeleteCoupon = async (id?: string) => { if (!id || !window.confirm("Apagar cupão permanentemente?")) return; try { await db.collection('coupons').doc(id).delete(); setCoupons(prevCoupons => prevCoupons.filter(coupon => coupon.id !== id)); } catch (e) { alert("Erro ao apagar o cupão."); console.error("Delete coupon error:", e); } };
+  const handleToggleCoupon = async (coupon: Coupon) => { if(!coupon.id) return; try { await updateDoc(doc(modularDb, 'coupons', coupon.id), { isActive: !coupon.isActive }); } catch(e) { alert("Erro ao atualizar cupão."); } };
+  const handleDeleteCoupon = async (id?: string) => { if (!id || !window.confirm("Apagar cupão permanentemente?")) return; try { await deleteDoc(doc(modularDb, 'coupons', id)); setCoupons(prevCoupons => prevCoupons.filter(coupon => coupon.id !== id)); } catch (e) { alert("Erro ao apagar o cupão."); console.error("Delete coupon error:", e); } };
   const handleOpenInvestedModal = () => { setDetailsModalData({ title: "Detalhe do Investimento", data: products.map(p => ({ id: p.id, name: p.name, qty: p.quantityBought, cost: (p.purchasePrice || 0), total: (p.purchasePrice || 0) * (p.quantityBought || 1) })).filter(i => i.total > 0).sort((a,b) => b.total - a.total), total: stats.totalInvested, columns: [{ header: "Produto", accessor: "name" }, { header: "Qtd. Comprada", accessor: "qty" }, { header: "Custo Unit.", accessor: (i) => formatCurrency(i.cost) }, { header: "Total", accessor: (i) => formatCurrency(i.total) }] }); };
   const handleOpenRevenueModal = () => { setDetailsModalData({ title: "Receita Realizada", data: products.flatMap(p => { const manualSales = (p.salesHistory || []).map(s => ({ id: s.id, name: p.name, date: s.date, qty: s.quantity, val: s.quantity * s.unitPrice })); const manualQty = manualSales.reduce((acc, s) => acc + s.qty, 0); const onlineQty = Math.max(0, (p.quantitySold || 0) - manualQty); const onlineSales = onlineQty > 0 ? [{ id: `online-${p.id}`, name: `${p.name} (Online)`, date: new Date().toISOString().split('T')[0], qty: onlineQty, val: onlineQty * (p.salePrice || 0) }] : []; return [...manualSales, ...onlineSales]; }).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()), total: stats.realizedRevenue, columns: [{ header: "Data", accessor: (i) => new Date(i.date).toLocaleDateString() }, { header: "Produto", accessor: "name" }, { header: "Qtd", accessor: "qty" }, { header: "Valor", accessor: (i) => formatCurrency(i.val) }] }); };
   const handleOpenProfitModal = () => { setDetailsModalData({ title: "Lucro Líquido por Produto", data: products.map(p => { const manualQty = (p.salesHistory || []).reduce((acc, s) => acc + (s.quantity || 0), 0); const onlineQty = Math.max(0, (p.quantitySold || 0) - manualQty); const revenue = (p.salesHistory || []).reduce((acc, s) => acc + ((s.quantity || 0) * (s.unitPrice || 0)), 0) + (onlineQty * (p.salePrice || 0)); const cogs = (p.quantitySold || 0) * (p.purchasePrice || 0); const cashback = p.cashbackStatus === 'RECEIVED' ? ((p.cashbackValue || 0) / (p.quantityBought || 1)) * (p.quantitySold || 0) : 0; return { id: p.id, name: p.name, profit: revenue - cogs + cashback }; }).filter(p => p.profit !== 0).sort((a,b) => b.profit - a.profit), total: stats.realizedProfit, columns: [{ header: "Produto", accessor: "name" }, { header: "Lucro", accessor: (i) => <span className={i.profit >= 0 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{formatCurrency(i.profit)}</span> }] }); };
@@ -1102,9 +1118,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   };
 
   const toggleCashbackAccount = (account: string) => { setExpandedCashbackAccounts(prev => prev.includes(account) ? prev.filter(a => a !== account) : [...prev, account]); };
-  const handleMarkBatchReceived = async (itemsToUpdate: InventoryProduct[]) => { if(!window.confirm(`Marcar ${itemsToUpdate.length} itens como RECEBIDO?`)) return; try { const batch = db.batch(); itemsToUpdate.forEach(item => { const ref = db.collection('products_inventory').doc(item.id); batch.update(ref, { cashbackStatus: 'RECEIVED' }); }); await batch.commit(); alert("Cashback atualizado com sucesso!"); } catch(e) { alert("Erro ao atualizar cashback."); } };
-  const handleUpdateTicketStatus = async (ticketId: string, newStatus: string) => { try { await db.collection('support_tickets').doc(ticketId).update({ status: newStatus }); if(selectedTicket) setSelectedTicket({...selectedTicket, status: newStatus} as any); } catch (error) { alert("Erro ao atualizar ticket."); } };
-  const handleDeleteTicket = async (ticketId: string) => { if(!window.confirm("Apagar ticket permanentemente?")) return; try { await db.collection('support_tickets').doc(ticketId).delete(); setSelectedTicket(null); } catch (error) { alert("Erro ao apagar."); } };
+  const handleMarkBatchReceived = async (itemsToUpdate: InventoryProduct[]) => { if(!window.confirm(`Marcar ${itemsToUpdate.length} itens como RECEBIDO?`)) return; try { const batch = writeBatch(modularDb); itemsToUpdate.forEach(item => { const ref = doc(modularDb, 'products_inventory', item.id); batch.update(ref, { cashbackStatus: 'RECEIVED' }); }); await batch.commit(); alert("Cashback atualizado com sucesso!"); } catch(e) { alert("Erro ao atualizar cashback."); } };
+  const handleUpdateTicketStatus = async (ticketId: string, newStatus: string) => { try { await updateDoc(doc(modularDb, 'support_tickets', ticketId), { status: newStatus }); if(selectedTicket) setSelectedTicket({...selectedTicket, status: newStatus} as any); } catch (error) { alert("Erro ao atualizar ticket."); } };
+  const handleDeleteTicket = async (ticketId: string) => { if(!window.confirm("Apagar ticket permanentemente?")) return; try { await deleteDoc(doc(modularDb, 'support_tickets', ticketId)); setSelectedTicket(null); } catch (error) { alert("Erro ao apagar."); } };
 
   const filteredClients = useMemo(() => { 
       // 1. Começar com os utilizadores registados
@@ -1244,7 +1260,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                   <button 
                     key={item.id}
                     onClick={() => {
-                      setActiveTab(item.id);
+                      setActiveTab(item.id as any);
                       setIsMobileMenuOpen(false);
                     }}
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold transition-all ${activeTab === item.id ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
@@ -1284,7 +1300,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               {navItems.map(item => (
                   <button 
                       key={item.id}
-                      onClick={() => setActiveTab(item.id)}
+                      onClick={() => setActiveTab(item.id as any)}
                       className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === item.id ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
                   >
                       <item.icon size={18} />
@@ -1350,9 +1366,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                 }}
                 onDelete={async (id) => {
                     try {
-                        const publicQuery = await db.collection('products_public').where('id', '==', id).limit(1).get();
-                        if (!publicQuery.empty) {
-                            await publicQuery.docs[0].ref.delete();
+                        const publicQuery = query(collection(modularDb, 'products_public'), where('id', '==', id), limit(1));
+                        const publicSnap = await getDocs(publicQuery);
+                        if (!publicSnap.empty) {
+                            await deleteDoc(publicSnap.docs[0].ref);
                         }
                         setPublicProductsList(prev => prev.filter(p => p.id !== id));
                     } catch (error) {
@@ -1415,8 +1432,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                 onViewDetails={setSelectedOrderDetails} 
                 onOpenManualOrder={() => setIsManualOrderModalOpen(true)}
                 onOpenFulfillment={(order) => {
+                    console.log("Opening fulfillment for order:", order.id);
                     setSelectedOrderForFulfillment(order);
-                    setIsFulfillmentModalOpen(true);
                 }}
             />
         )}
@@ -1697,16 +1714,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
         )}
       </div>
       
-      {/* ... (Keep existing modals) ... */}
       <ProfitCalculatorModal isOpen={isCalculatorOpen} onClose={() => setIsCalculatorOpen(false)} />
-      <ManualOrderModal isOpen={isManualOrderModalOpen} onClose={() => setIsManualOrderModalOpen(false)} publicProducts={publicProductsList} inventoryProducts={products} onConfirm={async (order, deductions) => { try { await db.collection('orders').doc(order.id).set(order); for (const ded of deductions) { const product = products.find(p => p.id === ded.batchId); if (product) { const newSold = (product.quantitySold || 0) + ded.quantity; const status: ProductStatus = newSold >= product.quantityBought ? 'SOLD' : 'PARTIAL'; await updateProduct(product.id, { quantitySold: newSold, status: status, salesHistory: [...(product.salesHistory || []), ded.saleRecord] }); } } setIsManualOrderModalOpen(false); alert("Encomenda manual registada com sucesso!"); setTimeout(() => handleSyncPublicStock(true), 1000); } catch (error) { console.error("Erro ao criar encomenda manual:", error); alert("Erro ao processar a encomenda."); } }} />
-      {isFulfillmentModalOpen && selectedOrderForFulfillment && (
+      <ManualOrderModal isOpen={isManualOrderModalOpen} onClose={() => setIsManualOrderModalOpen(false)} publicProducts={publicProductsList} inventoryProducts={products} onConfirm={async (order, deductions) => { try { await setDoc(doc(modularDb, 'orders', order.id), order); for (const ded of deductions) { const product = products.find(p => p.id === ded.batchId); if (product) { const newSold = (product.quantitySold || 0) + ded.quantity; const status: ProductStatus = newSold >= product.quantityBought ? 'SOLD' : 'PARTIAL'; await updateProduct(product.id, { quantitySold: newSold, status: status, salesHistory: [...(product.salesHistory || []), ded.saleRecord] }); } } setIsManualOrderModalOpen(false); alert("Encomenda manual registada com sucesso!"); setTimeout(() => handleSyncPublicStock(true), 1000); } catch (error) { console.error("Erro ao criar encomenda manual:", error); alert("Erro ao processar a encomenda."); } }} />
+      {selectedOrderForFulfillment && (
           <OrderFulfillmentModal 
               order={selectedOrderForFulfillment}
               inventoryProducts={products}
-              onClose={() => setIsFulfillmentModalOpen(false)}
+              onClose={() => setSelectedOrderForFulfillment(null)}
               onSuccess={() => {
-                  setIsFulfillmentModalOpen(false);
+                  setSelectedOrderForFulfillment(null);
                   alert("Encomenda expedida com sucesso!");
               }}
           />
@@ -1724,7 +1740,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
             const id = Number(cleanProduct.id);
             // Ensure id is stored in the document data, as it's required for queries and loading
             cleanProduct.id = id;
-            await db.collection('products_public').doc(id.toString()).set(cleanProduct, { merge: true });
+            await setDoc(doc(modularDb, 'products_public', id.toString()), cleanProduct, { merge: true });
             setPublicProductsList(prev => {
               const exists = prev.find(p => p.id === id);
               if (exists) return prev.map(p => p.id === id ? { ...updatedProduct, id } : p);

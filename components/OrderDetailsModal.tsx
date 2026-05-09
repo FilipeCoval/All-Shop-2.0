@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { FileText, X, Truck, Scale, CheckCircle, Copy, AlertTriangle, Loader2, XCircle, Coins, QrCode, Printer, TicketPercent, Package, Wrench } from 'lucide-react';
 import { Order, InventoryProduct, OrderItem, User as UserType, PointHistory } from '../types';
 import {  db , modularDb } from '../services/firebaseConfig';
-import { collection, doc, updateDoc, query, where, runTransaction, getDoc, getDocs, DocumentReference } from 'firebase/firestore';
+import { collection, doc, updateDoc, query, where, runTransaction, getDoc, getDocs, DocumentReference, orderBy, limit } from 'firebase/firestore';
 
 import { LOYALTY_TIERS, STORE_NAME, STORE_ADDRESS, LOGO_URL } from '../constants';
 

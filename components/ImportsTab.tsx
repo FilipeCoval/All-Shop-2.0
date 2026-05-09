@@ -59,7 +59,7 @@ export const ImportsTab: React.FC = () => {
 
     const handleSaveShipment = async (shipment: ImportShipment) => {
         try {
-            await updateDoc(doc(modularDb, 'import_shipments', shipment.id), shipment);
+            await updateDoc(doc(modularDb, 'import_shipments', shipment.id), shipment as any);
             setEditingShipment(null);
         } catch (e) {
             alert("Erro ao guardar lote.");

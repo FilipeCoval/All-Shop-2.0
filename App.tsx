@@ -521,7 +521,7 @@ const App: React.FC = () => {
               return false;
           }
 
-          const batch = db.batch();
+          const batch = writeBatch(modularDb);
           if (newQuantity <= 0) {
               if (myCurrentResDoc) batch.delete(myCurrentResDoc.ref);
           } else {

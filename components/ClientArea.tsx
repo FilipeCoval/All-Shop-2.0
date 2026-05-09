@@ -9,8 +9,8 @@ import {
 } from 'lucide-react';
 import { STORE_NAME, LOGO_URL, LOYALTY_TIERS, LOYALTY_REWARDS } from '../constants';
 import {   db, storage, requestPushPermission, messaging , modularDb } from '../services/firebaseConfig';
-import { collection, doc, updateDoc, addDoc, arrayUnion, arrayRemove, deleteField, onSnapshot, query, where } from 'firebase/firestore';
-import { ref, deleteObject, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, doc, updateDoc, addDoc, arrayUnion, arrayRemove, deleteField, onSnapshot, query, where, getDoc, runTransaction, getFirestore, writeBatch } from 'firebase/firestore';
+import { ref, deleteObject, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 
 import { cancelOrderItem } from '../services/returnService';
 import LoyaltyPage from './LoyaltyPage';
@@ -197,7 +197,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                       updates.fcmToken = deleteField();
                   }
               }
-              await db.collection('users').doc(user.uid).update(updates);
+              await updateDoc(doc(modularDb, 'users', user.uid), updates);
               setIsPushEnabled(false);
               alert("Notificações desativadas na sua conta.");
           } else {
@@ -211,7 +211,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                   updates.fcmToken = token;
               }
               
-              await db.collection('users').doc(user.uid).update(updates);
+              await updateDoc(doc(modularDb, 'users', user.uid), updates);
               setIsPushEnabled(true);
               
               if (token) {
@@ -249,13 +249,13 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
     if (!file || !user) return;
     setIsUploading(true);
     setUploadProgress(0);
-    const storageRef = storage.ref(`profile_pictures/${user.uid}`);
-    const uploadTask = storageRef.put(file);
+    const storageRef = ref(storage, `profile_pictures/${user.uid}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
     uploadTask.on('state_changed', 
         (snapshot) => { setUploadProgress((snapshot.bytesTransferred / snapshot.totalBytes) * 100); }, 
         (error) => { console.error(error); alert("Erro ao carregar a imagem."); setIsUploading(false); }, 
         async () => { 
-            const downloadURL = await uploadTask.snapshot.ref.getDownloadURL(); 
+            const downloadURL = await getDownloadURL(uploadTask.snapshot.ref); 
             onUpdateUser({ photoURL: downloadURL }); 
             setIsUploading(false); 
         }
@@ -269,7 +269,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
         const orderRef = doc(modularDb, 'orders', modalState.order.id);
         const now = new Date().toISOString();
         if (modalState.type === 'cancel') {
-            await db.runTransaction(async (transaction) => {
+            await runTransaction(modularDb, async (transaction) => {
                 // 1. First, perform all reads
                 const updates: any[] = [];
                 
@@ -279,7 +279,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                         const productDocRef = doc(modularDb, 'products_public', item.productId.toString());
                         const productDoc = await transaction.get(productDocRef);
                         
-                        if (productDoc.exists) {
+                        if (productDoc.exists()) {
                             const productData = productDoc.data() as Product;
                             
                             let updatedVariants = productData.variants;
@@ -316,7 +316,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                 }
             });
         } else if (modalState.type === 'return') {
-            await orderRef.update({ 
+            await updateDoc(orderRef, { 
                 returnRequest: { date: now, reason: modalReason.trim(), status: 'Pendente' },
                 statusHistory: arrayUnion({ status: 'Pendente Devolução', date: now, notes: `Pedido Devolução: ${modalReason.trim()}` })
             });
