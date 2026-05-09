@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { X, CheckCircle, AlertTriangle, Package, ScanLine, Loader2, Lock, Camera, MousePointerClick, Box } from 'lucide-react';
 import { Order, InventoryProduct, OrderItem, StockMovement, ProductStatus, SaleRecord, User, PointHistory, OrderPackage } from '../types';
 import {   db, auth , modularDb } from '../services/firebaseConfig';
-import { collection, doc, updateDoc, setDoc, getDoc, runTransaction, arrayUnion, deleteField, DocumentSnapshot } from 'firebase/firestore';
+import { collection, doc, updateDoc, setDoc, getDoc, runTransaction, DocumentSnapshot } from 'firebase/firestore';
 
 
 import BarcodeScanner from './BarcodeScanner';
@@ -303,9 +303,10 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
                 }
 
                 // B. Criar Stock Movement
-                const movementRef = doc(collection(modularDb, 'stock_movements'));
+                const movementId = `sm_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                const movementRef = doc(modularDb, 'stock_movements', movementId);
                 transaction.set(movementRef, {
-                    id: movementRef.id,
+                    id: movementId,
                     type: 'SALE',
                     orderId: order.id,
                     items: orderItems.map(item => ({
@@ -404,12 +405,12 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
                     ...(finalStoreShippingCost !== undefined ? { storeShippingCost: finalStoreShippingCost } : {}),
                     pointsAwarded: pointsWereAwarded,
                     totalProductCost: calculatedTotalProductCost,
-                    packages: updatedPackages || deleteField(),
-                    statusHistory: arrayUnion({
+                    ...(updatedPackages ? { packages: updatedPackages } : {}),
+                    statusHistory: [...(currentOrder.statusHistory || []), {
                         status: newStatus,
                         date: timestamp,
                         notes: notes
-                    })
+                    }]
                 });
             });
 
