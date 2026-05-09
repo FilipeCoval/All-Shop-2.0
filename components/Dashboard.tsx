@@ -34,6 +34,7 @@ import SupportTicketModal from './SupportTicketModal';
 import AnalyticsModal from './AnalyticsModal';
 import CategoriesTab from './CategoriesTab';
 import { useStoreCategories } from '../hooks/useStoreCategories';
+import { notifyNewOrder } from '../services/telegramNotifier';
 
 // --- HELPERS ---
 
@@ -953,6 +954,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               }
               transaction.update(orderRef, updates);
           });
+
+          // Enviar notificação Telegram caso mude manualmente de Pendente para Processamento ou Pago
+          if (currentOrder.status === 'Pendente' && (newStatus === 'Processamento' || newStatus === 'Pago')) {
+              try {
+                  await notifyNewOrder({ ...currentOrder, status: newStatus }, currentOrder.shippingInfo?.name || 'Cliente');
+              } catch (notifyError) {
+                  console.error("Erro ao notificar via Telegram:", notifyError);
+              }
+          }
 
           setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o)); 
           if (selectedOrderDetails?.id === orderId) { 
