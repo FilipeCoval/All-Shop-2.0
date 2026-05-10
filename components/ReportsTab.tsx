@@ -47,7 +47,9 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
 
             // 3. Custo dos Produtos (CPV)
             let orderCost = 0;
-            if (order.serialNumbersUsed && order.serialNumbersUsed.length > 0) {
+            if (order.totalProductCost !== undefined) {
+                orderCost = order.totalProductCost;
+            } else if (order.serialNumbersUsed && order.serialNumbersUsed.length > 0) {
                 order.serialNumbersUsed.forEach((sn: string) => {
                     const batch = inventoryProducts.find(p => p.units?.some(u => u.id === sn));
                     if (batch) {
@@ -119,7 +121,9 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
                     let cost = (o.shippingInfo.deliveryMethod === 'Pickup' ? 0 : (o.storeShippingCost || 5.40));
                     let prodCost = 0;
                     let orderCost = 0;
-                    if (o.serialNumbersUsed && o.serialNumbersUsed.length > 0) {
+                    if (o.totalProductCost !== undefined) {
+                        orderCost = o.totalProductCost;
+                    } else if (o.serialNumbersUsed && o.serialNumbersUsed.length > 0) {
                         o.serialNumbersUsed.forEach((sn: string) => {
                             const batch = inventoryProducts.find(p => p.units?.some(u => u.id === sn));
                             if (batch) {
@@ -179,7 +183,9 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
                 const dayProfit = dayOrders.reduce((acc, o) => {
                     let cost = (o.shippingInfo.deliveryMethod === 'Pickup' ? 0 : (o.storeShippingCost || 5.40));
                     let orderCost = 0;
-                    if (o.serialNumbersUsed && o.serialNumbersUsed.length > 0) {
+                    if (o.totalProductCost !== undefined) {
+                        orderCost = o.totalProductCost;
+                    } else if (o.serialNumbersUsed && o.serialNumbersUsed.length > 0) {
                         o.serialNumbersUsed.forEach((sn: string) => {
                             const batch = inventoryProducts.find(p => p.units?.some(u => u.id === sn));
                             if (batch) {
