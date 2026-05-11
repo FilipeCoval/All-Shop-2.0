@@ -101,9 +101,9 @@ service cloud.firestore {
         isAdmin() || (isSignedIn() && incoming().userId == request.auth.uid) || (!isSignedIn())
       );
       
-      allow update: if isValidId(orderId) && isValidOrder(incoming()) && (
-        isAdmin() ||
-        (isSignedIn() && 
+      allow update: if isValidId(orderId) && (
+        isAdmin() || 
+        (isValidOrder(incoming()) && isSignedIn() && 
           (existing().userId == request.auth.uid || existing().shippingInfo.email == request.auth.token.email) && 
           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
         )

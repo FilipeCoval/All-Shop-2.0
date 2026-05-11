@@ -1,15 +1,14 @@
 import { db } from './firebaseConfig';
 
-async function listProductIds() {
+async function checkProduct() {
   try {
-    const productsSnap = await db.collection('products').get();
-    console.log("Found products:");
-    productsSnap.forEach(doc => {
-      console.log(`ID: ${doc.id}`);
-    });
+    const p6_inv = await db.collection('products_inventory').doc('6').get();
+    console.log("products_inventory/6 exists:", p6_inv.exists);
+    const p6_prod = await db.collection('products').doc('6').get();
+    console.log("products/6 exists:", p6_prod.exists);
   } catch (error) {
-    console.error("Error listing products:", error);
+    console.error("Error:", error);
   }
 }
 
-listProductIds();
+checkProduct();
