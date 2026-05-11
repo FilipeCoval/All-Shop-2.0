@@ -1,14 +1,17 @@
-import { db } from './firebaseConfig';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
+import rawConfig from '../firebase-applet-config.json';
 
-async function checkProduct() {
-  try {
-    const p6_inv = await db.collection('products_inventory').doc('6').get();
-    console.log("products_inventory/6 exists:", p6_inv.exists);
-    const p6_prod = await db.collection('products').doc('6').get();
-    console.log("products/6 exists:", p6_prod.exists);
-  } catch (error) {
-    console.error("Error:", error);
-  }
+const app = initializeApp(rawConfig);
+const db = getFirestore(app, rawConfig.firestoreDatabaseId || "(default)");
+
+async function check() {
+  const refProd = doc(db, 'products', '6');
+  const snapProd = await getDoc(refProd);
+  console.log('Exists 6 in products:', snapProd.exists());
+  
+  const refInv = doc(db, 'products_inventory', '6');
+  const snapInv = await getDoc(refInv);
+  console.log('Exists 6 in products_inventory:', snapInv.exists());
 }
-
-checkProduct();
+check();

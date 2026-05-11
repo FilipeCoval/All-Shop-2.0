@@ -9,9 +9,18 @@ export const manualFixStockStatus = async (
     serialNumber: string
 ): Promise<{ success: boolean, message: string }> => {
     try {
-        const productRef = db.collection('products_inventory').doc(productId);
-        const productSnap = await productRef.get();
-        if (!productSnap.exists) throw new Error("Produto não encontrado no inventário.");
+        let productRef = db.collection('products_inventory').doc(productId);
+        let productSnap = await productRef.get();
+        
+        // Se nao encontrar pelo ID direto, tentar pelo publicProductId
+        if (!productSnap.exists) {
+            const querySnap = await db.collection('products_inventory')
+                .where('publicProductId', '==', Number(productId))
+                .get();
+            if (querySnap.empty) throw new Error("Produto não encontrado no inventário.");
+            productSnap = querySnap.docs[0];
+            productRef = productSnap.ref;
+        }
 
         const product = productSnap.data() as InventoryProduct;
         const unitIndex = product.units?.findIndex((u: any) => u.id === serialNumber);
