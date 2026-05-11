@@ -23,6 +23,20 @@ interface ScannedItem {
     packageId?: string; // ID do pacote, se aplicável
 }
 
+const handleFirestoreError = (error: unknown, operationType: string, path: string | null) => {
+    const errInfo = {
+        error: error instanceof Error ? error.message : String(error),
+        operationType,
+        path,
+        authInfo: {
+            userId: auth.currentUser?.uid,
+            email: auth.currentUser?.email
+        }
+    };
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
+    throw new Error(JSON.stringify(errInfo));
+};
+
 const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, inventoryProducts, onClose, onSuccess }) => {
     console.log("OrderFulfillmentModal rendering for order:", order?.id);
     
@@ -433,6 +447,7 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
             } catch (e) { console.error("Erro ao notificar utilizador:", e); }
 
         } catch (err: any) {
+            handleFirestoreError(err, 'write', 'orders/' + order.id);
             console.error("Erro na transação de expedição:", err);
             setError("Erro crítico ao processar: " + err.message);
             setIsProcessing(false);
