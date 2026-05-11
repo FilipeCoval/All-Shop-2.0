@@ -37,7 +37,10 @@ export const manualFixStockStatus = async (
             soldAt: new Date().toISOString()
         };
 
-        await productRef.update({ units: updatedUnits });
+        await productRef.update({ 
+            units: updatedUnits,
+            quantitySold: (product.quantitySold || 0) + 1
+        });
         
         // Ensure order also has it
         const orderRef = db.collection('orders').doc(orderId);
