@@ -1,5 +1,47 @@
-import {  db } from '../services/firebaseConfig';
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/firestore';
+import { db } from '../services/firebaseConfig';
 import { Order, OrderItem, InventoryProduct } from '../types';
+
+export const manualFixStockStatus = async (
+    orderId: string,
+    productId: string,
+    serialNumber: string
+): Promise<{ success: boolean, message: string }> => {
+    try {
+        const productRef = db.collection('products_inventory').doc(productId);
+        const productSnap = await productRef.get();
+        if (!productSnap.exists) throw new Error("Produto não encontrado no inventário.");
+
+        const product = productSnap.data() as InventoryProduct;
+        const unitIndex = product.units?.findIndex((u: any) => u.id === serialNumber);
+
+        if (unitIndex === -1 || unitIndex === undefined) {
+            throw new Error("Serial não encontrado neste produto.");
+        }
+
+        const updatedUnits = [...(product.units || [])];
+        updatedUnits[unitIndex] = {
+            ...updatedUnits[unitIndex],
+            status: 'SOLD',
+            soldToOrder: orderId,
+            soldAt: new Date().toISOString()
+        };
+
+        await productRef.update({ units: updatedUnits });
+        
+        // Ensure order also has it
+        const orderRef = db.collection('orders').doc(orderId);
+        await orderRef.update({
+            serialNumbersUsed: firebase.firestore.FieldValue.arrayUnion(serialNumber)
+        });
+
+        return { success: true, message: `Serial ${serialNumber} marcado como vendido para a encomenda ${orderId} e stock atualizado.` };
+    } catch (error: any) {
+        console.error("Erro ao corrigir stock manual:", error);
+        return { success: false, message: error.message };
+    }
+};
 
 // Otimização: aceita inventário já carregado
 export const backfillOrderSerials = async (orderId: string, inventorySnap?: any): Promise<{ success: boolean, message: string }> => {

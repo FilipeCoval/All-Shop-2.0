@@ -452,16 +452,47 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, o
         )}
 
         {isAdmin && (
-            <button 
-                onClick={async () => {
-                    const res = await backfillOrderSerials(order.id);
-                    alert(res.message);
-                    if (res.success) onClose();
-                }}
-                className="mt-4 w-full flex items-center justify-center gap-2 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 py-2 rounded-lg text-sm font-bold border border-yellow-200 dark:border-yellow-800 hover:bg-yellow-200 dark:hover:bg-yellow-800/50 transition-colors"
-            >
-                <Wrench size={14} /> Reparar Seriais da Encomenda
-            </button>
+            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-slate-700">
+                <h4 className="font-bold text-gray-800 dark:text-gray-200 text-sm mb-2">Correção Manual de Stock</h4>
+                <div className="flex flex-col gap-2">
+                    <input 
+                        type="text" 
+                        placeholder="ID do Produto (Inventário)" 
+                        className="p-2 border rounded text-xs dark:bg-slate-700 dark:text-white"
+                        id="fix-prod-id"
+                    />
+                    <input 
+                        type="text" 
+                        placeholder="Serial Number" 
+                        className="p-2 border rounded text-xs dark:bg-slate-700 dark:text-white"
+                        id="fix-sn"
+                    />
+                    <button 
+                        onClick={async () => {
+                            const pId = (document.getElementById('fix-prod-id') as HTMLInputElement).value;
+                            const sn = (document.getElementById('fix-sn') as HTMLInputElement).value;
+                            if(!pId || !sn) { alert("Preencha ID e SN."); return; }
+                            const { manualFixStockStatus } = await import('../services/repairService');
+                            const res = await manualFixStockStatus(order.id, pId, sn);
+                            alert(res.message);
+                            if(res.success) onClose();
+                        }}
+                        className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 py-2 rounded text-xs font-bold border border-red-200 dark:border-red-800 hover:bg-red-200 transition-colors"
+                    >
+                        Forçar SN p/ esta Encomenda
+                    </button>
+                    <button 
+                        onClick={async () => {
+                            const res = await backfillOrderSerials(order.id);
+                            alert(res.message);
+                            if (res.success) onClose();
+                        }}
+                        className="w-full flex items-center justify-center gap-2 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300 py-2 rounded-lg text-sm font-bold border border-yellow-200 dark:border-yellow-800 hover:bg-yellow-200 dark:hover:bg-yellow-800/50 transition-colors"
+                    >
+                        <Wrench size={14} /> Reparar Seriais da Encomenda
+                    </button>
+                </div>
+            </div>
         )}
     </div><div className="pt-6 border-t border-gray-100 dark:border-slate-800"><h4 className="font-bold text-gray-800 dark:text-gray-200 text-sm mb-3 flex items-center gap-2"><Truck size={16}/> Rastreio CTT</h4>
     {order.packages && order.packages.length > 0 ? (

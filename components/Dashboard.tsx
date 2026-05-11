@@ -35,6 +35,7 @@ import AnalyticsModal from './AnalyticsModal';
 import CategoriesTab from './CategoriesTab';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 import { notifyNewOrder } from '../services/telegramNotifier';
+import OrderXRayModal from './OrderXRayModal';
 
 // --- HELPERS ---
 
@@ -154,6 +155,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const [generatedCodes, setGeneratedCodes] = useState<string[]>([]);
   const [generateQty, setGenerateQty] = useState(1);
   const [isCalculatorOpen, setIsCalculatorOpen] = useState(false);
+  const [isXRayModalOpen, setIsXRayModalOpen] = useState(false);
   
   const [isCashbackManagerOpen, setIsCashbackManagerOpen] = useState(false);
   const [cashbackManagerFilter, setCashbackManagerFilter] = useState<'ALL' | 'PENDING'>('PENDING');
@@ -1607,6 +1609,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                         </form>
                     </div>
 
+                    {/* Raio-X */}
+                    <div className="pt-6 border-t border-gray-100 dark:border-slate-700 mb-6">
+                        <button 
+                            onClick={() => setIsXRayModalOpen(true)}
+                            className="bg-red-600 text-white w-full py-2 rounded text-xs font-bold hover:bg-red-700"
+                        >
+                            Raio-X de Encomendas
+                        </button>
+                    </div>
+
                     {/* Simple Coupon Calculator */}
                     <div className="pt-6 border-t border-gray-100 dark:border-slate-700">
                         <h4 className="font-bold text-gray-800 dark:text-gray-200 text-sm mb-3 flex items-center gap-2"><Calculator size={16} /> Calculadora de Promoção</h4>
@@ -1725,6 +1737,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       </div>
       
       <ProfitCalculatorModal isOpen={isCalculatorOpen} onClose={() => setIsCalculatorOpen(false)} />
+      {isXRayModalOpen && <OrderXRayModal onClose={() => setIsXRayModalOpen(false)} />}
       <ManualOrderModal isOpen={isManualOrderModalOpen} onClose={() => setIsManualOrderModalOpen(false)} publicProducts={publicProductsList} inventoryProducts={products} onConfirm={async (order, deductions) => { try { await setDoc(doc(modularDb, 'orders', order.id), order); for (const ded of deductions) { const product = products.find(p => p.id === ded.batchId); if (product) { const newSold = (product.quantitySold || 0) + ded.quantity; const status: ProductStatus = newSold >= product.quantityBought ? 'SOLD' : 'PARTIAL'; await updateProduct(product.id, { quantitySold: newSold, status: status, salesHistory: [...(product.salesHistory || []), ded.saleRecord] }); } } setIsManualOrderModalOpen(false); alert("Encomenda manual registada com sucesso!"); setTimeout(() => handleSyncPublicStock(true), 1000); } catch (error) { console.error("Erro ao criar encomenda manual:", error); alert("Erro ao processar a encomenda."); } }} />
       {selectedOrderForFulfillment && (
           <OrderFulfillmentModal 
