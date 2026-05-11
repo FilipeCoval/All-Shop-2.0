@@ -23,10 +23,12 @@ export const manualFixStockStatus = async (
         }
 
         const product = productSnap.data() as InventoryProduct;
-        const unitIndex = product.units?.findIndex((u: any) => u.id === serialNumber);
+        const targetSN = serialNumber.trim();
+        const unitIndex = product.units?.findIndex((u: any) => String(u.id).trim() === targetSN);
 
         if (unitIndex === -1 || unitIndex === undefined) {
-            throw new Error("Serial não encontrado neste produto.");
+            console.error(`Serial not found. Target: "${targetSN}". Units in product: ${product.units?.map(u => u.id).join(', ')}`);
+            throw new Error(`Serial ${targetSN} não encontrado neste produto.`);
         }
 
         const updatedUnits = [...(product.units || [])];
