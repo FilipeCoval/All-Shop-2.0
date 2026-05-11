@@ -3,6 +3,50 @@ import 'firebase/compat/firestore';
 import { db } from '../services/firebaseConfig';
 import { Order, OrderItem, InventoryProduct } from '../types';
 
+export const forceStockDeduction = async (
+    productId: string,
+    serialNumber: string
+): Promise<{ success: boolean, message: string }> => {
+    try {
+        let productRef = db.collection('products_inventory').doc(productId);
+        let productSnap = await productRef.get();
+        
+        // Se nao encontrar pelo ID direto, tentar pelo publicProductId
+        if (!productSnap.exists) {
+            const querySnap = await db.collection('products_inventory')
+                .where('publicProductId', '==', Number(productId))
+                .get();
+            if (querySnap.empty) throw new Error("Produto não encontrado no inventário.");
+            productSnap = querySnap.docs[0];
+            productRef = productSnap.ref;
+        }
+
+        const product = productSnap.data() as InventoryProduct;
+        const targetSN = serialNumber.trim();
+        const unitIndex = product.units?.findIndex((u: any) => String(u.id).trim() === targetSN);
+
+        if (unitIndex === -1 || unitIndex === undefined) {
+             throw new Error("Serial não encontrado no inventário deste produto.");                
+        }
+
+        const updatedUnits = [...(product.units || [])];
+        updatedUnits[unitIndex] = {
+            ...updatedUnits[unitIndex],
+            status: 'SOLD'
+        };
+
+        await productRef.update({ 
+            units: updatedUnits,
+            quantitySold: (product.quantitySold || 0) + 1
+        });
+
+        return { success: true, message: `Stock reduzido com sucesso para o serial ${serialNumber}.` };
+    } catch (error: any) {
+        console.error("Erro ao forçar dedução de stock:", error);
+        return { success: false, message: error.message };
+    }
+};
+
 export const manualFixStockStatus = async (
     orderId: string,
     productId: string,
