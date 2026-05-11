@@ -9,7 +9,7 @@ export const manualFixStockStatus = async (
     serialNumber: string
 ): Promise<{ success: boolean, message: string }> => {
     try {
-        const productRef = db.collection('products_inventory').doc(productId);
+        const productRef = db.collection('products').doc(productId);
         const productSnap = await productRef.get();
         if (!productSnap.exists) throw new Error("Produto não encontrado no inventário.");
 
@@ -53,7 +53,7 @@ export const backfillOrderSerials = async (orderId: string, inventorySnap?: any)
         const order = orderSnap.data() as Order;
         
         // Find units in inventory sold to this order
-        const docs = inventorySnap ? inventorySnap.docs : (await db.collection('products_inventory').get()).docs;
+        const docs = inventorySnap ? inventorySnap.docs : (await db.collection('products').get()).docs;
         const updatedItems = [...order.items];
         let hasChanges = false;
 
@@ -92,7 +92,7 @@ export const backfillOrderSerials = async (orderId: string, inventorySnap?: any)
 
 export const backfillAllOrdersSerials = async (): Promise<{ success: boolean, message: string }> => {
     try {
-        const inventorySnap = await db.collection('products_inventory').get();
+        const inventorySnap = await db.collection('products').get();
         const ordersSnap = await db.collection('orders').get(); // Cuidado com o tamanho, mas ok para este caso
         
         let successCount = 0;
