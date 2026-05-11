@@ -23,6 +23,16 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
   onStatusChange, onDeleteOrder, onViewDetails, onOpenManualOrder, onOpenFulfillment
 }) => {
   const [chartTimeframe, setChartTimeframe] = useState<'7d' | '30d' | '1y'>('7d');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const filteredOrders = useMemo(() => {
+    if (!searchTerm) return orders;
+    return orders.filter(order => 
+      order.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.shippingInfo?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      order.items.some(item => typeof item !== 'string' && item.serialNumbers?.some(sn => sn.includes(searchTerm)))
+    );
+  }, [orders, searchTerm]);
 
   const chartData = useMemo(() => {
     const numDays = chartTimeframe === '1y' ? 365 : chartTimeframe === '30d' ? 30 : 7;
@@ -138,11 +148,18 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
             </div>
         </div>
         
-        <div className="flex justify-end gap-2">
-            <button onClick={onOpenManualOrder} className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 font-bold shadow-md">
-                <ClipboardEdit size={18} /> Registar Encomenda Manual
-            </button>
-        </div>
+        <div className="flex justify-between gap-2">
+                <input 
+                    type="text" 
+                    placeholder="Procurar (ID, Nome, SN)..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="p-2 border rounded text-sm w-64 dark:bg-slate-700 dark:text-white"
+                />
+                <button onClick={onOpenManualOrder} className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2 font-bold shadow-md">
+                    <ClipboardEdit size={18} /> Registar Encomenda Manual
+                </button>
+            </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden transition-colors">
             <div className="overflow-x-auto">
@@ -157,7 +174,7 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-slate-700 text-sm transition-colors">
-                        {orders.map(order => (
+                        {filteredOrders.map(order => (
                             <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
                                 <td className="px-6 py-4 font-bold text-indigo-700 dark:text-indigo-400">{order.id}</td>
                                 <td className="px-6 py-4 text-gray-900 dark:text-white">{order.shippingInfo?.name || 'N/A'}</td>
