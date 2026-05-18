@@ -6,7 +6,7 @@ import { collection, doc, updateDoc, setDoc, getDoc, runTransaction, DocumentSna
 
 
 import BarcodeScanner from './BarcodeScanner';
-import { LOYALTY_TIERS } from '../constants';
+import { LOYALTY_TIERS, getAdminDisplayName } from '../constants';
 
 interface OrderFulfillmentModalProps {
     order: Order;
@@ -224,6 +224,7 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
                 const timestamp = new Date().toISOString(); 
                 const adminId = auth.currentUser?.uid || 'admin';
                 const adminEmail = auth.currentUser?.email || 'admin';
+                const adminDisplayName = getAdminDisplayName(adminEmail);
 
                 // 1. Leituras (Reads)
                 const orderRef = doc(modularDb, 'orders', order.id);
@@ -330,7 +331,7 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
                     })),
                     totalValue: order.total,
                     createdAt: timestamp,
-                    createdBy: adminEmail
+                    createdBy: adminDisplayName
                 });
 
                 // C. Atribuir Pontos (Se for levantamento em loja)
@@ -364,8 +365,8 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
                 // D. Atualizar Encomenda e associar seriais aos pacotes ou itens se existirem
                 const newStatus = isPickup ? 'Entregue' : 'Enviado';
                 const notes = isPickup 
-                    ? `Levantado em loja. Processado por ${adminEmail} com validação de serial.`
-                    : `Expedido por ${adminEmail} com validação de serial.${trackingNumber ? ` Rastreio: ${trackingNumber}` : ''}`;
+                    ? `Levantado em loja. Processado por ${adminDisplayName} com validação de serial.`
+                    : `Expedido por ${adminDisplayName} com validação de serial.${trackingNumber ? ` Rastreio: ${trackingNumber}` : ''}`;
 
                 let updatedPackages = currentOrder.packages;
                 let updatedItems = currentOrder.items;
@@ -411,7 +412,7 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
                     items: updatedItems,
                     status: newStatus,
                     fulfilledAt: timestamp,
-                    fulfilledBy: adminEmail,
+                    fulfilledBy: adminDisplayName,
                     serialNumbersUsed: scannedItems.map(s => s.serialNumber),
                     fulfillmentStatus: 'COMPLETED',
                     stockDeducted: true,

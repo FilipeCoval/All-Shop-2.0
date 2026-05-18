@@ -1997,6 +1997,67 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
         </div>
     </div>
 </div>
+      <div className="border-t pt-4 border-gray-100 dark:border-slate-800">
+          <h4 className="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2 mb-3">
+              <Wallet size={16} className="text-yellow-600"/> Gestão de Cashback
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Valor Total Cashback (Lote)</label>
+                  <div className="relative">
+                      <span className="absolute left-3 top-3 text-gray-400">€</span>
+                      <input 
+                          type="number" 
+                          step="0.01" 
+                          className="w-full pl-8 p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white" 
+                          value={formData.cashbackValue} 
+                          onChange={e => setFormData({...formData, cashbackValue: e.target.value})} 
+                      />
+                  </div>
+              </div>
+              <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Estado</label>
+                  <select 
+                      className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white"
+                      value={formData.cashbackStatus}
+                      onChange={e => setFormData({...formData, cashbackStatus: e.target.value as CashbackStatus})}
+                  >
+                      <option value="NONE">Nenhum</option>
+                      <option value="PENDING">Pendente</option>
+                      <option value="RECEIVED">Recebido</option>
+                  </select>
+              </div>
+              <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Plataforma (Ex: Temu, Rakuten)</label>
+                  <input 
+                      type="text" 
+                      className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white" 
+                      value={formData.cashbackPlatform} 
+                      onChange={e => setFormData({...formData, cashbackPlatform: e.target.value})} 
+                      placeholder="Ex: Temu, AliExpress..."
+                  />
+              </div>
+              <div>
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Conta / Email utilizado</label>
+                  <input 
+                      type="text" 
+                      className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white" 
+                      value={formData.cashbackAccount} 
+                      onChange={e => setFormData({...formData, cashbackAccount: e.target.value})} 
+                      placeholder="Ex: conta1@gmail.com"
+                  />
+              </div>
+              <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Previsão de Recebimento</label>
+                  <input 
+                      type="date" 
+                      className="w-full p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white" 
+                      value={formData.cashbackExpectedDate} 
+                      onChange={e => setFormData({...formData, cashbackExpectedDate: e.target.value})} 
+                  />
+              </div>
+          </div>
+      </div>
       {/* SEÇÃO DE PROMOÇÕES (NOVA) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-6 border-gray-100">
           <div>

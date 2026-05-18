@@ -36,6 +36,31 @@ export const ADMIN_EMAILS = [
   "filipe@teste.com"
 ];
 
+export const getAdminDisplayName = (email: string | null | undefined): string => {
+  if (!email) return 'Gestor';
+  const cleanEmail = email.trim().toLowerCase();
+  if (cleanEmail === 'filipecoval90@gmail.com' || cleanEmail === 'filipe_coval_90@hotmail.com') return 'Admin1';
+  if (cleanEmail === 'mcpoleca@gmail.com') return 'Admin2';
+  
+  if (cleanEmail.includes('@')) {
+      const name = cleanEmail.split('@')[0];
+      return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+  return email;
+};
+
+export const sanitizeNote = (note: string | null | undefined): string => {
+  if (!note) return '';
+  let sanitized = note;
+  ADMIN_EMAILS.forEach(email => {
+    const displayName = getAdminDisplayName(email);
+    // Substituir ocorrências exatas do email pelo nome de exibição
+    const regex = new RegExp(email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    sanitized = sanitized.replace(regex, displayName);
+  });
+  return sanitized;
+};
+
 export const PRODUCT_CATEGORIES = [
   "TV & Streaming",
   "Cabos",

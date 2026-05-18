@@ -7,7 +7,7 @@ import {
     Camera, Home, ChevronDown, ChevronUp, Undo2, MessageSquareWarning,
     History, Zap, TicketPercent, ShieldAlert, Bot, Sparkles, Headphones, Clock, MessageSquare, Scale, Copy, ExternalLink, Bell, BellOff, Send
 } from 'lucide-react';
-import { STORE_NAME, LOGO_URL, LOYALTY_TIERS, LOYALTY_REWARDS } from '../constants';
+import { STORE_NAME, LOGO_URL, LOYALTY_TIERS, LOYALTY_REWARDS, sanitizeNote } from '../constants';
 import {   db, storage, requestPushPermission, messaging , modularDb } from '../services/firebaseConfig';
 import { collection, doc, updateDoc, addDoc, arrayUnion, arrayRemove, deleteField, onSnapshot, query, where, getDoc, runTransaction, getFirestore, writeBatch } from 'firebase/firestore';
 import { ref, deleteObject, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
@@ -886,7 +886,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                                 <div>
                                                     <p className="font-bold text-sm text-gray-900 dark:text-white">{h.status}</p>
                                                     <p className="text-xs text-gray-500 dark:text-gray-400">{new Date(h.date).toLocaleString('pt-PT', { day: 'numeric', month: 'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}</p>
-                                                    {h.notes && <p className="text-xs text-gray-400 italic mt-0.5">{h.notes}</p>}
+                                                    {h.notes && <p className="text-xs text-gray-400 italic mt-0.5">{sanitizeNote(h.notes)}</p>}
                                                 </div>
                                             </li>
                                         ))}

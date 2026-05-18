@@ -194,7 +194,9 @@ const ShipmentEditor: React.FC<{ shipment: ImportShipment, onSave: (s: ImportShi
             id: Date.now().toString(),
             name: '',
             quantity: 1,
-            unitPrice: 0
+            unitPrice: 0,
+            cashbackValue: 0,
+            cashbackPlatform: ''
         };
         setShipment(prev => ({
             ...prev,
@@ -232,7 +234,8 @@ const ShipmentEditor: React.FC<{ shipment: ImportShipment, onSave: (s: ImportShi
             totalLocalShippingUSD += o.localShippingCost;
             o.items.forEach(i => {
                 totalItems += i.quantity;
-                totalBaseValueUSD += (i.quantity * i.unitPrice);
+                const netPrice = i.unitPrice - (i.cashbackValue || 0);
+                totalBaseValueUSD += (i.quantity * netPrice);
             });
         });
 
@@ -247,7 +250,8 @@ const ShipmentEditor: React.FC<{ shipment: ImportShipment, onSave: (s: ImportShi
 
     const calculateFinalCost = (order: ImportOrder, item: ImportItem, includeGlobalCosts: boolean = true) => {
         const rate = shipment.exchangeRate || 1;
-        const itemUnitPriceEUR = item.unitPrice * rate;
+        const netUnitPriceUSD = item.unitPrice - (item.cashbackValue || 0);
+        const itemUnitPriceEUR = netUnitPriceUSD * rate;
 
         if (totals.totalItems === 0 || totals.totalBaseValueUSD === 0) return itemUnitPriceEUR;
 
@@ -265,8 +269,11 @@ const ShipmentEditor: React.FC<{ shipment: ImportShipment, onSave: (s: ImportShi
             }
         } else {
             // VALUE
-            const itemTotalValueUSD = item.quantity * item.unitPrice;
+            const netPrice = item.unitPrice - (item.cashbackValue || 0);
+            const itemTotalValueUSD = item.quantity * netPrice;
             const localShippingEUR = order.localShippingCost * rate;
+            
+            const orderTotalValueUSD = order.items.reduce((acc, i) => acc + (i.quantity * (i.unitPrice - (i.cashbackValue || 0))), 0);
             
             localShippingShareEUR = orderTotalValueUSD > 0 ? (localShippingEUR * (itemTotalValueUSD / orderTotalValueUSD)) / item.quantity : 0;
             if (includeGlobalCosts) {
@@ -482,11 +489,13 @@ const ShipmentEditor: React.FC<{ shipment: ImportShipment, onSave: (s: ImportShi
                                         <table className="w-full text-left border-collapse">
                                             <thead>
                                                 <tr className="text-xs text-gray-500 dark:text-slate-400 border-b border-gray-100 dark:border-slate-800">
-                                                    <th className="pb-2 font-bold w-1/3">Produto</th>
-                                                    <th className="pb-2 font-bold w-1/6">Variante</th>
-                                                    <th className="pb-2 font-bold w-1/12 text-center">Qtd</th>
-                                                    <th className="pb-2 font-bold w-1/6 text-right">Preço Base Unit.</th>
-                                                    <th className="pb-2 font-bold w-1/6 text-right text-indigo-600 dark:text-indigo-400">Custo Final Unit.</th>
+                                                    <th className="pb-2 font-bold w-1/4">Produto</th>
+                                                    <th className="pb-2 font-bold w-40">Variante</th>
+                                                    <th className="pb-2 font-bold w-16 text-center">Qtd</th>
+                                                    <th className="pb-2 font-bold w-24 text-right">Preço $</th>
+                                                    <th className="pb-2 font-bold w-24 text-right">Cashback $</th>
+                                                    <th className="pb-2 font-bold w-24">Plataforma</th>
+                                                    <th className="pb-2 font-bold w-28 text-right text-indigo-600 dark:text-indigo-400">Custo Final</th>
                                                     <th className="pb-2 w-10"></th>
                                                 </tr>
                                             </thead>
@@ -533,6 +542,27 @@ const ShipmentEditor: React.FC<{ shipment: ImportShipment, onSave: (s: ImportShi
                                                                         className="w-full p-1.5 pl-6 bg-gray-50 dark:bg-slate-800 border border-transparent hover:border-gray-200 dark:hover:border-slate-600 focus:border-indigo-500 rounded text-sm outline-none text-right"
                                                                     />
                                                                 </div>
+                                                            </td>
+                                                            <td className="py-2 pr-2">
+                                                                <div className="relative">
+                                                                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                                                    <input 
+                                                                        type="number" 
+                                                                        step="0.01"
+                                                                        value={item.cashbackValue || ''} 
+                                                                        onChange={e => handleUpdateItem(order.id, item.id, { cashbackValue: parseFloat(e.target.value) || 0 })}
+                                                                        className="w-full p-1.5 pl-6 bg-gray-50 dark:bg-slate-800 border border-transparent hover:border-gray-200 dark:hover:border-slate-600 focus:border-indigo-500 rounded text-sm outline-none text-right text-green-600 dark:text-green-400"
+                                                                    />
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-2 pr-2">
+                                                                <input 
+                                                                    type="text" 
+                                                                    placeholder="Plataforma"
+                                                                    value={item.cashbackPlatform || ''} 
+                                                                    onChange={e => handleUpdateItem(order.id, item.id, { cashbackPlatform: e.target.value })}
+                                                                    className="w-full p-1.5 bg-gray-50 dark:bg-slate-800 border border-transparent hover:border-gray-200 dark:hover:border-slate-600 focus:border-indigo-500 rounded text-sm outline-none px-2"
+                                                                />
                                                             </td>
                                                             <td className="py-2 pr-2 text-right">
                                                                 <div className="font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 p-1.5 rounded text-sm">

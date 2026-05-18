@@ -356,6 +356,8 @@ export interface ImportItem {
   variant?: string;
   quantity: number;
   unitPrice: number;
+  cashbackValue?: number;
+  cashbackPlatform?: string;
 }
 
 export interface ImportOrder {
