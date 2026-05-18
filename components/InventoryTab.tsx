@@ -397,7 +397,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                                     <tr key={p.id} className="hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors">
                                                                         <td className="px-4 py-3">
                                                                             <div className="font-bold whitespace-normal text-gray-900 dark:text-white">{new Date(p.purchaseDate).toLocaleDateString()}</div>
-                                                                            {p.variant && <span className="text-[10px] text-blue-500 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/30 px-1 rounded">{p.variant}</span>}
+                                                                            {p.variant && <span className="text-[10px] text-blue-500 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/30 px-1 rounded mr-1">{p.variant}</span>}
                                                                             <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{p.description?.substring(0, 30)}...</div>
                                                                         </td>
                                                                         <td className="px-4 py-3">

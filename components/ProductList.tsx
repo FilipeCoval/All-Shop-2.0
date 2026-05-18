@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 // Force rebuild
 import { Product, ProductVariant } from '../types';
-import { Plus, Eye, AlertTriangle, ArrowRight, Search, Heart, ArrowUpDown, LayoutGrid, List, ChevronLeft, ChevronRight, Zap, Flame, Sparkles, Star, CalendarClock, Loader2, Scale } from 'lucide-react';
+import { Plus, Eye, AlertTriangle, ArrowRight, Search, Heart, ArrowUpDown, LayoutGrid, List, ChevronLeft, ChevronRight, Zap, Flame, Sparkles, Star, CalendarClock, Loader2, Scale, ArrowDown } from 'lucide-react';
 import QuickViewModal from './QuickViewModal';
 import InteractiveProductCard from './InteractiveProductCard';
 import { useStoreCategories } from '../hooks/useStoreCategories';
@@ -125,13 +125,20 @@ const ProductList: React.FC<ProductListProps> = ({
               if (isAvailableA && !isAvailableB) return -1; // A sobe
               if (!isAvailableA && isAvailableB) return 1;  // B sobe
 
-              // 2º Critério: Tag "NOVIDADE"
-              // Se ambos têm a mesma disponibilidade, verifica a tag
-              const isNovidadeA = a.badges?.includes('NOVIDADE');
-              const isNovidadeB = b.badges?.includes('NOVIDADE');
+              // 2º Critério: Tag (Qualquer badge sobre, mas priorizando importantes)
+              const getBadgePriority = (badges: string[] = []) => {
+                  const upper = badges.map(b => b.toUpperCase());
+                  if (upper.includes('MAIS VENDIDO') || upper.includes('NOVIDADE')) return 3;
+                  if (upper.includes('PROMOÇÃO')) return 2;
+                  if (upper.length > 0) return 1;
+                  return 0;
+              };
 
-              if (isNovidadeA && !isNovidadeB) return -1; // A (Novidade) sobe
-              if (!isNovidadeA && isNovidadeB) return 1;  // B (Novidade) sobe
+              const priorityA = getBadgePriority(a.badges);
+              const priorityB = getBadgePriority(b.badges);
+
+              if (priorityA > priorityB) return -1; // A (Maior prioridade) sobe
+              if (priorityA < priorityB) return 1;  // B (Maior prioridade) sobe
 
               // 3º Critério: ID Decrescente (Mais recentes/adicionados por último aparecem primeiro)
               return b.id - a.id;
@@ -157,11 +164,16 @@ const ProductList: React.FC<ProductListProps> = ({
   const getProductBadge = (product: Product) => {
       if (product.comingSoon) return { text: 'EM BREVE', color: 'bg-purple-600', icon: <CalendarClock size={10} /> };
       if (product.promoEndsAt && new Date(product.promoEndsAt) > new Date()) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
-      if (product.badges) {
-          if (product.badges.includes('NOVIDADE')) return { text: 'NOVIDADE', color: 'bg-indigo-600', icon: <Sparkles size={10} /> };
-          if (product.badges.includes('MAIS VENDIDO')) return { text: 'MAIS VENDIDO', color: 'bg-orange-500', icon: <Flame size={10} /> };
-          if (product.badges.includes('PROMOÇÃO')) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
-          if (product.badges.includes('ESSENCIAL')) return { text: 'ESSENCIAL', color: 'bg-blue-600', icon: <Star size={10} /> };
+      
+      if (product.badges && product.badges.length > 0) {
+          const upperBadges = product.badges.map(b => b.toUpperCase());
+          
+          if (upperBadges.includes('NOVIDADE')) return { text: 'NOVIDADE', color: 'bg-indigo-600', icon: <Sparkles size={10} /> };
+          if (upperBadges.includes('MAIS VENDIDO')) return { text: 'MAIS VENDIDO', color: 'bg-orange-500', icon: <Flame size={10} /> };
+          if (upperBadges.includes('PROMOÇÃO')) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
+          if (upperBadges.includes('LIMITADO')) return { text: 'EDIÇÃO LIMITADA', color: 'bg-purple-600', icon: <Star size={10} /> };
+          if (upperBadges.includes('OUTLET')) return { text: 'OUTLET', color: 'bg-gray-600', icon: <ArrowDown size={10} /> };
+          if (upperBadges.includes('ESSENCIAL')) return { text: 'ESSENCIAL', color: 'bg-blue-600', icon: <Star size={10} /> };
       }
       return null;
   };

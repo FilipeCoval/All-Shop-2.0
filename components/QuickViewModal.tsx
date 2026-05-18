@@ -48,7 +48,23 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
         {/* Image Section */}
         <div className="w-full md:w-1/2 bg-gray-50 dark:bg-slate-900 p-8 flex items-center justify-center relative">
             <img src={selectedImage} alt={product.name} className="max-w-full max-h-[300px] md:max-h-full object-contain mix-blend-multiply dark:mix-blend-normal" />
-            {isOutOfStock && <span className="absolute top-4 left-4 bg-red-600 text-white text-xs font-bold px-2 py-1 rounded">ESGOTADO</span>}
+            <div className="absolute top-4 left-4 flex flex-col gap-2">
+                {isOutOfStock && <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded shadow-sm">ESGOTADO</span>}
+                {product.badges && product.badges.map(badge => {
+                    const upperBadge = badge.toUpperCase();
+                    let color = "bg-indigo-600";
+                    if (upperBadge === 'MAIS VENDIDO') color = "bg-orange-500";
+                    if (upperBadge === 'PROMOÇÃO') color = "bg-red-600";
+                    if (upperBadge === 'LIMITADO') color = "bg-purple-600";
+                    if (upperBadge === 'OUTLET') color = "bg-gray-600";
+
+                    return (
+                        <span key={badge} className={`${color} text-white text-[10px] font-bold px-2 py-1 rounded shadow-sm`}>
+                            {badge.toUpperCase()}
+                        </span>
+                    );
+                })}
+            </div>
         </div>
 
         {/* Details Section */}

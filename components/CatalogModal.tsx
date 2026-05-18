@@ -348,10 +348,35 @@ const CatalogModal: React.FC<CatalogModalProps> = ({ isOpen, onClose, product, o
                   <p className="text-[10px] text-gray-500 mt-1">Deixe vazio para não ter limite.</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-1">Cor do Efeito Hover (Card)</label>
-                  <div className="flex gap-2">
-                    <input type="color" value={formData.cardHoverColor || '#f97316'} onChange={e => setFormData({...formData, cardHoverColor: e.target.value})} className="h-12 w-20 p-1 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800" />
-                    <input type="text" value={formData.cardHoverColor || ''} onChange={e => setFormData({...formData, cardHoverColor: e.target.value})} placeholder="#f97316" className="flex-1 p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white" />
+                  <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">Etiquetas de Destaque</label>
+                  <div className="flex flex-wrap gap-2">
+                      {[
+                        { id: 'MAIS VENDIDO', label: 'Mais Vendido', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+                        { id: 'NOVIDADE', label: 'Novidade', color: 'bg-blue-100 text-blue-700 border-blue-200' },
+                        { id: 'PROMOÇÃO', label: 'Promoção', color: 'bg-red-100 text-red-700 border-red-200' },
+                        { id: 'LIMITADO', label: 'Edição Limitada', color: 'bg-purple-100 text-purple-700 border-purple-200' },
+                        { id: 'OUTLET', label: 'Outlet', color: 'bg-gray-100 text-gray-700 border-gray-200' }
+                      ].map(badge => (
+                          <button
+                              key={badge.id}
+                              type="button"
+                              onClick={() => {
+                                  const currentBadges = formData.badges || [];
+                                  const newBadges = currentBadges.includes(badge.id)
+                                      ? currentBadges.filter(b => b !== badge.id)
+                                      : [...currentBadges, badge.id];
+                                  setFormData({...formData, badges: newBadges});
+                              }}
+                              className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                                  (formData.badges || []).includes(badge.id) 
+                                      ? `${badge.color} border-current shadow-sm scale-105` 
+                                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:opacity-80'
+                              }`}
+                          >
+                              {(formData.badges || []).includes(badge.id) && <span className="text-[10px]">✔</span>}
+                              {badge.label}
+                          </button>
+                      ))}
                   </div>
                 </div>
               </div>

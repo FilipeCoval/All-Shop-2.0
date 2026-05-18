@@ -426,8 +426,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       } catch (err) { alert('Erro ao guardar.'); } 
   };
   
-  // Generic Helpers
-  const toggleBadge = (badge: string) => { setFormData(prev => { const badges = prev.badges || []; if (badges.includes(badge)) return { ...prev, badges: badges.filter(b => b !== badge) }; else return { ...prev, badges: [...badges, badge] }; }); };
+    
   const handleEdit = (product: InventoryProduct) => { 
     setEditingId(product.id); 
     setFormData({ 
