@@ -675,7 +675,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                     <img src={p.image} className="w-full h-20 object-contain mb-2" alt={p.name}/>
                                     <p className="text-xs font-bold dark:text-white mb-2">{p.name}</p>
                                     <button className="w-full bg-purple-600 text-white text-xs font-bold py-2 rounded-lg" onClick={() => {
-                                        const pendingOrder = orders.find(o => o.status === 'Pendente');
+                                        const pendingOrder = orders.find(o => o.status === 'Pendente' || o.status === 'Em Processamento');
                                         if (pendingOrder) {
                                             if (p.variants && p.variants.length > 0) {
                                                 setSelectedFreebieForSelection(p);
@@ -712,7 +712,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                             <div className="flex gap-2">
                                 <button className="flex-1 bg-gray-200 py-2 rounded font-bold" onClick={() => setSelectedFreebieForSelection(null)}>Cancelar</button>
                                 <button className="flex-1 bg-purple-600 py-2 rounded font-bold text-white" onClick={() => {
-                                    const pendingOrder = orders.find(o => o.status === 'Pendente');
+                                    const pendingOrder = orders.find(o => o.status === 'Pendente' || o.status === 'Em Processamento');
                                     if (pendingOrder) handleAddFreebieToOrder(pendingOrder, selectedFreebieForSelection, selectedVariantForFreebie);
                                 }}>Confirmar</button>
                             </div>
