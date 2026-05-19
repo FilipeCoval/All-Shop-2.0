@@ -63,9 +63,11 @@ export const requestPushPermission = async (): Promise<string | null> => {
     if (permission === 'granted') {
       
       try {
-        await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        console.log("Service Worker registrado com sucesso:", registration.scope);
+        await navigator.serviceWorker.ready; // Aguarda a activação do Service Worker
       } catch (swError) {
-        console.log("SW Register info:", swError);
+        console.error("Erro ao registrar Service Worker:", swError);
       }
 
       // Obter Token usando a VAPID Key correta
