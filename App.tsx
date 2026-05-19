@@ -559,6 +559,11 @@ const App: React.FC = () => {
     try {
         const cartItemId = variant?.name ? `${product.id}-${variant.name}` : `${product.id}`;
         const existingItem = cartItems.find(item => item.cartItemId === cartItemId);
+        if (product.isFreebie && existingItem) {
+             alert("Esta oferta já está no carrinho.");
+             setProcessingProductIds(prev => prev.filter(id => id !== product.id));
+             return;
+        }
         const newQty = existingItem ? existingItem.quantity + 1 : 1;
 
         if (product.maxQuantityPerOrder && newQty > product.maxQuantityPerOrder) {
@@ -630,6 +635,12 @@ const App: React.FC = () => {
             return prev.map(item => item.cartItemId === cartItemId ? { ...item, quantity: newQty } : item);
         });
         updateReservationInFirebase(itemToUpdate.id, itemToUpdate.selectedVariant, newQty);
+        return;
+    }
+    
+    // Prevent increasing quantity for free items
+    if (itemToUpdate.price === 0) {
+        alert("A oferta é de apenas 1 unidade.");
         return;
     }
 

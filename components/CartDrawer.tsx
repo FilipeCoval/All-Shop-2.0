@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { CartItem, UserCheckoutInfo, Order, Coupon, User, Product } from '../types';
+import { CartItem, UserCheckoutInfo, Order, Coupon, User, Product, ProductVariant } from '../types';
 import { X, Trash2, Check, Loader2, ChevronLeft, User as UserIcon, Clock, Tag, AlertCircle, Store, Truck, MapPin, Smartphone, Landmark, Banknote, Sparkles, PartyPopper, Info, Gift } from 'lucide-react';
 import { SELLER_PHONE, TELEGRAM_LINK } from '../constants';
 import {  db } from '../services/firebaseConfig';
@@ -68,7 +68,7 @@ interface CartDrawerProps {
   onCheckout: (order: Order, isAutoSave?: boolean) => Promise<boolean>;
   user: User | null;
   onOpenLogin: () => void;
-  onAddFreebie: (product: Product) => void;
+  onAddFreebie: (product: Product, variant?: ProductVariant) => void;
   publicProducts: Product[];
 }
 
@@ -78,6 +78,8 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'info' | 'platform' | 'tutorial' | 'success'>('cart');
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState(() => localStorage.getItem('as_cart_order_id') || '');
+  const [selectedFreebieForSelection, setSelectedFreebieForSelection] = useState<Product | null>(null);
+  const [selectedVariantForFreebie, setSelectedVariantForFreebie] = useState<string>('');
   
   useEffect(() => {
      if (currentOrderId && cartItems.length > 0) {
@@ -458,10 +460,45 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
                               <h4 className="font-bold text-purple-900 dark:text-purple-300 text-sm mb-2 flex items-center gap-2"><Gift size={16}/>Ofertas Disponíveis ({user.freebieQuota})</h4>
                               <div className="grid grid-cols-2 gap-2">
                                   {publicProducts.filter(p => p.isFreebie).map(p => (
-                                      <button key={p.id} onClick={() => onAddFreebie(p)} className="text-xs bg-white dark:bg-slate-700 p-2 rounded border border-purple-100 dark:border-slate-600 hover:border-purple-300 dark:hover:border-purple-500 transition-colors">
+                                      <button key={p.id} onClick={() => {
+                                          if (p.variants && p.variants.length > 0) {
+                                              setSelectedFreebieForSelection(p);
+                                              setSelectedVariantForFreebie(p.variants[0].name);
+                                          } else {
+                                              onAddFreebie(p);
+                                          }
+                                      }} className="text-xs bg-white dark:bg-slate-700 p-2 rounded border border-purple-100 dark:border-slate-600 hover:border-purple-300 dark:hover:border-purple-500 transition-colors">
                                           {p.name}
                                       </button>
                                   ))}
+                              </div>
+                          </div>
+                      )}
+                      
+                      {/* Modal de Seleção de Oferta (Freebie) */}
+                      {selectedFreebieForSelection && (
+                          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                              <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl max-w-sm w-full shadow-2xl">
+                                  <h3 className="font-bold text-lg dark:text-white mb-4">Escolha a Variação</h3>
+                                  {selectedFreebieForSelection.variants && (
+                                      <select 
+                                          className="w-full p-2 mb-4 border rounded dark:bg-slate-700 dark:text-white" 
+                                          value={selectedVariantForFreebie} 
+                                          onChange={(e) => setSelectedVariantForFreebie(e.target.value)}
+                                      >
+                                          {selectedFreebieForSelection.variants.map((v: any) => (
+                                              <option key={v.name} value={v.name}>{v.name}</option>
+                                          ))}
+                                      </select>
+                                  )}
+                                  <div className="flex gap-2">
+                                      <button className="flex-1 bg-gray-200 dark:bg-slate-700 py-2 rounded font-bold dark:text-white" onClick={() => setSelectedFreebieForSelection(null)}>Cancelar</button>
+                                      <button className="flex-1 bg-purple-600 py-2 rounded font-bold text-white" onClick={() => {
+                                          const variant = selectedFreebieForSelection.variants?.find(v => v.name === selectedVariantForFreebie);
+                                          onAddFreebie(selectedFreebieForSelection, variant);
+                                          setSelectedFreebieForSelection(null);
+                                      }}>Confirmar</button>
+                                  </div>
                               </div>
                           </div>
                       )}
