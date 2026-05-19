@@ -674,7 +674,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                 <div key={p.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border dark:border-slate-700">
                                     <img src={p.image} className="w-full h-20 object-contain mb-2" alt={p.name}/>
                                     <p className="text-xs font-bold dark:text-white mb-2">{p.name}</p>
-                                    <button className="w-full bg-purple-600 text-white text-xs font-bold py-2 rounded-lg" disabled={!orders.some(o => o.status === 'Pendente')} onClick={() => {
+                                    <button className="w-full bg-purple-600 text-white text-xs font-bold py-2 rounded-lg" onClick={() => {
                                         const pendingOrder = orders.find(o => o.status === 'Pendente');
                                         if (pendingOrder) {
                                             if (p.variants && p.variants.length > 0) {
