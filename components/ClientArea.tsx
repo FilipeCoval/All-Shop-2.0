@@ -262,23 +262,34 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
     );
   };
   
-  const handleAddFreebieToOrder = async (order: Order, product: Product) => {
-    if (!onCheckout) return;
-    
-    // 1. Update Order
-    const updatedOrder: Order = {
-        ...order,
-        items: [...order.items, { productId: product.id, name: product.name, price: 0, quantity: 1, selectedVariant: '', image: product.image, addedAt: new Date().toISOString() }],
-        total: order.total // Freebee, assume price 0 doesn't affect total
-    };
-    
-    // 2. Decrement User freebieQuota
-    onUpdateUser({ freebieQuota: Math.max(0, (user.freebieQuota || 0) - 1) });
+    const [selectedFreebieForSelection, setSelectedFreebieForSelection] = useState<Product | null>(null);
+    const [selectedVariantForFreebie, setSelectedVariantForFreebie] = useState<string>('');
 
-    // 3. Update Order in Firebase
-    await onCheckout(updatedOrder, true);
-    alert("Oferta adicionada com sucesso ao pedido!");
-  };
+    const handleAddFreebieToOrder = async (order: Order, product: Product, variant?: string) => {
+        if (!onCheckout) return;
+
+        // Check for duplicates
+        const itemExists = order.items.some((item: any) => item.productId === product.id && item.selectedVariant === (variant || ''));
+        if (itemExists) {
+            alert("Esta oferta já foi adicionada ao seu pedido.");
+            return;
+        }
+
+        // 1. Update Order
+        const updatedOrder: Order = {
+            ...order,
+            items: [...order.items, { productId: product.id, name: product.name, price: 0, quantity: 1, selectedVariant: variant || '', image: product.image, addedAt: new Date().toISOString() }],
+            total: order.total // Freebie, price 0
+        };
+
+        // 2. Decrement User freebieQuota
+        onUpdateUser({ freebieQuota: Math.max(0, (user.freebieQuota || 0) - 1) });
+
+        // 3. Update Order in Firebase
+        await onCheckout(updatedOrder, true);
+        alert("Oferta adicionada com sucesso ao pedido!");
+        setSelectedFreebieForSelection(null);
+    };
   
   const handleOrderAction = async () => {
     if (!modalState.order || !modalReason.trim()) { alert("Por favor, preencha o motivo."); return; }
@@ -666,13 +677,45 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                     <button className="w-full bg-purple-600 text-white text-xs font-bold py-2 rounded-lg" disabled={!orders.some(o => o.status === 'Pendente')} onClick={() => {
                                         const pendingOrder = orders.find(o => o.status === 'Pendente');
                                         if (pendingOrder) {
-                                            handleAddFreebieToOrder(pendingOrder, p);
+                                            if (p.variants && p.variants.length > 0) {
+                                                setSelectedFreebieForSelection(p);
+                                                setSelectedVariantForFreebie(p.variants[0].name);
+                                            } else {
+                                                handleAddFreebieToOrder(pendingOrder, p);
+                                            }
                                         } else {
                                             alert("Não tem nenhuma encomenda pendente para adicionar a oferta.");
                                         }
                                     }}>Escolher</button>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+                )}
+                
+                {/* Modal de Seleção de Oferta (Freebie) */}
+                {selectedFreebieForSelection && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl max-w-sm w-full shadow-2xl">
+                            <h3 className="font-bold text-lg dark:text-white mb-4">Escolha a Variação</h3>
+                            {selectedFreebieForSelection.variants && (
+                                <select 
+                                    className="w-full p-2 mb-4 border rounded" 
+                                    value={selectedVariantForFreebie} 
+                                    onChange={(e) => setSelectedVariantForFreebie(e.target.value)}
+                                >
+                                    {selectedFreebieForSelection.variants.map((v: any) => (
+                                        <option key={v.name} value={v.name}>{v.name}</option>
+                                    ))}
+                                </select>
+                            )}
+                            <div className="flex gap-2">
+                                <button className="flex-1 bg-gray-200 py-2 rounded font-bold" onClick={() => setSelectedFreebieForSelection(null)}>Cancelar</button>
+                                <button className="flex-1 bg-purple-600 py-2 rounded font-bold text-white" onClick={() => {
+                                    const pendingOrder = orders.find(o => o.status === 'Pendente');
+                                    if (pendingOrder) handleAddFreebieToOrder(pendingOrder, selectedFreebieForSelection, selectedVariantForFreebie);
+                                }}>Confirmar</button>
+                            </div>
                         </div>
                     </div>
                 )}
