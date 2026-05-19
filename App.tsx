@@ -576,6 +576,11 @@ const App: React.FC = () => {
         const promoEnded = product.promoEndsAt ? new Date(product.promoEndsAt) <= new Date() : false;
         let finalPrice = variant?.price ?? product.price;
         
+        // Se for um produto de oferta, o preço é zero
+        if (product.isFreebie) {
+            finalPrice = 0;
+        }
+
         // If promo ended and no variant selected (or variant price logic is handled elsewhere), revert to original
         if (promoEnded && !variant && product.originalPrice) {
             finalPrice = product.originalPrice;
@@ -975,7 +980,7 @@ const App: React.FC = () => {
             )}
         </div>
       </footer>
-      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemoveItem={removeFromCart} onUpdateQuantity={updateQuantity} total={cartTotal} onCheckout={handleCheckout} user={user} onOpenLogin={() => { setIsCartOpen(false); setIsLoginOpen(true); }} />
+      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemoveItem={removeFromCart} onUpdateQuantity={updateQuantity} total={cartTotal} onCheckout={handleCheckout} user={user} onOpenLogin={() => { setIsCartOpen(false); setIsLoginOpen(true); }} onAddFreebie={addToCart} publicProducts={dbProducts} />
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} onLogin={(u) => { setUser(u); setIsLoginOpen(false); }} />
       <LuckyWheel isOpen={showLuckyWheel} onClose={() => setShowLuckyWheel(false)} user={user} onUpdateUser={handleUpdateUser} />
       

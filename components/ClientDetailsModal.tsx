@@ -19,6 +19,7 @@ const formatCurrency = (value: number) =>
 const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({ user, orders, onClose, onUpdateUser }) => {
     const [isRecalculatingClient, setIsRecalculatingClient] = useState(false);
     const [isRedeeming, setIsRedeeming] = useState<string | null>(null);
+    const [localFreebieQuota, setLocalFreebieQuota] = useState(user.freebieQuota || 0);
     
     // Merge States
     const [mergeSearchEmail, setMergeSearchEmail] = useState('');
@@ -325,7 +326,28 @@ const ClientDetailsModal: React.FC<ClientDetailsModalProps> = ({ user, orders, o
                     <div className="pt-6 border-t border-dashed border-gray-200 dark:border-slate-700 transition-colors">
                         <h4 className="font-bold text-gray-800 dark:text-white mb-3 flex items-center gap-2"><Combine size={16} className="text-orange-500 dark:text-orange-400"/> Ferramentas de Gestão</h4>
                         
-                        <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg border border-orange-200 dark:border-orange-800/30 space-y-4 transition-colors">
+                        <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-800/30 space-y-4 mt-4 transition-colors">
+                            <p className="text-sm font-bold text-green-900 dark:text-green-300">4. Gestão de Ofertas (Freebies)</p>
+                            <p className="text-xs text-green-800 dark:text-green-400 -mt-2">Define quantas ofertas este cliente pode escolher.</p>
+                            <div className="flex gap-2">
+                              <input 
+                                  type="number" 
+                                  min="0"
+                                  placeholder="Quota de ofertas" 
+                                  value={localFreebieQuota} 
+                                  onChange={e => setLocalFreebieQuota(parseInt(e.target.value) || 0)} 
+                                  className="flex-1 p-2 border border-green-300 dark:border-green-700 rounded text-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-white"
+                              />
+                               <button 
+                                   onClick={() => onUpdateUser(user.uid, { freebieQuota: localFreebieQuota })} 
+                                   className="bg-green-600 text-white px-3 py-2 rounded text-sm font-bold hover:bg-green-700"
+                               >
+                                   Guardar
+                               </button>
+                            </div>
+                        </div>
+
+                        <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-lg border border-orange-200 dark:border-orange-800/30 space-y-4 mt-4 transition-colors">
                             <p className="text-sm font-bold text-orange-900 dark:text-orange-300">1. Recalcular Dados de Lealdade</p>
                             <p className="text-xs text-orange-800 dark:text-orange-400 -mt-2">Use esta função para corrigir o "Total Gasto", nível e pontos, com base em todas as encomendas associadas a este cliente.</p>
                             <button onClick={handleRecalculateClientData} disabled={isRecalculatingClient} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 rounded-lg disabled:opacity-50 flex items-center justify-center gap-2 transition-colors">{isRecalculatingClient ? <Loader2 className="animate-spin" /> : <><RefreshCw size={14}/> Sincronizar Agora</>}</button>

@@ -2363,9 +2363,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
             user={selectedUserDetails}
             orders={allOrders}
             onClose={() => setSelectedUserDetails(null)}
-            onUpdateUser={(userId, data) => {
-                setAllUsers(prev => prev.map(u => u.uid === userId ? { ...u, ...data } : u));
-                setSelectedUserDetails(prev => prev ? { ...prev, ...data } : null);
+            onUpdateUser={async (userId, data) => {
+                try {
+                    await updateDoc(doc(modularDb, 'users', userId), data as any);
+                    setAllUsers(prev => prev.map(u => u.uid === userId ? { ...u, ...data } : u));
+                    setSelectedUserDetails(prev => prev ? { ...prev, ...data } : null);
+                    alert("Guardado com sucesso!");
+                } catch(e) {
+                    console.error(e);
+                    alert("Erro ao guardar no Firebase.");
+                }
             }}
         />
       )}

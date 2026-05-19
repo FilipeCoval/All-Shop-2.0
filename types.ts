@@ -27,6 +27,7 @@ export interface User {
   lastShareDate?: string; // Data da última partilha premiada (ISO Date string)
   birthday?: string; // Data de nascimento (ISO Date string ou YYYY-MM-DD)
   isGuest?: boolean; // NOVO: Flag para identificar clientes convidados (sem conta)
+  freebieQuota?: number; // NOVO: Quantidade de ofertas disponíveis para o cliente
 }
 
 export interface Address {
@@ -208,6 +209,7 @@ export interface Product {
   variantLabel?: string;
   weight?: number; // Peso em KG
   specs?: Record<string, string | boolean>; // Especificações técnicas para comparação
+  isFreebie?: boolean; // NOVO: Produto elegível como oferta
 }
 
 export interface ProductVariant {
@@ -251,6 +253,7 @@ export interface InventoryProduct {
   comingSoon?: boolean;
   weight?: number; // Peso em KG
   specs?: Record<string, string | boolean>; // Especificações técnicas
+  isFreebie?: boolean; // NOVO: Produto elegível como oferta
 }
 
 export interface ProductUnit {

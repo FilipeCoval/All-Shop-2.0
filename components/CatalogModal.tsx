@@ -379,6 +379,12 @@ const CatalogModal: React.FC<CatalogModalProps> = ({ isOpen, onClose, product, o
                       ))}
                   </div>
                 </div>
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer mt-7">
+                    <input type="checkbox" checked={formData.isFreebie || false} onChange={e => setFormData({...formData, isFreebie: e.target.checked})} className="w-5 h-5 text-green-600 rounded" />
+                    <span className="font-bold text-gray-700 dark:text-gray-300">Marcar como Produto de Oferta (Freebie)</span>
+                  </label>
+                </div>
               </div>
               
               <div>

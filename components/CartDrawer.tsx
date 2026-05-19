@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { CartItem, UserCheckoutInfo, Order, Coupon, User } from '../types';
-import { X, Trash2, Check, Loader2, ChevronLeft, User as UserIcon, Clock, Tag, AlertCircle, Store, Truck, MapPin, Smartphone, Landmark, Banknote, Sparkles, PartyPopper, Info } from 'lucide-react';
+import { CartItem, UserCheckoutInfo, Order, Coupon, User, Product } from '../types';
+import { X, Trash2, Check, Loader2, ChevronLeft, User as UserIcon, Clock, Tag, AlertCircle, Store, Truck, MapPin, Smartphone, Landmark, Banknote, Sparkles, PartyPopper, Info, Gift } from 'lucide-react';
 import { SELLER_PHONE, TELEGRAM_LINK } from '../constants';
 import {  db } from '../services/firebaseConfig';
 import OrderTutorial from './OrderTutorial';
@@ -68,10 +68,12 @@ interface CartDrawerProps {
   onCheckout: (order: Order, isAutoSave?: boolean) => Promise<boolean>;
   user: User | null;
   onOpenLogin: () => void;
+  onAddFreebie: (product: Product) => void;
+  publicProducts: Product[];
 }
 
 const CartDrawer: React.FC<CartDrawerProps> = ({ 
-  isOpen, onClose, cartItems, onRemoveItem, onUpdateQuantity, total, onCheckout, user, onOpenLogin
+  isOpen, onClose, cartItems, onRemoveItem, onUpdateQuantity, total, onCheckout, user, onOpenLogin, onAddFreebie, publicProducts
 }) => {
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'info' | 'platform' | 'tutorial' | 'success'>('cart');
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -449,7 +451,21 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
 
               {/* Área de Cupão */}
               {cartItems.length > 0 && (
-                  <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-100 dark:border-slate-700 mt-4">
+                  <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-100 dark:border-slate-700 mt-4 space-y-4">
+                      {/* Área de Ofertas */}
+                      {user && (user.freebieQuota || 0) > 0 && (
+                          <div>
+                              <h4 className="font-bold text-purple-900 dark:text-purple-300 text-sm mb-2 flex items-center gap-2"><Gift size={16}/>Ofertas Disponíveis ({user.freebieQuota})</h4>
+                              <div className="grid grid-cols-2 gap-2">
+                                  {publicProducts.filter(p => p.isFreebie).map(p => (
+                                      <button key={p.id} onClick={() => onAddFreebie(p)} className="text-xs bg-white dark:bg-slate-700 p-2 rounded border border-purple-100 dark:border-slate-600 hover:border-purple-300 dark:hover:border-purple-500 transition-colors">
+                                          {p.name}
+                                      </button>
+                                  ))}
+                              </div>
+                          </div>
+                      )}
+                      
                       {!appliedCoupon ? (
                           <div className="flex gap-2">
                               <div className="relative flex-1">

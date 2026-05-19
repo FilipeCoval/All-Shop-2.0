@@ -262,6 +262,24 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
     );
   };
   
+  const handleAddFreebieToOrder = async (order: Order, product: Product) => {
+    if (!onCheckout) return;
+    
+    // 1. Update Order
+    const updatedOrder: Order = {
+        ...order,
+        items: [...order.items, { productId: product.id, name: product.name, price: 0, quantity: 1, selectedVariant: '', image: product.image, addedAt: new Date().toISOString() }],
+        total: order.total // Freebee, assume price 0 doesn't affect total
+    };
+    
+    // 2. Decrement User freebieQuota
+    onUpdateUser({ freebieQuota: Math.max(0, (user.freebieQuota || 0) - 1) });
+
+    // 3. Update Order in Firebase
+    await onCheckout(updatedOrder, true);
+    alert("Oferta adicionada com sucesso ao pedido!");
+  };
+  
   const handleOrderAction = async () => {
     if (!modalState.order || !modalReason.trim()) { alert("Por favor, preencha o motivo."); return; }
     setIsProcessingAction(true);
@@ -635,6 +653,29 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                         <div><p className="text-xs text-gray-500 dark:text-slate-400 font-bold uppercase">Total Gasto</p><p className="text-2xl font-bold text-gray-900 dark:text-white">{totalSpentCount.toFixed(2)}€</p></div>
                     </div>
                 </div>
+
+                {/* Área de Ofertas (Freebies) */}
+                { (user.freebieQuota || 0) > 0 && (
+                    <div className="bg-purple-50 dark:bg-purple-900/20 p-6 rounded-2xl border border-purple-200 dark:border-purple-800">
+                        <h3 className="font-bold text-purple-900 dark:text-purple-300 mb-4 flex items-center gap-2"><Gift/> Ofertas Disponíveis ({user.freebieQuota})</h3>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                            {publicProducts.filter(p => p.isFreebie).map(p => (
+                                <div key={p.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border dark:border-slate-700">
+                                    <img src={p.image} className="w-full h-20 object-contain mb-2" alt={p.name}/>
+                                    <p className="text-xs font-bold dark:text-white mb-2">{p.name}</p>
+                                    <button className="w-full bg-purple-600 text-white text-xs font-bold py-2 rounded-lg" disabled={!orders.some(o => o.status === 'Pendente')} onClick={() => {
+                                        const pendingOrder = orders.find(o => o.status === 'Pendente');
+                                        if (pendingOrder) {
+                                            handleAddFreebieToOrder(pendingOrder, p);
+                                        } else {
+                                            alert("Não tem nenhuma encomenda pendente para adicionar a oferta.");
+                                        }
+                                    }}>Escolher</button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 <div className="bg-primary rounded-2xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-8 relative overflow-hidden">
                     <div className="relative z-10 space-y-4">
