@@ -137,13 +137,13 @@ const AllPoints: React.FC<AllPointsProps> = ({ user, onUpdateUser, onOpenLogin, 
   };
 
   return (
-    <div className={isEmbedded ? "animate-fade-in" : "container mx-auto px-4 py-12 animate-fade-in"}>
+    <div className={`animate-fade-in ${isEmbedded ? "w-full max-w-6xl mx-auto p-2" : "container mx-auto px-4 py-12"}`}>
         {/* Hero Section */}
         <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-3xl p-8 md:p-12 text-white shadow-2xl mb-12 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-yellow-500/10 rounded-full blur-3xl -mr-16 -mt-16"></div>
-            <div className="relative z-10 max-w-2xl">
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
+            <div className="relative z-10 max-w-4xl mx-auto text-center flex flex-col items-center">
+                <div className="flex flex-col items-center mb-6">
+                    <div className="flex items-center gap-3 mb-4">
                         <div className="bg-yellow-500 p-2 rounded-lg text-gray-900">
                             <Coins size={24} />
                         </div>
@@ -153,10 +153,10 @@ const AllPoints: React.FC<AllPointsProps> = ({ user, onUpdateUser, onOpenLogin, 
                         <Share2 size={20} />
                     </button>
                 </div>
-                <h1 className="text-4xl md:text-5xl font-black mb-6 leading-tight">
+                <h1 className="text-4xl md:text-5xl font-black mb-6 leading-tight max-w-3xl">
                     Transforme as suas compras em <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-yellow-200">recompensas reais.</span>
                 </h1>
-                <p className="text-gray-300 text-lg mb-8 leading-relaxed">
+                <p className="text-gray-300 text-lg mb-8 leading-relaxed max-w-2xl">
                     Ganhe pontos por cada euro gasto, avaliações e muito mais. Troque por descontos exclusivos e portes grátis.
                 </p>
                 
@@ -165,7 +165,7 @@ const AllPoints: React.FC<AllPointsProps> = ({ user, onUpdateUser, onOpenLogin, 
                         Entrar para ver o meu saldo <ArrowRight size={20} />
                     </button>
                 ) : (
-                    <div className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/10 inline-block min-w-[300px]">
+                    <div className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/10 inline-block min-w-[320px] w-full max-w-md mx-auto">
                         <p className="text-gray-400 text-sm font-bold uppercase mb-1">O seu saldo atual</p>
                         <div className="flex items-baseline gap-2">
                             <span className="text-4xl font-black text-yellow-400">{user.loyaltyPoints || 0}</span>
@@ -192,84 +192,84 @@ const AllPoints: React.FC<AllPointsProps> = ({ user, onUpdateUser, onOpenLogin, 
         </div>
 
         {/* Como Ganhar */}
-        <div className="mb-16">
+        <div className="mb-16 w-full max-w-5xl mx-auto">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-8 text-center">Como ganhar pontos</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white dark:bg-[#0f172a] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="bg-white dark:bg-[#0f172a] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow flex flex-col items-center text-center">
                     <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-primary mb-4">
                         <Gift size={24} />
                     </div>
                     <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">Faça Compras</h3>
-                    <p className="text-gray-500 dark:text-slate-400 text-sm">Ganhe 1 ponto por cada 1€ gasto. Membros Ouro ganham 1.5x mais!</p>
+                    <p className="text-gray-500 dark:text-slate-400 text-sm italic">Ganhe 1 ponto por cada 1€ gasto. Membros Prata ganham {LOYALTY_TIERS.SILVER.multiplier}x e Ouro {LOYALTY_TIERS.GOLD.multiplier}x mais!</p>
                 </div>
-                <div className="bg-white dark:bg-[#0f172a] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
+                <div className="bg-white dark:bg-[#0f172a] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow flex flex-col items-center text-center">
                     <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 rounded-xl flex items-center justify-center text-purple-600 mb-4">
                         <Star size={24} />
                     </div>
                     <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">Avalie Produtos</h3>
-                    <p className="text-gray-500 dark:text-slate-400 text-sm">Ganhe <span className="font-bold text-purple-600">15 pontos</span> por review simples ou <span className="font-bold text-purple-600">30 pontos</span> se incluir foto.</p>
+                    <p className="text-gray-500 dark:text-slate-400 text-sm italic">Ganhe <span className="font-bold text-purple-600">15 pontos</span> por review simples ou <span className="font-bold text-purple-600">30 pontos</span> se incluir foto.</p>
                 </div>
-                <div className="bg-white dark:bg-[#0f172a] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
+                <div className="bg-white dark:bg-[#0f172a] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow flex flex-col items-center text-center">
                     <div className="w-12 h-12 bg-pink-100 dark:bg-pink-900/30 rounded-xl flex items-center justify-center text-pink-600 mb-4">
                         <Calendar size={24} />
                     </div>
                     <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">Aniversário</h3>
-                    <p className="text-gray-500 dark:text-slate-400 text-sm">Receba um presente de <span className="font-bold text-pink-600">100 pontos</span> no dia do seu aniversário.</p>
+                    <p className="text-gray-500 dark:text-slate-400 text-sm italic">Receba um presente de <span className="font-bold text-pink-600">100 pontos</span> no dia do seu aniversário.</p>
                 </div>
-                <div className="bg-white dark:bg-[#0f172a] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
+                <div className="bg-white dark:bg-[#0f172a] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow flex flex-col items-center text-center">
                     <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center text-green-600 mb-4">
                         <Share2 size={24} />
                     </div>
                     <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">Partilhar Produtos</h3>
-                    <p className="text-gray-500 dark:text-slate-400 text-sm">Ganhe <span className="font-bold text-green-600">5 pontos</span> por cada partilha diária de produtos nas redes sociais.</p>
+                    <p className="text-gray-500 dark:text-slate-400 text-sm italic">Ganhe <span className="font-bold text-green-600">5 pontos</span> por cada partilha diária de produtos nas redes sociais.</p>
                 </div>
             </div>
         </div>
 
         {/* Níveis de Fidelidade */}
-        <div className="mb-16">
+        <div className="mb-16 w-full max-w-5xl mx-auto">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-8 text-center">Níveis de Fidelidade</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Bronze */}
-                <div className={`p-6 rounded-2xl border-2 transition-all ${user?.tier === 'Bronze' ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/10 shadow-lg scale-105' : 'border-gray-100 dark:border-slate-800 bg-white dark:bg-[#0f172a] opacity-80'}`}>
+                <div className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center text-center ${user?.tier === 'Bronze' ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/10 shadow-lg scale-105' : 'border-gray-100 dark:border-slate-800 bg-white dark:bg-[#0f172a] opacity-80'}`}>
                     <div className="flex items-center gap-3 mb-4">
                         <div className="bg-yellow-600 text-white p-2 rounded-lg font-bold text-xs uppercase">Bronze</div>
                         {user?.tier === 'Bronze' && <span className="text-xs font-bold text-yellow-600 flex items-center gap-1"><CheckCircle size={12}/> Nível Atual</span>}
                     </div>
                     <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Iniciante</h3>
                     <p className="text-sm text-gray-500 dark:text-slate-400 mb-4">O ponto de partida para todos os membros.</p>
-                    <ul className="space-y-2 text-sm">
-                        <li className="flex items-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> 1 ponto por cada 1€ gasto</li>
-                        <li className="flex items-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> Acesso a recompensas básicas</li>
+                    <ul className="space-y-2 text-sm text-center">
+                        <li className="flex items-center justify-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> 1 ponto por cada 1€ gasto</li>
+                        <li className="flex items-center justify-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> Acesso a recompensas básicas</li>
                     </ul>
                 </div>
 
                 {/* Silver */}
-                <div className={`p-6 rounded-2xl border-2 transition-all ${user?.tier === 'Prata' ? 'border-gray-400 bg-gray-50 dark:bg-gray-700/30 shadow-lg scale-105' : 'border-gray-100 dark:border-slate-800 bg-white dark:bg-[#0f172a] opacity-80'}`}>
+                <div className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center text-center ${user?.tier === 'Prata' ? 'border-gray-400 bg-gray-50 dark:bg-gray-700/30 shadow-lg scale-105' : 'border-gray-100 dark:border-slate-800 bg-white dark:bg-[#0f172a] opacity-80'}`}>
                     <div className="flex items-center gap-3 mb-4">
                         <div className="bg-gray-400 text-white p-2 rounded-lg font-bold text-xs uppercase">Prata</div>
                         {user?.tier === 'Prata' && <span className="text-xs font-bold text-gray-500 flex items-center gap-1"><CheckCircle size={12}/> Nível Atual</span>}
                     </div>
                     <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Membro Prata</h3>
                     <p className="text-sm text-gray-500 dark:text-slate-400 mb-4">Ao atingir {LOYALTY_TIERS.SILVER.threshold}€ em compras.</p>
-                    <ul className="space-y-2 text-sm">
-                        <li className="flex items-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> <strong>{LOYALTY_TIERS.SILVER.multiplier}x pontos</strong> por compra</li>
-                        <li className="flex items-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> Ofertas exclusivas</li>
+                    <ul className="space-y-2 text-sm text-center">
+                        <li className="flex items-center justify-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> <strong>{LOYALTY_TIERS.SILVER.multiplier}x pontos</strong> por compra</li>
+                        <li className="flex items-center justify-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> Ofertas exclusivas</li>
                     </ul>
                 </div>
 
                 {/* Gold */}
-                <div className={`p-6 rounded-2xl border-2 transition-all ${user?.tier === 'Ouro' ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 shadow-lg scale-105' : 'border-gray-100 dark:border-slate-800 bg-white dark:bg-[#0f172a] opacity-80'}`}>
+                <div className={`p-6 rounded-2xl border-2 transition-all flex flex-col items-center text-center ${user?.tier === 'Ouro' ? 'border-yellow-400 bg-yellow-50 dark:bg-yellow-900/20 shadow-lg scale-105' : 'border-gray-100 dark:border-slate-800 bg-white dark:bg-[#0f172a] opacity-80'}`}>
                     <div className="flex items-center gap-3 mb-4">
                         <div className="bg-yellow-400 text-black p-2 rounded-lg font-bold text-xs uppercase">Ouro</div>
                         {user?.tier === 'Ouro' && <span className="text-xs font-bold text-yellow-500 flex items-center gap-1"><CheckCircle size={12}/> Nível Atual</span>}
                     </div>
                     <h3 className="font-bold text-xl text-gray-900 dark:text-white mb-2">Membro VIP</h3>
                     <p className="text-sm text-gray-500 dark:text-slate-400 mb-4">Ao atingir {LOYALTY_TIERS.GOLD.threshold}€ em compras.</p>
-                    <ul className="space-y-2 text-sm">
-                        <li className="flex items-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> <strong>{LOYALTY_TIERS.GOLD.multiplier}x pontos</strong> por compra</li>
-                        <li className="flex items-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> Atendimento prioritário</li>
-                        <li className="flex items-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> Acesso antecipado a promoções</li>
+                    <ul className="space-y-2 text-sm text-center">
+                        <li className="flex items-center justify-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> <strong>{LOYALTY_TIERS.GOLD.multiplier}x pontos</strong> por compra</li>
+                        <li className="flex items-center justify-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> Atendimento prioritário</li>
+                        <li className="flex items-center justify-center gap-2 text-gray-700 dark:text-slate-300"><CheckCircle size={14} className="text-green-500"/> Acesso antecipado a promoções</li>
                     </ul>
                 </div>
             </div>
@@ -277,7 +277,7 @@ const AllPoints: React.FC<AllPointsProps> = ({ user, onUpdateUser, onOpenLogin, 
 
         {/* Meus Vouchers */}
         {myCoupons.length > 0 && (
-            <div className="mb-16 animate-fade-in">
+            <div className="mb-16 animate-fade-in w-full max-w-5xl mx-auto">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-8 text-center flex items-center justify-center gap-2">
                     <Ticket className="text-indigo-600" /> Os Meus Vouchers
                 </h2>
@@ -288,7 +288,7 @@ const AllPoints: React.FC<AllPointsProps> = ({ user, onUpdateUser, onOpenLogin, 
                                 <div className={`w-10 h-10 rounded-full flex items-center justify-center ${coupon.isActive ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-200 text-gray-500'}`}>
                                     <Ticket size={20} />
                                 </div>
-                                <div>
+                                <div className="text-left">
                                     <p className="font-mono font-bold text-lg tracking-wider text-gray-900 dark:text-white">{coupon.code}</p>
                                     <p className="text-xs text-gray-500 dark:text-slate-400">
                                         {coupon.type === 'PERCENTAGE' ? `${coupon.value}% Desconto` : `€${coupon.value} Desconto`}
@@ -319,7 +319,7 @@ const AllPoints: React.FC<AllPointsProps> = ({ user, onUpdateUser, onOpenLogin, 
         )}
 
         {/* Loja de Recompensas */}
-        <div id="rewards" className="scroll-mt-24">
+        <div id="rewards" className="scroll-mt-24 w-full max-w-5xl mx-auto">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-8 text-center">Trocar Pontos</h2>
             
             {generatedCoupon && (

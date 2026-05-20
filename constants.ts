@@ -72,8 +72,8 @@ export const PRODUCT_CATEGORIES = [
 
 export const LOYALTY_TIERS = {
     BRONZE: { threshold: 0, multiplier: 1, label: 'Bronze' },
-    SILVER: { threshold: 250, multiplier: 1.5, label: 'Prata' },
-    GOLD: { threshold: 600, multiplier: 2, label: 'Ouro' }
+    SILVER: { threshold: 250, multiplier: 1.25, label: 'Prata' },
+    GOLD: { threshold: 600, multiplier: 1.5, label: 'Ouro' }
 };
 
 export const LOYALTY_REWARDS = [
