@@ -132,8 +132,8 @@ const Home: React.FC<HomeProps> = ({
         {slides.map((slide, index) => (
           <div key={slide.id} className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${index === currentSlide ? 'opacity-100 z-10' : 'opacity-0 z-0'}`}>
              <img src={slide.image} alt={slide.title} className="absolute inset-0 w-full h-full object-cover" />
-             <div className="relative z-20 container mx-auto px-6 h-full flex flex-col justify-center items-start text-white max-w-6xl">
-                <div className="flex flex-col gap-3 md:gap-4 max-w-xl">
+             <div className="relative z-20 container mx-auto px-6 h-full flex flex-col justify-center items-center text-center text-white max-w-6xl">
+                <div className="flex flex-col items-center gap-3 md:gap-4 max-w-2xl">
                     <span className="inline-block px-3 py-1 bg-black/40 backdrop-blur-md rounded-full text-[10px] md:text-xs font-bold uppercase tracking-wider w-fit border border-white/20 shadow-sm">Destaque</span>
                     <h1 className="text-3xl md:text-4xl lg:text-5xl font-extrabold leading-tight text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]">{slide.title}</h1>
                     <p className="text-sm md:text-lg lg:text-xl text-white font-medium drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] max-w-lg">{slide.subtitle}</p>

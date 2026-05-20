@@ -131,7 +131,7 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
               {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(displayPrice)}
             </span>
             <span className="text-xs text-gray-500 lg:group-hover:text-white/60 font-medium mt-1 transition-colors">
-              {availableStock > 0 ? `${availableStock} disponíveis` : 'Esgotado'}
+              {availableStock === 0 ? 'Esgotado' : (availableStock <= 3 ? 'Últimas unidades' : '')}
             </span>
           </div>
 

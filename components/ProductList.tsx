@@ -311,6 +311,9 @@ const ProductList: React.FC<ProductListProps> = ({
                                         {pricePrefix && <div className="text-xs text-gray-500 dark:text-slate-400">{pricePrefix}</div>}
                                         {showPromo && <div className="text-sm text-gray-400 line-through font-medium">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.originalPrice!)}</div>}
                                         <div className={`text-2xl font-bold ${showPromo ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(displayPrice)}</div>
+                                        <div className="text-[10px] font-bold mt-1 text-gray-400 dark:text-slate-500 uppercase tracking-tight">
+                                           {stock === 0 ? 'Esgotado' : (stock <= 3 ? 'Últimas unidades' : '')}
+                                        </div>
                                     </div>
                                     {hasVariants ? (
                                         <button onClick={handleProductClick(product.id)} className="px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 bg-secondary hover:bg-primary text-white"><Eye size={16} /> Ver Opções</button>

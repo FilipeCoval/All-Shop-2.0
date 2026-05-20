@@ -276,11 +276,13 @@ const Header: React.FC<HeaderProps> = ({
                                                 <p className="font-bold text-sm text-gray-900 dark:text-white truncate group-hover/item:text-primary transition-colors">{product.name}</p>
                                                 <div className="flex items-center gap-2">
                                                     <p className="text-xs text-primary font-bold">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.price)}</p>
-                                                    {product.stock > 0 ? (
-                                                        <span className="text-[10px] text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-1.5 py-0.5 rounded-full">Em stock</span>
-                                                    ) : (
+                                                    {product.stock === 0 ? (
                                                         <span className="text-[10px] text-red-500 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded-full">Esgotado</span>
-                                                    )}
+                                                    ) : product.stock <= 3 ? (
+                                                        <span className="text-[10px] px-1.5 py-0.5 rounded-full text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/30">
+                                                            Últimas unidades
+                                                        </span>
+                                                    ) : null}
                                                 </div>
                                             </div>
                                             <ArrowRight size={14} className="text-gray-300 group-hover/item:text-primary opacity-0 group-hover/item:opacity-100 transition-all -translate-x-2 group-hover/item:translate-x-0" />

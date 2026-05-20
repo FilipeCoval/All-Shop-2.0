@@ -3,5 +3,8 @@
   "description": "A sua loja virtual completa para eletrônicos e gadgets, com os melhores preços da Europa.",
   "requestFramePermissions": [
     "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]
 }
