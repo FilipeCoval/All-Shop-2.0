@@ -11,7 +11,7 @@ const About: React.FC = () => {
          <div className="container mx-auto px-4 relative z-10 text-center">
             <h1 className="text-4xl md:text-5xl font-bold mb-4">Sobre a All-Shop</h1>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-                Especialistas em tecnologia que simplifica a sua vida.
+                Especialistas em tecnologia que simplifica a sua vida!.
             </p>
          </div>
       </div>
