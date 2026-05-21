@@ -94,8 +94,11 @@ export const sendMessageToGemini = async (message: string, currentProducts: Prod
     chatHistory.push({ role: 'model', parts: [{ text: reply }] });
 
     return reply;
-  } catch (error) {
-    console.error(error);
+  } catch (error: any) {
+    console.error("Gemini Chat Error:", error);
+    if (error?.status === 429) {
+        return "Desculpe, a nossa assistente está temporariamente indisponível devido a muita procura. Por favor, tente novamente mais tarde.";
+    }
     return "Tive um pequeno lapso. Pode repetir a pergunta?";
   }
 };
@@ -134,8 +137,11 @@ export const getInventoryAnalysis = async (products: InventoryProduct[], userPro
         });
 
         return result.text || "Não foi possível gerar uma análise. Tente ser mais específico.";
-    } catch (e) {
+    } catch (e: any) {
         console.error("Gemini Analysis Error:", e);
+        if (e?.status === 429) {
+            return "A análise de stock está temporariamente indisponível. Tente novamente mais tarde.";
+        }
         return "Ocorreu um erro ao comunicar com o serviço de IA. Verifique a consola para mais detalhes.";
     }
 };
@@ -189,7 +195,7 @@ export const extractSerialNumberFromImage = async (base64Image: string): Promise
         return text.replace(/[^a-zA-Z0-9\-\/]/g, '');
     } catch (error) {
         console.error("Gemini OCR Error:", error);
-        throw error;
+        return null; // Return null instead of throwing
     }
 };
 
@@ -221,9 +227,9 @@ export const generateProductContent = async (name: string, category: string): Pr
         const cleanedJson = jsonText.replace(/```(?:json)?\n?|\n?```/g, '').trim();
         
         return JSON.parse(cleanedJson);
-    } catch (e) {
+    } catch (e: any) {
         console.error("Gemini Content Gen Error:", e);
-        return null;
+        return null; // Return null instead of throwing
     }
 };
 

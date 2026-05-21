@@ -85,4 +85,27 @@ export const LOYALTY_REWARDS = [
 
 // LISTA LIMPA: Os produtos antigos foram removidos para evitar confusão.
 // A loja carrega tudo da Firebase.
-export const INITIAL_PRODUCTS: Product[] = [];
+export const INITIAL_PRODUCTS: Product[] = [
+    {
+        id: 1,
+        name: "Produto de Demonstração 1",
+        category: "Acessórios",
+        price: 19.99,
+        image: "https://via.placeholder.com/300?text=Produto+1",
+        description: "Este é um produto de demonstração, carregado automaticamente devido a falha na ligação à base de dados.",
+        stock: 5,
+        features: ["Qualidade superior", "Design moderno"],
+        isPremium: false
+    },
+    {
+        id: 2,
+        name: "Produto de Demonstração 2",
+        category: "Audio",
+        price: 49.90,
+        image: "https://via.placeholder.com/300?text=Produto+2",
+        description: "Outro produto de demonstração para garantir o funcionamento do catálogo.",
+        stock: 12,
+        features: ["Som imersivo", "Bluetooth 5.0"],
+        isPremium: true
+    }
+];
