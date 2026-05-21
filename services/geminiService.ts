@@ -74,7 +74,7 @@ export const sendMessageToGemini = async (message: string, currentProducts: Prod
     }));
 
     const result = await getAI().models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: [
             ...formattedHistory,
             {
@@ -129,7 +129,7 @@ export const getInventoryAnalysis = async (products: InventoryProduct[], userPro
           `;
 
         const result = await getAI().models.generateContent({ 
-           model: 'gemini-2.5-pro',
+           model: 'gemini-3-flash-preview',
            contents: prompt 
         });
 
@@ -158,7 +158,7 @@ export const extractSerialNumberFromImage = async (base64Image: string): Promise
         }
 
         const result = await getAI().models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: [
               {
                 role: 'user',
@@ -210,7 +210,7 @@ export const generateProductContent = async (name: string, category: string): Pr
           `;
       
         const result = await getAI().models.generateContent({ 
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             contents: prompt 
         });
 
