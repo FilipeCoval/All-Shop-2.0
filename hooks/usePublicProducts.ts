@@ -19,11 +19,22 @@ export const usePublicProducts = () => {
 
   useEffect(() => {
     let isActive = true;
+    let loadingTimeout: NodeJS.Timeout;
+
+    // Timeout de segurança: Se em 5 segundos não carregar, assume falha.
+    loadingTimeout = setTimeout(() => {
+        if (isActive && loading) {
+            console.warn("Timeout ao carregar produtos do Firebase.");
+            setProducts(INITIAL_PRODUCTS);
+            setLoading(false);
+        }
+    }, 5000);
 
     // Acede à coleção pública 'products_public'
     const unsubscribe = db.collection('products_public').onSnapshot(
       (snapshot) => {
         if (!isActive) return;
+        clearTimeout(loadingTimeout);
         
         const items: Product[] = [];
         snapshot.forEach((doc) => {
@@ -56,6 +67,7 @@ export const usePublicProducts = () => {
       },
       (err) => {
         console.warn("A usar produtos de fallback devido a erro:", err);
+        clearTimeout(loadingTimeout);
         if (isActive) {
             setProducts(INITIAL_PRODUCTS);
             setLoading(false);
@@ -65,6 +77,7 @@ export const usePublicProducts = () => {
 
     return () => {
         isActive = false;
+        clearTimeout(loadingTimeout);
         unsubscribe();
     };
   }, []);
