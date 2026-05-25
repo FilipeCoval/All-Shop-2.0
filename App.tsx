@@ -34,7 +34,7 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
 }
 
 import { Smartphone, Landmark, Banknote, Search, Loader2, Sun, Moon, Bell, X } from 'lucide-react';
-import { Maintenance } from './src/components/Maintenance';
+
 import Header from './components/Header';
 import CartDrawer from './components/CartDrawer';
 import MobileMenu from './components/MobileMenu'; 
@@ -72,7 +72,7 @@ import { trackVisit } from './services/analyticsService';
 const Dashboard = lazy(() => import('./components/Dashboard'));
 
 const App: React.FC = () => {
-  const SHOW_MAINTENANCE = true;
+
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -913,10 +913,6 @@ const App: React.FC = () => {
               <Loader2 className="animate-spin text-primary" size={32} />
           </div>
       );
-  }
-
-  if (SHOW_MAINTENANCE) {
-    return <Maintenance />;
   }
 
   return (
