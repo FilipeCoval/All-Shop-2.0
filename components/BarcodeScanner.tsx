@@ -14,6 +14,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onCodeSubmit, onClose, 
     const [error, setError] = useState<string | null>(null);
     const [isTorchOn, setIsTorchOn] = useState(false);
     const [manualCode, setManualCode] = useState('');
+    const [isManualEntryVisible, setIsManualEntryVisible] = useState(false);
     const [zoom, setZoom] = useState(1);
     const [maxZoom, setMaxZoom] = useState(1);
     const [hasZoom, setHasZoom] = useState(false);
@@ -193,10 +194,14 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onCodeSubmit, onClose, 
                         </div>}
                     </div>
 
-                    <div className="absolute bottom-4 right-4 z-[60]">
+                    <div className="absolute bottom-4 right-4 z-[60] flex flex-col gap-2">
                         <button onClick={handleAiScan} disabled={isAiProcessing} className="bg-purple-600 hover:bg-purple-700 text-white p-3 rounded-full shadow-lg border-2 border-white/20 flex items-center gap-2 transition-all active:scale-90 disabled:opacity-50">
                             {isAiProcessing ? <BrainCircuit size={24} className="animate-pulse" /> : <Camera size={24} />} 
                             <span className="text-xs font-bold hidden sm:inline">IA Scan</span>
+                        </button>
+                        <button onClick={() => setIsManualEntryVisible(!isManualEntryVisible)} className="bg-white/10 hover:bg-white/20 text-white p-3 rounded-full shadow-lg border-2 border-white/20 flex items-center gap-2 transition-all active:scale-90">
+                            <KeyIcon size={24} />
+                            <span className="text-xs font-bold hidden sm:inline">S/N Manual</span>
                         </button>
                     </div>
 
@@ -223,11 +228,15 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onCodeSubmit, onClose, 
                     </div>
                 </div>
 
-                <div className="text-center text-gray-400 text-xs font-bold my-6">OU DIGITE MANUALMENTE</div>
-                <form onSubmit={handleManualSubmit} className="flex gap-2">
-                    <input type="tel" value={manualCode} onChange={(e) => setManualCode(e.target.value)} placeholder="Digite o código aqui" className="flex-1 bg-white/5 border border-white/20 text-white rounded-lg px-4 py-3 text-center tracking-widest focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"/>
-                    <button type="submit" className="bg-indigo-600 text-white font-bold px-4 rounded-lg hover:bg-indigo-700 transition-colors"><Send size={20} /></button>
-                </form>
+                {isManualEntryVisible && (
+                    <>
+                        <div className="text-center text-white text-xs font-bold my-6 uppercase tracking-widest">Ou introdução manual</div>
+                        <form onSubmit={handleManualSubmit} className="flex gap-2">
+                            <input type="text" value={manualCode} onChange={(e) => setManualCode(e.target.value)} placeholder="Inserir S/N ou Código manualmente" className="flex-1 bg-white/10 border border-white/30 text-white rounded-xl px-4 py-3 text-center tracking-widest focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all placeholder:text-gray-400 placeholder:text-xs"/>
+                            <button type="submit" className="bg-indigo-600 text-white font-bold px-5 rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-900/20"><Send size={20} /></button>
+                        </form>
+                    </>
+                )}
             </div>
         </div>
     );
