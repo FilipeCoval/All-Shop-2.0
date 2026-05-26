@@ -62,7 +62,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const { reservations } = useStockReservations();
   const { categories: storeCategories } = useStoreCategories();
   
-  const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'coupons' | 'clients' | 'support' | 'marketing' | 'reports' | 'store_products' | 'imports' | 'catalog' | 'categories'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'coupons' | 'clients' | 'support' | 'marketing' | 'reports' | 'store_products' | 'imports' | 'catalog' | 'categories' | 'backups'>('inventory');
+  const [isSyncingAll, setIsSyncingAll] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<{current: string, progress: number} | null>(null);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
@@ -147,6 +149,51 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   // Manual Order Modal State
   const [isManualOrderModalOpen, setIsManualOrderModalOpen] = useState(false);
   
+  const handleSyncAllData = async () => {
+    if (!window.confirm("Esta ação irá enviar TODOS os dados atuais do Firebase para o Supabase. Deseja continuar?")) return;
+    
+    setIsSyncingAll(true);
+    setSyncStatus({ current: 'Iniciando sincronização...', progress: 0 });
+
+    try {
+      // 1. Sync Products (Catalog)
+      setSyncStatus({ current: 'Sincronizando Catálogo de produtos...', progress: 10 });
+      const productsSnap = await getDocs(collection(modularDb, 'products_public'));
+      const productItems = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      for (let i = 0; i < productItems.length; i++) {
+        await supabaseSync.saveProduct(productItems[i]);
+        setSyncStatus({ current: `Sincronizando Produtos: ${i + 1}/${productItems.length}`, progress: 10 + (Math.round((i / productItems.length) * 30)) });
+      }
+
+      // 2. Sync Users
+      setSyncStatus({ current: 'Sincronizando Clientes...', progress: 40 });
+      const usersSnap = await getDocs(collection(modularDb, 'users'));
+      const userItems = usersSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserType));
+      for (let i = 0; i < userItems.length; i++) {
+        await supabaseSync.saveUser(userItems[i]);
+        setSyncStatus({ current: `Sincronizando Clientes: ${i + 1}/${userItems.length}`, progress: 40 + (Math.round((i / userItems.length) * 30)) });
+      }
+
+      // 3. Sync Orders
+      setSyncStatus({ current: 'Sincronizando Encomendas...', progress: 70 });
+      const ordersSnap = await getDocs(collection(modularDb, 'orders'));
+      const orderItems = ordersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+      for (let i = 0; i < orderItems.length; i++) {
+        await supabaseSync.saveOrder(orderItems[i]);
+        setSyncStatus({ current: `Sincronizando Encomendas: ${i + 1}/${orderItems.length}`, progress: 70 + (Math.round((i / orderItems.length) * 30)) });
+      }
+
+      setSyncStatus({ current: 'Sincronização concluída com sucesso!', progress: 100 });
+      setTimeout(() => setSyncStatus(null), 3000);
+    } catch (error) {
+      console.error("Erro na sincronização manual:", error);
+      alert("Erro ao sincronizar dados. Verifique a consola.");
+      setSyncStatus(null);
+    } finally {
+      setIsSyncingAll(false);
+    }
+  };
+
   const [salesSearchTerm, setSalesSearchTerm] = useState('');
   const [detailsModalData, setDetailsModalData] = useState<{ title: string; data: any[]; columns: { header: string; accessor: string | ((item: any) => React.ReactNode); }[]; total: number } | null>(null);
   const [isPublicIdEditable, setIsPublicIdEditable] = useState(false);
@@ -1230,6 +1277,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
     { id: 'reports', label: 'Relatórios', icon: BarChart2 },
     { id: 'imports', label: 'Importações', icon: Truck },
     { id: 'categories', label: 'Categorias', icon: Layers },
+    { id: 'backups', label: 'Backups', icon: Database },
   ];
 
   return (
@@ -1355,6 +1403,67 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
             
             <div className="container mx-auto px-2 md:px-4 py-4 md:py-8">
         {/* ... Tab Contents ... */}
+        {activeTab === 'backups' && (
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-slate-800">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            <Database className="text-indigo-500" />
+                            Gestão de Backups & Segurança
+                        </h2>
+                        <p className="text-gray-500 dark:text-gray-400 mt-1">Sincronize os dados do Firebase com o Supabase para redundância offline.</p>
+                    </div>
+                    <button 
+                        onClick={handleSyncAllData}
+                        disabled={isSyncingAll}
+                        className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
+                    >
+                        {isSyncingAll ? <Loader2 className="animate-spin" size={20} /> : <UploadCloud size={20} />}
+                        {isSyncingAll ? 'Sincronizando...' : 'Sincronizar Tudo agora'}
+                    </button>
+                </div>
+
+                {syncStatus && (
+                    <div className="mb-8 p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800 rounded-xl">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{syncStatus.current}</span>
+                            <span className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{syncStatus.progress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                            <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${syncStatus.progress}%` }}
+                                className="bg-indigo-500 h-full"
+                            />
+                        </div>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="p-4 border border-gray-100 dark:border-slate-800 rounded-xl bg-gray-50/50 dark:bg-slate-800/50">
+                        <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-2">
+                            <ShieldCheck size={18} className="text-green-500" />
+                            Estado da Cópia
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">O Supabase atua como uma base de dados secundária. Sempre que cria uma encomenda ou altera um produto, uma cópia é enviada automaticamente.</p>
+                    </div>
+                    <div className="p-4 border border-gray-100 dark:border-slate-800 rounded-xl bg-gray-50/50 dark:bg-slate-800/50">
+                        <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-2">
+                            <Zap size={18} className="text-amber-500" />
+                            Alta Disponibilidade
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Em caso de falha no Firebase, o site pode ser configurado para alternar automaticamente para os dados do backup.</p>
+                    </div>
+                    <div className="p-4 border border-gray-100 dark:border-slate-800 rounded-xl bg-gray-50/50 dark:bg-slate-800/50">
+                        <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-2">
+                            <Lock size={18} className="text-blue-500" />
+                            Segurança Total
+                        </h3>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Os seus dados estão agora protegidos em duas infraestruturas independentes (Google e Supabase/Vercel).</p>
+                    </div>
+                </div>
+            </div>
+        )}
         {activeTab === 'catalog' && (
             <CatalogTab 
                 products={publicProductsList}
