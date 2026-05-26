@@ -330,6 +330,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                       });
                       
                       setShowToast(order); 
+
+                      // Native Browser Notification
+                      if ("Notification" in window) {
+                          if (Notification.permission === "granted") {
+                              new Notification("Nova Encomenda!", {
+                                  body: `Encomenda #${order.id.slice(-5)} de ${order.shippingInfo.name || 'Cliente'} - Estado: ${order.status}`,
+                              });
+                          } else if (Notification.permission !== "denied") {
+                              Notification.requestPermission();
+                          }
+                      }
                       
                       // Tocar som se ativado
                       if (isSoundEnabled) {
