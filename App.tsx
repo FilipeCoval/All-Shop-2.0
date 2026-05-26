@@ -108,16 +108,27 @@ const App: React.FC = () => {
   }, [isDarkMode]);
 
   useEffect(() => {
-      trackVisit();
-      
-      // Lucky Wheel Logic
-      /* 
-      const hasSpun = localStorage.getItem('lucky_wheel_spun');
-      if (!hasSpun) {
-          const timer = setTimeout(() => setShowLuckyWheel(true), 3000); // Show after 3s
-          return () => clearTimeout(timer);
-      }
-      */
+    trackVisit();
+    
+    // Registrar o Service Worker para Push Notifications
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/firebase-messaging-sw.js')
+        .then(registration => {
+          console.log('SW registration successful:', registration.scope);
+        })
+        .catch(err => {
+          console.error('SW registration failed:', err);
+        });
+    }
+
+    // Lucky Wheel Logic
+    /* 
+    const hasSpun = localStorage.getItem('lucky_wheel_spun');
+    if (!hasSpun) {
+        const timer = setTimeout(() => setShowLuckyWheel(true), 3000); // Show after 3s
+        return () => clearTimeout(timer);
+    }
+    */
   }, []);
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);

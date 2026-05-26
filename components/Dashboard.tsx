@@ -306,9 +306,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   useEffect(() => { 
       if(!isAdmin) return; 
       
-      const mountTime = Date.now(); 
+      let isInitialLoad = true;
       const ordersQuery = query(collection(modularDb, 'orders'), orderBy('date', 'desc'), limit(10));
-        const unsubscribe = onSnapshot(ordersQuery, snapshot => { 
+      const unsubscribe = onSnapshot(ordersQuery, snapshot => { 
+          if (isInitialLoad) {
+              isInitialLoad = false;
+              return;
+          }
+
           snapshot.docChanges().forEach(change => { 
                 const order = change.doc.data() as Order;
                 
@@ -317,7 +322,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                 // 2. Notificar se for uma encomenda que foi AGORA confirmada pelo cliente
                 const isNowConfirmed = change.type === 'modified' && order.status === 'Processamento';
 
-                if ((isNewReal || isNowConfirmed) && new Date(order.date).getTime() > (mountTime - 2000)) {
+                if (isNewReal || isNowConfirmed) {
                       // Evitar duplicados no array de notificações da UI
                       setNotifications(prev => {
                           if (prev.some(n => n.id === order.id)) return prev;

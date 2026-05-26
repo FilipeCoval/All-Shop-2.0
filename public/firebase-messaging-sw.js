@@ -5,12 +5,12 @@ importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js');
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCayoyBpHeO60v7VHUagX_qAHZ7xIyitpE",
+  apiKey: "AIzaSyBqO_Lp3RgeyUypcjECUzUFZ-wGQ9g05vA",
   authDomain: "allshop-store-70851.firebaseapp.com",
   projectId: "allshop-store-70851",
   storageBucket: "allshop-store-70851.firebasestorage.app",
   messagingSenderId: "1066114053908",
-  appId: "1:1066114053908:web:34f8ae5e231a5c73f0f401"
+  appId: "1:1066114053908:web:919915ef00ad3627f0f401"
 };
 
 firebase.initializeApp(firebaseConfig);
