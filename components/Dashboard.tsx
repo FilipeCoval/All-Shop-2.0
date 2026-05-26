@@ -63,6 +63,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const { reservations } = useStockReservations();
   const { categories: storeCategories } = useStoreCategories();
   
+  const notifiedOrders = useRef(new Set<string>());
+
   const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'coupons' | 'clients' | 'support' | 'marketing' | 'reports' | 'store_products' | 'imports' | 'catalog' | 'categories' | 'backups'>('inventory');
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{current: string, progress: number} | null>(null);
@@ -308,8 +310,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       
       let isInitialLoad = true;
       const ordersQuery = query(collection(modularDb, 'orders'), orderBy('date', 'desc'), limit(10));
+      
       const unsubscribe = onSnapshot(ordersQuery, snapshot => { 
           if (isInitialLoad) {
+              snapshot.forEach(doc => notifiedOrders.current.add(doc.id));
               isInitialLoad = false;
               return;
           }
@@ -322,7 +326,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                 // 2. Notificar se for uma encomenda que foi AGORA confirmada pelo cliente
                 const isNowConfirmed = change.type === 'modified' && order.status === 'Processamento';
 
-                if (isNewReal || isNowConfirmed) {
+                if ((isNewReal || isNowConfirmed) && !notifiedOrders.current.has(order.id)) {
+                      notifiedOrders.current.add(order.id);
+                      
                       // Evitar duplicados no array de notificações da UI
                       setNotifications(prev => {
                           if (prev.some(n => n.id === order.id)) return prev;
