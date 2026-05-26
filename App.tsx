@@ -815,6 +815,18 @@ const App: React.FC = () => {
               // Supabase Backup Sync
               supabaseSync.saveOrder(newOrder);
 
+              // Sync products whose stock was updated
+              newOrder.items.forEach(async (item: any) => {
+                  try {
+                      const productDoc = await getDoc(doc(modularDb, 'products_public', item.productId.toString()));
+                      if (productDoc.exists()) {
+                          supabaseSync.saveProduct({ id: item.productId, ...productDoc.data() } as Product);
+                      }
+                  } catch (e) {
+                      console.error("Erro ao sincronizar produto pós-checkout:", e);
+                  }
+              });
+
               // Notificar Admins via Push (Nova Funcionalidade)
               fetch('/api/send-push', {
                   method: 'POST',

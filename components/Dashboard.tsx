@@ -877,6 +877,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               operationsInBatch++;
               totalUpdated++;
               
+              // Sync to Supabase
+              supabaseSync.saveProduct({ ...publicData, ...updateData });
+
               if (operationsInBatch >= 500) {
                   batches.push(currentBatch);
                   currentBatch = writeBatch(modularDb);
@@ -1034,6 +1037,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
           if (selectedOrderDetails?.id === orderId) { 
               setSelectedOrderDetails(prev => prev ? { ...prev, ...updates } : null); 
           } 
+          
+          // Sync updated order to Supabase
+          supabaseSync.saveOrder({ ...currentOrder, ...updates });
       } catch (error) { 
           console.error("Erro ao mudar estado:", error); 
           alert("Erro ao atualizar estado da encomenda."); 
@@ -1128,7 +1134,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
           alert("Erro ao apagar. Esta encomenda pode estar vinculada a outros registos."); 
       } 
   };
-  const handleUpdateTracking = async (orderId: string, tracking: string) => { try { await updateDoc(doc(modularDb, 'orders', orderId), { trackingNumber: tracking }); if (selectedOrderDetails) setSelectedOrderDetails({...selectedOrderDetails, trackingNumber: tracking}); } catch (e) { alert("Erro ao gravar rastreio"); } };
+  const handleUpdateTracking = async (orderId: string, tracking: string) => { 
+      try { 
+          await updateDoc(doc(modularDb, 'orders', orderId), { trackingNumber: tracking }); 
+          if (selectedOrderDetails) {
+              const updatedOrder = {...selectedOrderDetails, trackingNumber: tracking};
+              setSelectedOrderDetails(updatedOrder);
+              supabaseSync.saveOrder(updatedOrder);
+          } else {
+              // Try to find the order in allOrders to sync
+              const order = allOrders.find(o => o.id === orderId);
+              if (order) supabaseSync.saveOrder({ ...order, trackingNumber: tracking });
+          }
+      } catch (e) { 
+          alert("Erro ao gravar rastreio"); 
+      } 
+  };
   const handleAddUnit = (code: string) => { if (modalUnits.some(u => u.id === code)) return alert("Este código já foi adicionado."); setModalUnits(prev => [...prev, { id: code, status: 'AVAILABLE', addedAt: new Date().toISOString() }]); };
   const handleRemoveUnit = (id: string) => setModalUnits(prev => prev.filter(u => u.id !== id));
   const handleGenerateCodes = () => { const newCodes: string[] = []; for(let i=0; i < generateQty; i++) { const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase(); newCodes.push(`INT-${randomPart}`); } setGeneratedCodes(prev => [...prev, ...newCodes]); if (isModalOpen) { const newUnits = newCodes.map(code => ({ id: code, status: 'AVAILABLE' as const, addedAt: new Date().toISOString() })); setModalUnits(prev => [...prev, ...newUnits]); } };
@@ -1864,7 +1885,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       
       <ProfitCalculatorModal isOpen={isCalculatorOpen} onClose={() => setIsCalculatorOpen(false)} />
       {isXRayModalOpen && <OrderXRayModal onClose={() => setIsXRayModalOpen(false)} />}
-      <ManualOrderModal isOpen={isManualOrderModalOpen} onClose={() => setIsManualOrderModalOpen(false)} publicProducts={publicProductsList} inventoryProducts={products} onConfirm={async (order, deductions) => { try { await setDoc(doc(modularDb, 'orders', order.id), order); for (const ded of deductions) { const product = products.find(p => p.id === ded.batchId); if (product) { const newSold = (product.quantitySold || 0) + ded.quantity; const status: ProductStatus = newSold >= product.quantityBought ? 'SOLD' : 'PARTIAL'; await updateProduct(product.id, { quantitySold: newSold, status: status, salesHistory: [...(product.salesHistory || []), ded.saleRecord] }); } } setIsManualOrderModalOpen(false); alert("Encomenda manual registada com sucesso!"); setTimeout(() => handleSyncPublicStock(true), 1000); } catch (error) { console.error("Erro ao criar encomenda manual:", error); alert("Erro ao processar a encomenda."); } }} />
+      <ManualOrderModal isOpen={isManualOrderModalOpen} onClose={() => setIsManualOrderModalOpen(false)} publicProducts={publicProductsList} inventoryProducts={products} onConfirm={async (order, deductions) => { 
+          try { 
+              await setDoc(doc(modularDb, 'orders', order.id), order); 
+              // Sync to Supabase
+              supabaseSync.saveOrder(order);
+              
+              for (const ded of deductions) { 
+                  const product = products.find(p => p.id === ded.batchId); 
+                  if (product) { 
+                      const newSold = (product.quantitySold || 0) + ded.quantity; 
+                      const status: ProductStatus = newSold >= product.quantityBought ? 'SOLD' : 'PARTIAL'; 
+                      await updateProduct(product.id, { quantitySold: newSold, status: status, salesHistory: [...(product.salesHistory || []), ded.saleRecord] }); 
+                  } 
+              } 
+              setIsManualOrderModalOpen(false); 
+              alert("Encomenda manual registada com sucesso!"); 
+              setTimeout(() => handleSyncPublicStock(true), 1000); 
+          } catch (error) { 
+              console.error("Erro ao criar encomenda manual:", error); 
+              alert("Erro ao processar a encomenda."); 
+          } 
+      }} />
       {selectedOrderForFulfillment && (
           <OrderFulfillmentModal 
               order={selectedOrderForFulfillment}
@@ -1890,6 +1932,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
             // Ensure id is stored in the document data, as it's required for queries and loading
             cleanProduct.id = id;
             await setDoc(doc(modularDb, 'products_public', id.toString()), cleanProduct, { merge: true });
+            
+            // Sync to Supabase
+            supabaseSync.saveProduct(cleanProduct);
+
             setPublicProductsList(prev => {
               const exists = prev.find(p => p.id === id);
               if (exists) return prev.map(p => p.id === id ? { ...updatedProduct, id } : p);
@@ -2493,12 +2539,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
             onUpdateUser={async (userId, data) => {
                 try {
                     await updateDoc(doc(modularDb, 'users', userId), data as any);
+                    const updatedUser = selectedUserDetails ? { ...selectedUserDetails, ...data } : null;
+                    if (updatedUser) supabaseSync.saveUser(updatedUser as any);
+                    
                     setAllUsers(prev => prev.map(u => u.uid === userId ? { ...u, ...data } : u));
                     setSelectedUserDetails(prev => prev ? { ...prev, ...data } : null);
                     alert("Guardado com sucesso!");
                 } catch(e) {
                     console.error(e);
-                    alert("Erro ao guardar no Firebase.");
+                    alert("Erro ao guardar.");
                 }
             }}
         />
