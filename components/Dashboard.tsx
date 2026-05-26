@@ -36,6 +36,7 @@ import CategoriesTab from './CategoriesTab';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 import { notifyNewOrder } from '../services/telegramNotifier';
 import { supabaseSync } from '../services/supabaseSync';
+import { isSupabaseEnabled } from '../services/supabaseConfig';
 import OrderXRayModal from './OrderXRayModal';
 
 // --- HELPERS ---
@@ -150,6 +151,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const [isManualOrderModalOpen, setIsManualOrderModalOpen] = useState(false);
   
   const handleSyncAllData = async () => {
+    if (!isSupabaseEnabled()) {
+        alert("O Supabase não está configurado. Adicione as chaves VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nos segredos antes de sincronizar.");
+        return;
+    }
     if (!window.confirm("Esta ação irá enviar TODOS os dados atuais do Firebase para o Supabase. Deseja continuar?")) return;
     
     setIsSyncingAll(true);
@@ -159,7 +164,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       // 1. Sync Products (Catalog)
       setSyncStatus({ current: 'Sincronizando Catálogo de produtos...', progress: 10 });
       const productsSnap = await getDocs(collection(modularDb, 'products_public'));
-      const productItems = productsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      
+      const productItems = productsSnap.docs.map(doc => {
+          const data = doc.data();
+          const docIdNum = parseInt(doc.id, 10);
+          const productId = (data.id !== undefined && data.id !== null) ? Number(data.id) : (isNaN(docIdNum) ? null : docIdNum);
+          
+          if (productId === null) {
+              console.warn(`Sincronização: Documento ${doc.id} ignorado por falta de ID numérico.`);
+              return null;
+          }
+          return { ...data, id: productId } as Product;
+      }).filter(p => p !== null) as Product[];
+
       for (let i = 0; i < productItems.length; i++) {
         await supabaseSync.saveProduct(productItems[i]);
         setSyncStatus({ current: `Sincronizando Produtos: ${i + 1}/${productItems.length}`, progress: 10 + (Math.round((i / productItems.length) * 30)) });

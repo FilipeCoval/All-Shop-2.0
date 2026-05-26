@@ -3,6 +3,7 @@ import { Order, Product, User } from '../types';
 
 export const supabaseSync = {
   async saveOrder(order: Order) {
+    if (!supabase) return;
     try {
       const { error } = await supabase
         .from('orders')
@@ -24,6 +25,7 @@ export const supabaseSync = {
   },
 
   async saveUser(user: User | any) {
+    if (!supabase) return;
     try {
       const { error } = await supabase
         .from('users')
@@ -44,6 +46,7 @@ export const supabaseSync = {
   },
 
   async saveProduct(product: Product) {
+    if (!supabase) return;
     try {
       const { error } = await supabase
         .from('products')
