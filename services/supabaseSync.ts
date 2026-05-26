@@ -15,7 +15,7 @@ export const supabaseSync = {
           total: order.total,
           items: order.items,
           shipping_info: order.shippingInfo,
-          payment_info: order.paymentInfo,
+          payment_info: order.shippingInfo.paymentMethod,
           raw_data: order // Backup full object
         });
       if (error) console.error('Supabase Sync Error (Order):', error);

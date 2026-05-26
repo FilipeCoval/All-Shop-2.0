@@ -308,13 +308,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       
       const mountTime = Date.now(); 
       const ordersQuery = query(collection(modularDb, 'orders'), orderBy('date', 'desc'), limit(10));
-       const unsubscribe = onSnapshot(ordersQuery, snapshot => { 
+        const unsubscribe = onSnapshot(ordersQuery, snapshot => { 
           snapshot.docChanges().forEach(change => { 
-              if (change.type === 'added') { 
-                  const order = change.doc.data() as Order; 
-                  // Só notifica encomendas criadas depois de abrir o dashboard (margem de 2s) e que não estejam Pendentes
-                  if (new Date(order.date).getTime() > (mountTime - 2000) && order.status !== 'Pendente') { 
-                      setNotifications(prev => [order, ...prev]); 
+                const order = change.doc.data() as Order;
+                
+                // 1. Notificar se for encomenda NOVA e já não for pendente (ex: manual)
+                const isNewReal = change.type === 'added' && order.status !== 'Pendente';
+                // 2. Notificar se for uma encomenda que foi AGORA confirmada pelo cliente
+                const isNowConfirmed = change.type === 'modified' && order.status === 'Processamento';
+
+                if ((isNewReal || isNowConfirmed) && new Date(order.date).getTime() > (mountTime - 2000)) {
+                      // Evitar duplicados no array de notificações da UI
+                      setNotifications(prev => {
+                          if (prev.some(n => n.id === order.id)) return prev;
+                          return [order, ...prev];
+                      });
+                      
                       setShowToast(order); 
                       
                       // Tocar som se ativado
@@ -325,8 +334,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                       }
 
                       setTimeout(() => setShowToast(null), 8000); 
-                  } 
-              } 
+                } 
           }); 
       }); 
 

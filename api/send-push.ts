@@ -48,6 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             // Lista de emails de admin (Sincronizada com firestore.rules)
             const ADMIN_EMAILS = [
                 "filipe_coval_90@hotmail.com", 
+                "filipecoval90@gmail.com",
                 "mcpoleca@gmail.com", 
                 "filipe@teste.com"
             ].map(e => e.toLowerCase());
