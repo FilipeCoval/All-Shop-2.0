@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import {  db } from '../services/firebaseConfig';
 import { InventoryProduct, Product, ProductVariant, Order } from '../types';
 import { calculateAvailableStock } from '../services/stockService';
+import { supabaseSync } from '../services/supabaseSync';
 
 export const useInventory = (isAdmin: boolean = false) => {
   const [products, setProducts] = useState<InventoryProduct[]>([]);
@@ -133,6 +134,12 @@ export const useInventory = (isAdmin: boolean = false) => {
 
           await publicRef.set(updateData, { merge: true });
           console.log(`Stock sincronizado para Produto ${publicId}.`);
+
+          // Supabase Backup Sync
+          const finalPublicSnap = await publicRef.get();
+          if (finalPublicSnap.exists) {
+            supabaseSync.saveProduct({ id: publicId, ...finalPublicSnap.data() } as Product);
+          }
 
       } catch (err) {
           console.error("Erro ao sincronizar stock público automaticamente:", err);

@@ -64,6 +64,7 @@ import { usePublicProducts } from './hooks/usePublicProducts';
 import { useStockReservations } from './hooks/useStockReservations';
 import { usePendingOrders } from './hooks/usePendingOrders';
 import { notifyNewOrder } from './services/telegramNotifier';
+import { supabaseSync } from './services/supabaseSync';
 import LoyaltyPage from './components/LoyaltyPage';
 import { trackVisit } from './services/analyticsService';
 
@@ -450,7 +451,10 @@ const App: React.FC = () => {
     setWishlist(newWishlist);
     localStorage.setItem('wishlist', JSON.stringify(newWishlist));
     if (user?.uid) {
-        try { await updateDoc(doc(modularDb, "users", user.uid), { wishlist: newWishlist }); }
+        try { 
+            await updateDoc(doc(modularDb, "users", user.uid), { wishlist: newWishlist }); 
+            supabaseSync.saveUser({ ...user, wishlist: newWishlist });
+        }
         catch (error) { console.debug("Wishlist update restricted."); }
     }
   };
@@ -672,7 +676,8 @@ const App: React.FC = () => {
     if (user?.uid) {
         // FIX 1: OPTIMISTIC UI UPDATE
         // Atualiza o estado local IMEDIATAMENTE para a interface reagir
-        setUser(prev => prev ? { ...prev, ...updatedData } : null);
+        const updatedUser = user ? { ...user, ...updatedData } : null;
+        setUser(updatedUser);
 
         // FIX 2: Sanitizar dados antes de enviar ao Firebase
         const cleanData = JSON.parse(JSON.stringify(updatedData));
@@ -681,6 +686,11 @@ const App: React.FC = () => {
             .catch(err => {
                 console.error("Update failed, rolling back UI:", err);
             });
+        
+        // Supabase Backup Sync
+        if (updatedUser) {
+            supabaseSync.saveUser(updatedUser);
+        }
     }
   };
 
@@ -802,6 +812,9 @@ const App: React.FC = () => {
               setCartItems([]);
               notifyNewOrder(newOrder, user ? user.name : newOrder.shippingInfo.name);
               
+              // Supabase Backup Sync
+              supabaseSync.saveOrder(newOrder);
+
               // Notificar Admins via Push (Nova Funcionalidade)
               fetch('/api/send-push', {
                   method: 'POST',

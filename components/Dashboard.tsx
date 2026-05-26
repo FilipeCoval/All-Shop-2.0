@@ -35,6 +35,7 @@ import AnalyticsModal from './AnalyticsModal';
 import CategoriesTab from './CategoriesTab';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 import { notifyNewOrder } from '../services/telegramNotifier';
+import { supabaseSync } from '../services/supabaseSync';
 import OrderXRayModal from './OrderXRayModal';
 
 // --- HELPERS ---
