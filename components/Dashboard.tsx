@@ -64,6 +64,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const { categories: storeCategories } = useStoreCategories();
   
   const notifiedOrders = useRef(new Set<string>());
+  const isInitialLoadRef = useRef(true);
 
   const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'coupons' | 'clients' | 'support' | 'marketing' | 'reports' | 'store_products' | 'imports' | 'catalog' | 'categories' | 'backups'>('inventory');
   const [isSyncingAll, setIsSyncingAll] = useState(false);
@@ -308,13 +309,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   useEffect(() => { 
       if(!isAdmin) return; 
       
-      const isInitialLoad = useRef(true);
       const ordersQuery = query(collection(modularDb, 'orders'), orderBy('date', 'desc'), limit(10));
       
       const unsubscribe = onSnapshot(ordersQuery, snapshot => { 
-          if (isInitialLoad.current) {
+          if (isInitialLoadRef.current) {
               snapshot.forEach(doc => notifiedOrders.current.add(doc.id));
-              isInitialLoad.current = false;
+              isInitialLoadRef.current = false;
               return;
           }
 
