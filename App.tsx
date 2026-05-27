@@ -821,34 +821,41 @@ const App: React.FC = () => {
           
           if (!isAutoSave) {
               setCartItems([]);
-              notifyNewOrder(newOrder, user ? user.name : newOrder.shippingInfo.name);
               
-              // Supabase Backup Sync
-              supabaseSync.saveOrder(newOrder);
-
-              // Sync products whose stock was updated
-              newOrder.items.forEach(async (item: any) => {
+              (async () => {
                   try {
-                      const productDoc = await getDoc(doc(modularDb, 'products_public', item.productId.toString()));
-                      if (productDoc.exists()) {
-                          supabaseSync.saveProduct({ id: item.productId, ...productDoc.data() } as Product);
-                      }
-                  } catch (e) {
-                      console.error("Erro ao sincronizar produto pós-checkout:", e);
-                  }
-              });
+                      await notifyNewOrder(newOrder, user ? user.name : newOrder.shippingInfo.name);
+                      
+                      // Supabase Backup Sync
+                      supabaseSync.saveOrder(newOrder);
 
-              // Notificar Admins via Push (Nova Funcionalidade)
-              fetch('/api/send-push', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      target: 'admins',
-                      title: 'Nova Encomenda! 💰',
-                      body: `Pedido ${newOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(newOrder.total)} recebido de ${newOrder.shippingInfo.name}.`,
-                      link: 'https://www.all-shop.net/#dashboard'
-                  })
-              }).catch(err => console.error("Falha ao enviar push para admins:", err));
+                      // Sync products whose stock was updated
+                      await Promise.all(newOrder.items.map(async (item: any) => {
+                          try {
+                              const productDoc = await getDoc(doc(modularDb, 'products_public', item.productId.toString()));
+                              if (productDoc.exists()) {
+                                  supabaseSync.saveProduct({ id: item.productId, ...productDoc.data() } as Product);
+                              }
+                          } catch (e) {
+                              console.error("Erro ao sincronizar produto pós-checkout:", e);
+                          }
+                      }));
+
+                      // Notificar Admins via Push (Nova Funcionalidade)
+                      await fetch('/api/send-push', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                              target: 'admins',
+                              title: 'Nova Encomenda! 💰',
+                              body: `Pedido ${newOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(newOrder.total)} recebido de ${newOrder.shippingInfo.name}.`,
+                              link: 'https://www.all-shop.net/#dashboard'
+                          })
+                      });
+                  } catch (err) {
+                      console.error("Post-checkout background tasks failed:", err);
+                  }
+              })();
           }
           
           if (user?.uid && !alreadyExists) {
