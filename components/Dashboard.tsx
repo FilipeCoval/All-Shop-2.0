@@ -308,13 +308,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   useEffect(() => { 
       if(!isAdmin) return; 
       
-      let isInitialLoad = true;
+      const isInitialLoad = useRef(true);
       const ordersQuery = query(collection(modularDb, 'orders'), orderBy('date', 'desc'), limit(10));
       
       const unsubscribe = onSnapshot(ordersQuery, snapshot => { 
-          if (isInitialLoad) {
+          if (isInitialLoad.current) {
               snapshot.forEach(doc => notifiedOrders.current.add(doc.id));
-              isInitialLoad = false;
+              isInitialLoad.current = false;
               return;
           }
 
