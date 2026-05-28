@@ -5,7 +5,7 @@ import {
     CheckCircle, Printer, FileText, Heart, ShoppingCart, Truck, XCircle, Award, Gift, 
     ArrowRight, Coins, DollarSign, LayoutDashboard, QrCode, AlertTriangle, Loader2, X, 
     Camera, Home, ChevronDown, ChevronUp, Undo2, MessageSquareWarning,
-    History, Zap, TicketPercent, ShieldAlert, Bot, Sparkles, Headphones, Clock, MessageSquare, Scale, Copy, ExternalLink, Bell, BellOff, Send
+    History, Zap, TicketPercent, ShieldAlert, Bot, Sparkles, Headphones, Clock, MessageSquare, Scale, Copy, ExternalLink, Bell, BellOff, Send, ClipboardEdit
 } from 'lucide-react';
 import { STORE_NAME, LOGO_URL, LOYALTY_TIERS, LOYALTY_REWARDS, sanitizeNote } from '../constants';
 import {   db, storage, requestPushPermission, messaging , modularDb } from '../services/firebaseConfig';
@@ -14,6 +14,7 @@ import { ref, deleteObject, uploadBytes, getDownloadURL, uploadBytesResumable } 
 
 import { cancelOrderItem } from '../services/returnService';
 import LoyaltyPage from './LoyaltyPage';
+import RequestsTab from './RequestsTab';
 
 import SupportTicketModal from './SupportTicketModal';
 import ReturnRequestModal from './ReturnRequestModal';
@@ -31,7 +32,7 @@ interface ClientAreaProps {
   onCheckout?: (order: Order, isAutoSave?: boolean) => Promise<boolean>;
 }
 
-type ActiveTab = 'overview' | 'orders' | 'profile' | 'addresses' | 'wishlist' | 'points' | 'support';
+type ActiveTab = 'overview' | 'orders' | 'profile' | 'addresses' | 'wishlist' | 'points' | 'support' | 'requests';
 
 const formatCurrency = (value: number) => 
   new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
@@ -604,7 +605,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
         <div className="flex flex-col md:flex-row gap-8">
           
           {/* Sidebar */}
-          <aside className="w-full md:w-1/4 space-y-6">
+          <aside className="w-full md:w-1/4 space-y-4">
             <div className="bg-white dark:bg-[#0f172a] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 text-center">
                 <div className="relative inline-block mb-4">
                     <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-gray-50 dark:border-slate-800 shadow-md bg-gray-100 dark:bg-slate-800 mx-auto">
@@ -621,24 +622,25 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                 </div>
             </div>
 
-            <nav className="bg-white dark:bg-[#0f172a] rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden flex flex-col">
+            <nav className="bg-white dark:bg-[#0f172a] rounded-2xl shadow-sm border-none overflow-hidden flex flex-col">
                 {[
                     { id: 'overview', icon: LayoutDashboard, label: 'Visão Geral' },
                     { id: 'profile', icon: UserIcon, label: 'Meu Perfil' },
                     { id: 'orders', icon: Package, label: 'Encomendas' },
                     { id: 'points', icon: Coins, label: 'Loja de Pontos' },
                     { id: 'wishlist', icon: Heart, label: 'Favoritos' },
+                    { id: 'requests', icon: ClipboardEdit, label: 'Pedidos' },
                     { id: 'support', icon: Headphones, label: 'Suporte' }
                 ].map(item => (
                     <button 
                         key={item.id}
                         onClick={() => setActiveTab(item.id as ActiveTab)}
-                        className={`flex items-center gap-3 px-6 py-4 text-sm font-bold transition-colors border-l-4 ${activeTab === item.id ? 'bg-blue-50 dark:bg-blue-900/20 text-primary border-primary' : 'text-gray-600 dark:text-slate-400 border-transparent hover:bg-gray-50 dark:hover:bg-slate-800/50'}`}
+                        className={`flex items-center w-full gap-3 px-6 py-4 text-sm font-bold transition-colors border-l-4 text-left ${activeTab === item.id ? 'bg-blue-50 dark:bg-blue-900/20 text-primary border-primary' : 'text-gray-600 dark:text-slate-400 border-transparent hover:bg-gray-50 dark:hover:bg-slate-800/50'}`}
                     >
-                        <item.icon size={18} /> {item.label}
+                        <item.icon size={item.id === 'requests' ? 23 : 18} /> {item.label}
                     </button>
                 ))}
-                <button onClick={onLogout} className="flex items-center gap-3 px-6 py-4 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-l-4 border-transparent mt-4">
+                <button onClick={onLogout} className="flex items-center w-full gap-3 px-6 py-4 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors border-l-4 border-transparent mt-4 text-left">
                     <LogOut size={18} /> Terminar Sessão
                 </button>
             </nav>
@@ -797,6 +799,16 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                             ))}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* PRODUCT REQUESTS (NOVO) */}
+            {activeTab === 'requests' && (
+                <div className="animate-fade-in space-y-6">
+                    <h2 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-3">
+                        <Package className="text-primary"/> Pedidos de Produtos
+                    </h2>
+                    <RequestsTab user={user} isAdmin={false} />
                 </div>
             )}
 

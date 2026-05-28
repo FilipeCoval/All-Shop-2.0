@@ -69,6 +69,18 @@ service cloud.firestore {
        return (data.get('email', '') is string && data.get('email', '').size() <= 150);
     }
 
+    function isValidProductRequest(data) {
+       return (data.get('userId', '') is string && data.get('userId', '').size() <= 128) &&
+              (data.get('productName', '') is string && data.get('productName', '').size() <= 200) &&
+              (data.get('category', '') is string) &&
+              (data.get('state', '') is string) &&
+              (data.get('urgency', '') is string) &&
+              (data.get('specifications', '') is string) &&
+              (data.get('details', '') is string) &&
+              (data.get('budgetRange', '') is string) &&
+              (data.get('notificationsEnabled', false) is bool);
+    }
+
     function isValidOnlineUser(data) {
       // Allow any type, we just protect who writes it in the rule
       return data.keys().hasAny(["type", "lastActive"]);
@@ -168,6 +180,14 @@ service cloud.firestore {
     match /stock_alerts/{alertId} {
       allow create: if isValidStockAlert(incoming());
       allow read, update, delete: if isAdmin();
+    }
+
+    match /product_requests/{requestId} {
+      allow get: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && isValidProductRequest(incoming()) && incoming().userId == request.auth.uid;
+      allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminComment']));
+      allow delete: if isAdmin();
     }
 
     match /import_shipments/{shipmentId} {

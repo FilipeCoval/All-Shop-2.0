@@ -393,4 +393,22 @@ export interface TicketMessage {
     attachments?: string[];
 }
 
+export interface ProductRequest {
+  id: string;
+  userId: string;
+  productName: string;
+  category: string;
+  state: 'Novo' | 'Semi-novo' | 'Recondicionado' | 'Usado' | 'Qualquer estado';
+  urgency: 'Não tenho pressa' | 'Nos próximos dias' | 'Urgente';
+  specifications: string;
+  details: string;
+  budgetRange: string;
+  referenceLink?: string;
+  status: 'Análise' | 'Concluído' | 'Anulado';
+  adminComment?: string;
+  createdAt: string;
+  photos?: string[];
+  notificationsEnabled: boolean;
+}
+
 export type UserTier = 'Bronze' | 'Prata' | 'Ouro';

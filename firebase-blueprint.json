@@ -141,6 +141,28 @@
        "description": "Stock cache.",
        "type": "object",
        "properties": {}
+    },
+    "ProductRequest": {
+      "title": "Product Request",
+      "description": "User request for a product.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "productName": { "type": "string" },
+        "category": { "type": "string" },
+        "state": { "type": "string" },
+        "urgency": { "type": "string" },
+        "specifications": { "type": "string" },
+        "details": { "type": "string" },
+        "budgetRange": { "type": "string" },
+        "referenceLink": { "type": "string" },
+        "status": { "type": "string" },
+        "adminComment": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "photos": { "type": "array" },
+        "notificationsEnabled": { "type": "boolean" }
+      },
+      "required": ["userId", "productName", "category", "state", "urgency", "specifications", "details", "budgetRange", "status", "createdAt", "notificationsEnabled"]
     }
   },
   "firestore": {
@@ -191,6 +213,10 @@
     "stock_alerts/{alertId}": {
        "schema": "StockAlert",
        "description": "Public can add, only admin reads."
+    },
+    "product_requests/{requestId}": {
+       "schema": "ProductRequest",
+       "description": "User requests for products. Readable by owner and admins."
     },
     "import_shipments/{shipmentId}": { "schema": "ImportShipment", "description": "admin only" },
     "stock_movements/{movementId}": { "schema": "StockMovement", "description": "admin only" },

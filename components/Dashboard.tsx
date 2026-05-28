@@ -38,6 +38,7 @@ import { notifyNewOrder } from '../services/telegramNotifier';
 import { supabaseSync } from '../services/supabaseSync';
 import { isSupabaseEnabled } from '../services/supabaseConfig';
 import OrderXRayModal from './OrderXRayModal';
+import RequestsTab from './RequestsTab';
 
 // --- HELPERS ---
 
@@ -66,7 +67,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const notifiedOrders = useRef(new Set<string>());
   const isInitialLoadRef = useRef(true);
 
-  const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'coupons' | 'clients' | 'support' | 'marketing' | 'reports' | 'store_products' | 'imports' | 'catalog' | 'categories' | 'backups'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'orders' | 'coupons' | 'clients' | 'support' | 'marketing' | 'reports' | 'store_products' | 'imports' | 'catalog' | 'categories' | 'backups' | 'requests'>('inventory');
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{current: string, progress: number} | null>(null);
   
@@ -1338,6 +1339,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
     { id: 'catalog', label: 'Catálogo', icon: Globe },
     { id: 'inventory', label: 'Stock/Lotes', icon: Package },
     { id: 'orders', label: 'Encomendas', icon: ShoppingCart },
+    { id: 'requests', label: 'Pedidos de Produtos', icon: ClipboardEdit },
     { id: 'clients', label: 'Clientes', icon: Users },
     { id: 'support', label: 'Suporte', icon: Headphones },
     { id: 'coupons', label: 'Cupões', icon: TicketPercent },
@@ -1391,7 +1393,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                       setActiveTab(item.id as any);
                       setIsMobileMenuOpen(false);
                     }}
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-base font-bold transition-all ${activeTab === item.id ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
+                    className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-xl text-base font-bold transition-all ${activeTab === item.id ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
                   >
                     <item.icon size={20} />
                     {item.label}
@@ -1429,7 +1431,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                   <button 
                       key={item.id}
                       onClick={() => setActiveTab(item.id as any)}
-                      className={`w-full flex items-center gap-3 px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === item.id ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
+                      className={`w-full flex items-center gap-3 px-4 py-2 text-left rounded-lg text-sm font-bold transition-all ${activeTab === item.id ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
                   >
                       <item.icon size={18} />
                       {item.label}
@@ -1530,6 +1532,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                         <p className="text-sm text-gray-600 dark:text-gray-400">Os seus dados estão agora protegidos em duas infraestruturas independentes (Google e Supabase/Vercel).</p>
                     </div>
                 </div>
+            </div>
+        )}
+        {activeTab === 'requests' && (
+            <div className="p-6 md:p-8">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6 text-left">Pedidos de Produtos</h2>
+                <RequestsTab user={user} isAdmin={isAdmin} />
             </div>
         )}
         {activeTab === 'catalog' && (
