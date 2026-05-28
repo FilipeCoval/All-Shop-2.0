@@ -147,8 +147,7 @@ service cloud.firestore {
     }
 
     match /support_tickets/{ticketId} {
-      allow get: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
-      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
       allow create: if isSignedIn() && isValidTicket(incoming()) && incoming().userId == request.auth.uid;
       allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid && isValidTicket(incoming()));
       allow delete: if isAdmin();
@@ -183,9 +182,8 @@ service cloud.firestore {
     }
 
     match /product_requests/{requestId} {
-      allow get: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
-      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn() && isValidProductRequest(incoming()) && incoming().userId == request.auth.uid;
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
       allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminComment']));
       allow delete: if isAdmin();
     }
