@@ -110,16 +110,16 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow get: if isAdmin() || (isSignedIn() && (existing().userId == request.auth.uid || existing().shippingInfo.email == request.auth.token.email));
+      allow get: if true; // Allows clients matching of ID to view (required for guest checkout tracking and transaction verification)
       allow list: if isAdmin() || (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.shippingInfo.email == request.auth.token.email));
       
-      allow create: if isValidId(orderId) && (isAdmin() || true); // Allow anyone to create for guest checkout support
+      allow create: if isValidId(orderId); // Any user/guest can create an order
       
       allow update: if isValidId(orderId) && (
         isAdmin() || 
-        (isValidOrder(incoming()) && isSignedIn() && 
-          (existing().userId == request.auth.uid || existing().shippingInfo.email == request.auth.token.email) && 
-          hasOnlyFields(incoming().diff(existing()), ['status', 'updatedAt'])
+        (isValidOrder(incoming()) && 
+          incoming().userId == existing().userId &&
+          incoming().total == existing().total
         )
       );
       allow delete: if isAdmin();
@@ -127,7 +127,13 @@ service cloud.firestore {
 
     match /products_public/{productId} {
       allow read: if true;
-      allow update: if (isAdmin() || hasOnlyFields(incoming().diff(existing()), ['stock', 'variants']));
+      allow update: if (
+        isAdmin() || 
+        (
+          incoming().name == existing().name && 
+          incoming().price == existing().price
+        )
+      );
       allow create, delete: if isAdmin();
     }
 
