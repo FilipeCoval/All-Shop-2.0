@@ -98,13 +98,14 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
       // Create user profile
-      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming());
+      allow create: if (isSignedIn() && request.auth.uid == userId && isValidUser(incoming())) || isAdmin();
       // Update fields
-      allow update: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (
-        isAdmin() ||
-        hasOnlyFields(incoming().diff(existing()), [
-            'name', 'photoURL', 'phone', 'nif', 'addresses', 'wishlist', 'fcmToken', 'deviceTokens', 'notificationsEnabled', 'lastShareDate', 'birthday', 'isGuest', 'loyaltyPoints', 'pointsHistory', 'tier', 'totalSpent'
-        ])
+      allow update: if isAdmin() || (
+        isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (
+          hasOnlyFields(incoming().diff(existing()), [
+              'name', 'photoURL', 'phone', 'nif', 'addresses', 'wishlist', 'fcmToken', 'deviceTokens', 'notificationsEnabled', 'lastShareDate', 'birthday', 'isGuest', 'loyaltyPoints', 'pointsHistory', 'tier', 'totalSpent'
+          ])
+        )
       );
       allow delete: if isAdmin();
     }
@@ -118,8 +119,8 @@ service cloud.firestore {
       allow update: if isValidId(orderId) && (
         isAdmin() || 
         (isValidOrder(incoming()) && 
-          incoming().userId == existing().userId &&
-          incoming().total == existing().total
+          incoming().get('userId', null) == existing().get('userId', null) &&
+          incoming().get('total', 0) == existing().get('total', 0)
         )
       );
       allow delete: if isAdmin();
@@ -129,10 +130,7 @@ service cloud.firestore {
       allow read: if true;
       allow update: if (
         isAdmin() || 
-        (
-          incoming().name == existing().name && 
-          incoming().price == existing().price
-        )
+        hasOnlyFields(incoming().diff(existing()), ['stock', 'variants'])
       );
       allow create, delete: if isAdmin();
     }
