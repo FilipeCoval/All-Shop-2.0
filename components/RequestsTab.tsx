@@ -155,6 +155,21 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ user, isAdmin }) => {
         }
     };
 
+    const handleUserDecision = async (id: string, decision: 'Aceite' | 'Recusada') => {
+        try {
+            await updateDoc(doc(modularDb, 'product_requests', id), { 
+                userDecision: decision
+            });
+            // Adicionalmente podemos alertar o admin ou mudar o status se for rejeitado
+            if (decision === 'Recusada') {
+                // Se o user recusa, opcionalmente podemos deixar em análise para o admin ver e propor outra coisa
+            }
+        } catch (err: any) {
+            console.error("[RequestsTab] Erro ao gravar decisão do utilizador:", err);
+            alert("Erro ao gravar decisão: " + err.message);
+        }
+    };
+
     const getUrgencyBadge = (urgency: string) => {
         switch (urgency) {
             case 'Urgente':
@@ -430,11 +445,45 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ user, isAdmin }) => {
 
                                                 {/* Existing Admin Response / Proposal */}
                                                 {r.adminComment && (
-                                                    <div className="bg-emerald-50/60 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-950/40 p-4 rounded-xl space-y-1">
-                                                        <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-1">
-                                                            <CheckCircle2 size={13}/> Nota da Solução / Proposta Comercial:
-                                                        </span>
-                                                        <p className="text-sm text-gray-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed font-sans">{r.adminComment}</p>
+                                                    <div className="space-y-4">
+                                                        <div className="bg-emerald-50/60 dark:bg-emerald-950/10 border border-emerald-100 dark:border-emerald-950/40 p-4 rounded-xl space-y-1">
+                                                            <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-1">
+                                                                <CheckCircle2 size={13}/> Nota da Solução / Proposta Comercial:
+                                                            </span>
+                                                            <p className="text-sm text-gray-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed font-sans">{r.adminComment}</p>
+                                                        </div>
+
+                                                        {/* User Decision UI */}
+                                                        {!isAdmin && !r.userDecision && r.status === 'Análise' && (
+                                                            <div className="flex flex-col gap-2 p-4 bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-xl shadow-sm">
+                                                                <p className="text-xs font-bold text-gray-700 dark:text-slate-300">O que achou desta proposta?</p>
+                                                                <div className="flex gap-2">
+                                                                    <button 
+                                                                        onClick={() => handleUserDecision(r.id, 'Aceite')}
+                                                                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-2"
+                                                                    >
+                                                                        <CheckCircle2 size={14}/> Aceitar Proposta
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => handleUserDecision(r.id, 'Recusada')}
+                                                                        className="flex-1 bg-red-50 dark:bg-red-950/30 text-red-600 hover:bg-red-100 dark:hover:bg-red-950/50 py-2 rounded-lg text-xs font-bold transition-all border border-red-200 dark:border-red-900/50 flex items-center justify-center gap-2"
+                                                                    >
+                                                                        <XCircle size={14}/> Recusar
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {r.userDecision && (
+                                                            <div className={`p-3 rounded-xl text-xs font-bold border flex items-center gap-2 ${
+                                                                r.userDecision === 'Aceite' 
+                                                                    ? 'bg-emerald-100 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50' 
+                                                                    : 'bg-red-100 dark:bg-red-950/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900/50'
+                                                            }`}>
+                                                                {r.userDecision === 'Aceite' ? <CheckCircle2 size={14}/> : <XCircle size={14}/>}
+                                                                Decisão do Cliente: {r.userDecision}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>
@@ -443,9 +492,18 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ user, isAdmin }) => {
                                         {/* ADMIN ACTIONS INTERFACE */}
                                         {isAdmin && (
                                             <div className="bg-slate-50 dark:bg-slate-900/80 p-5 rounded-2xl border dark:border-slate-800 space-y-4 pt-4 mt-4">
-                                                <div className="flex items-center gap-1">
-                                                    <MessageSquare size={16} className="text-primary"/>
-                                                    <h5 className="text-sm font-bold text-gray-800 dark:text-white">Área de Resposta do Administrador (Backoffice)</h5>
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-1">
+                                                        <MessageSquare size={16} className="text-primary"/>
+                                                        <h5 className="text-sm font-bold text-gray-800 dark:text-white">Área de Resposta do Administrador (Backoffice)</h5>
+                                                    </div>
+                                                    {r.userDecision && (
+                                                        <span className={`text-[10px] uppercase tracking-wider font-black px-2 py-0.5 rounded ${
+                                                            r.userDecision === 'Aceite' ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'
+                                                        }`}>
+                                                            UTILIZADOR {r.userDecision.toUpperCase()}
+                                                        </span>
+                                                    )}
                                                 </div>
                                                 
                                                 <div className="space-y-2">

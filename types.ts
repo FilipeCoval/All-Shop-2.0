@@ -396,6 +396,7 @@ export interface TicketMessage {
 export interface ProductRequest {
   id: string;
   userId: string;
+  userEmail?: string;
   productName: string;
   category: string;
   state: 'Novo' | 'Semi-novo' | 'Recondicionado' | 'Usado' | 'Qualquer estado';
@@ -406,6 +407,7 @@ export interface ProductRequest {
   referenceLink?: string;
   status: 'Análise' | 'Concluído' | 'Anulado';
   adminComment?: string;
+  userDecision?: 'Aceite' | 'Recusada';
   createdAt: string;
   photos?: string[];
   notificationsEnabled: boolean;
