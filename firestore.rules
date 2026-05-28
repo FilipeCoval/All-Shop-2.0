@@ -13,12 +13,14 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && (request.auth.token.email.lower() in [
-        "filipe_coval_90@hotmail.com",
-        "mcpoleca@gmail.com",
-        "filipe@teste.com",
-        "filipecoval90@gmail.com"
-      ]);
+      return isSignedIn() && (
+        request.auth.token.get('email', '').lower() in [
+          "filipe_coval_90@hotmail.com",
+          "mcpoleca@gmail.com",
+          "filipe@teste.com",
+          "filipecoval90@gmail.com"
+        ]
+      );
     }
 
     function isValidId(id) {
@@ -112,7 +114,12 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       allow get: if true; // Allows clients matching of ID to view (required for guest checkout tracking and transaction verification)
-      allow list: if isAdmin() || (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.shippingInfo.email == request.auth.token.email));
+      allow list: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.get('userId', '') == request.auth.uid || 
+          resource.data.get('shippingInfo', {}).get('email', '') == request.auth.token.get('email', '')
+        )
+      );
       
       allow create: if isValidId(orderId); // Any user/guest can create an order
       

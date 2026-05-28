@@ -960,8 +960,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               // 1. Gather all reads
               const reads: any = { updates: [], userUpdate: null };
               
-              if (newStatus === 'Entregue' && !currentOrder.pointsAwarded && currentOrder.userId) { 
-                  const userRef = doc(modularDb, 'users', currentOrder.userId); 
+              const isUserValid = typeof currentOrder.userId === 'string' && currentOrder.userId.trim() !== '';
+              if (newStatus === 'Entregue' && !currentOrder.pointsAwarded && isUserValid) { 
+                  const userRef = doc(modularDb, 'users', currentOrder.userId as string); 
                   const userDoc = await transaction.get(userRef); 
                   if (userDoc.exists()) { 
                       const userData = userDoc.data() as UserType; 
@@ -982,7 +983,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                               ref: userRef,
                               data: {
                                   loyaltyPoints: (userData.loyaltyPoints || 0) + pointsToAward, 
-                                  pointsHistory: [newHistory, ...(userData.pointsHistory || [])] 
+                                  pointsHistory: [newHistory, ...(Array.isArray(userData.pointsHistory) ? userData.pointsHistory : [])] 
                               }
                           };
                           updates.pointsAwarded = true; 
@@ -1020,8 +1021,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                       }
                   }
 
-                  if (currentOrder.pointsAwarded && currentOrder.userId) {
-                      const userRef = doc(modularDb, 'users', currentOrder.userId);
+                  if (currentOrder.pointsAwarded && isUserValid) {
+                      const userRef = doc(modularDb, 'users', currentOrder.userId as string);
                       const userDoc = await transaction.get(userRef);
                       if (userDoc.exists()) {
                           const userData = userDoc.data() as UserType;
@@ -1043,7 +1044,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                                   ref: userRef,
                                   data: {
                                       loyaltyPoints: Math.max(0, (userData.loyaltyPoints || 0) - pointsToRemove),
-                                      pointsHistory: [newHistory, ...(userData.pointsHistory || [])]
+                                      pointsHistory: [newHistory, ...(Array.isArray(userData.pointsHistory) ? userData.pointsHistory : [])]
                                   }
                               };
                               updates.pointsAwarded = false;
@@ -1078,7 +1079,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
           supabaseSync.saveOrder({ ...currentOrder, ...updates });
       } catch (error) { 
           console.error("Erro ao mudar estado:", error); 
-          alert("Erro ao atualizar estado da encomenda."); 
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          alert("Erro ao atualizar estado da encomenda: " + errorMsg); 
       } 
   };
   const handleDeleteOrder = async (orderId: string) => { 
