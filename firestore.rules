@@ -13,7 +13,7 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && (request.auth.token.email in [
+      return isSignedIn() && (request.auth.token.email.lower() in [
         "filipe_coval_90@hotmail.com",
         "mcpoleca@gmail.com",
         "filipe@teste.com",
@@ -116,12 +116,11 @@ service cloud.firestore {
       
       allow create: if isValidId(orderId); // Any user/guest can create an order
       
-      allow update: if isValidId(orderId) && (
-        isAdmin() || 
-        (isValidOrder(incoming()) && 
-          incoming().get('userId', null) == existing().get('userId', null) &&
-          incoming().get('total', 0) == existing().get('total', 0)
-        )
+      allow update: if isAdmin() || (
+        isValidId(orderId) && 
+        isValidOrder(incoming()) && 
+        incoming().get('userId', null) == existing().get('userId', null) &&
+        incoming().get('total', 0) == existing().get('total', 0)
       );
       allow delete: if isAdmin();
     }

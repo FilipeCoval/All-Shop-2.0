@@ -951,6 +951,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               }) 
           }; 
 
+          // Safe parsing of total to avoid NaN database writes on old orders
+          const orderTotal = typeof currentOrder.total === 'number' 
+              ? currentOrder.total 
+              : parseFloat(currentOrder.total as any) || 0;
+
           await runTransaction(modularDb, async (transaction) => {
               // 1. Gather all reads
               const reads: any = { updates: [], userUpdate: null };
@@ -964,8 +969,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                       let multiplier = 1; 
                       if (tier === 'Prata') multiplier = LOYALTY_TIERS.SILVER.multiplier; 
                       if (tier === 'Ouro') multiplier = LOYALTY_TIERS.GOLD.multiplier; 
-                      const pointsToAward = Math.floor(currentOrder.total * multiplier); 
-                      if (pointsToAward > 0) { 
+                      const pointsToAward = Math.floor(orderTotal * multiplier); 
+                      if (!isNaN(pointsToAward) && pointsToAward > 0) { 
                           const newHistory: PointHistory = { 
                               id: `earn-${orderId}`, 
                               date: new Date().toISOString(), 
@@ -985,9 +990,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                   } 
               }
 
-              if (newStatus === 'Cancelado' && currentOrder.status !== 'Cancelado') {
+              if (newStatus === 'Cancelado' && currentOrder.status !== 'Cancelado' && Array.isArray(currentOrder.items)) {
                   for (const item of currentOrder.items) {
-                      if (typeof item !== 'object' || item === null) continue;
+                      if (typeof item !== 'object' || item === null || !item.productId) continue;
                       const productDocRef = doc(modularDb, 'products_public', item.productId.toString());
                       const productDoc = await transaction.get(productDocRef);
                       if (productDoc.exists()) {
@@ -1024,9 +1029,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                           let multiplier = 1;
                           if (tier === 'Prata') multiplier = LOYALTY_TIERS.SILVER.multiplier;
                           if (tier === 'Ouro') multiplier = LOYALTY_TIERS.GOLD.multiplier;
-                          const pointsToRemove = Math.floor(currentOrder.total * multiplier);
+                          const pointsToRemove = Math.floor(orderTotal * multiplier);
                           
-                          if (pointsToRemove > 0) {
+                          if (!isNaN(pointsToRemove) && pointsToRemove > 0) {
                               const newHistory: PointHistory = {
                                   id: `refund-${orderId}`,
                                   date: new Date().toISOString(),
@@ -1083,36 +1088,44 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
           const orderDoc = await getDoc(orderRef);
           if (orderDoc.exists()) {
               const orderData = orderDoc.data() as Order;
+              
+              // Safe parsing of total to avoid NaN calculations on old orders
+              const orderTotal = typeof orderData.total === 'number' 
+                  ? orderData.total 
+                  : parseFloat(orderData.total as any) || 0;
+
               if (orderData.status !== 'Cancelado' && orderData.fulfillmentStatus !== 'COMPLETED') {
                   await runTransaction(modularDb, async (transaction) => {
                       const reads: any = { updates: [], userUpdate: null };
 
-                      for (const item of orderData.items) {
-                          if (typeof item !== 'object' || item === null) continue;
-                          const productDocRef = doc(modularDb, 'products_public', item.productId.toString());
-                          const productDoc = await transaction.get(productDocRef);
-                          if (productDoc.exists()) {
-                              const productData = productDoc.data() as Product;
-                              
-                              let updatedVariants = productData.variants;
-                              if (item.selectedVariant && productData.variants) {
-                                  const vIndex = productData.variants.findIndex((v: any) => v.name === item.selectedVariant);
-                                  if (vIndex !== -1) {
-                                      updatedVariants = [...productData.variants];
-                                      updatedVariants[vIndex] = {
-                                          ...updatedVariants[vIndex],
-                                          stock: (updatedVariants[vIndex].stock || 0) + item.quantity
-                                      };
+                      if (Array.isArray(orderData.items)) {
+                          for (const item of orderData.items) {
+                              if (typeof item !== 'object' || item === null || !item.productId) continue;
+                              const productDocRef = doc(modularDb, 'products_public', item.productId.toString());
+                              const productDoc = await transaction.get(productDocRef);
+                              if (productDoc.exists()) {
+                                  const productData = productDoc.data() as Product;
+                                  
+                                  let updatedVariants = productData.variants;
+                                  if (item.selectedVariant && productData.variants) {
+                                      const vIndex = productData.variants.findIndex((v: any) => v.name === item.selectedVariant);
+                                      if (vIndex !== -1) {
+                                          updatedVariants = [...productData.variants];
+                                          updatedVariants[vIndex] = {
+                                              ...updatedVariants[vIndex],
+                                              stock: (updatedVariants[vIndex].stock || 0) + item.quantity
+                                          };
+                                      }
                                   }
+                                  
+                                  const updateData: any = { stock: (productData.stock || 0) + item.quantity };
+                                  if (updatedVariants) updateData.variants = updatedVariants;
+                                  
+                                  reads.updates.push({
+                                      ref: productDoc.ref,
+                                      data: Object.fromEntries(Object.entries(updateData).filter(([_,v]) => v !== undefined))
+                                  });
                               }
-                              
-                              const updateData: any = { stock: (productData.stock || 0) + item.quantity };
-                              if (updatedVariants) updateData.variants = updatedVariants;
-                              
-                              reads.updates.push({
-                                  ref: productDoc.ref,
-                                  data: Object.fromEntries(Object.entries(updateData).filter(([_,v]) => v !== undefined))
-                              });
                           }
                       }
 
@@ -1126,9 +1139,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                               let multiplier = 1;
                               if (tier === 'Prata') multiplier = LOYALTY_TIERS.SILVER.multiplier;
                               if (tier === 'Ouro') multiplier = LOYALTY_TIERS.GOLD.multiplier;
-                              const pointsToRemove = Math.floor(orderData.total * multiplier);
+                              const pointsToRemove = Math.floor(orderTotal * multiplier);
                               
-                              if (pointsToRemove > 0) {
+                              if (!isNaN(pointsToRemove) && pointsToRemove > 0) {
                                   const newHistory: PointHistory = {
                                       id: `delete-${orderId}`,
                                       date: new Date().toISOString(),
