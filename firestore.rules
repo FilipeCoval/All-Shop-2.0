@@ -22,7 +22,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() <= 128 && id.matches('^[#a-zA-Z0-9_\\-]+$');
     }
 
     function incoming() {
@@ -125,7 +125,8 @@ service cloud.firestore {
 
     match /products_public/{productId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow update: if (isAdmin() || (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['stock'])));
+      allow create, delete: if isAdmin();
     }
 
     match /products_inventory/{inventoryId} {
