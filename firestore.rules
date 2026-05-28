@@ -13,14 +13,14 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.get('email', '').lower() in [
-          "filipe_coval_90@hotmail.com",
-          "mcpoleca@gmail.com",
-          "filipe@teste.com",
-          "filipecoval90@gmail.com"
-        ]
-      );
+      return isSignedIn() && 
+             'email' in request.auth.token &&
+             request.auth.token.email is string && (
+                request.auth.token.email.lower() == "filipe_coval_90@hotmail.com" ||
+                request.auth.token.email.lower() == "mcpoleca@gmail.com" ||
+                request.auth.token.email.lower() == "filipe@teste.com" ||
+                request.auth.token.email.lower() == "filipecoval90@gmail.com"
+             );
     }
 
     function isValidId(id) {
@@ -98,38 +98,34 @@ service cloud.firestore {
     // -- COLLECTIONS -- //
 
     match /users/{userId} {
-      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      allow read, write: if isAdmin();
+      
+      allow read: if isSignedIn() && request.auth.uid == userId;
       // Create user profile
-      allow create: if (isSignedIn() && request.auth.uid == userId && isValidUser(incoming())) || isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming());
       // Update fields
-      allow update: if isAdmin() || (
-        isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (
+      allow update: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (
           hasOnlyFields(incoming().diff(existing()), [
               'name', 'photoURL', 'phone', 'nif', 'addresses', 'wishlist', 'fcmToken', 'deviceTokens', 'notificationsEnabled', 'lastShareDate', 'birthday', 'isGuest', 'loyaltyPoints', 'pointsHistory', 'tier', 'totalSpent'
           ])
-        )
       );
-      allow delete: if isAdmin();
     }
 
     match /orders/{orderId} {
+      allow read, write: if isAdmin();
+      
       allow get: if true; // Allows clients matching of ID to view (required for guest checkout tracking and transaction verification)
-      allow list: if isAdmin() || (
-        isSignedIn() && (
+      allow list: if isSignedIn() && (
           resource.data.get('userId', '') == request.auth.uid || 
           resource.data.get('shippingInfo', {}).get('email', '') == request.auth.token.get('email', '')
-        )
       );
       
       allow create: if isValidId(orderId); // Any user/guest can create an order
       
-      allow update: if isAdmin() || (
-        isValidId(orderId) && 
+      allow update: if isValidId(orderId) && 
         isValidOrder(incoming()) && 
         incoming().get('userId', null) == existing().get('userId', null) &&
-        incoming().get('total', 0) == existing().get('total', 0)
-      );
-      allow delete: if isAdmin();
+        incoming().get('total', 0) == existing().get('total', 0);
     }
 
     match /products_public/{productId} {
