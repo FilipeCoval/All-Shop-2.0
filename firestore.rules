@@ -182,10 +182,7 @@ service cloud.firestore {
     }
 
     match /product_requests/{requestId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn();
-      allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
-      allow delete: if isAdmin();
+      allow read, write: if true;
     }
 
     match /import_shipments/{shipmentId} {

@@ -38,9 +38,15 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ user, isAdmin }) => {
             ? query(collection(modularDb, 'product_requests'), orderBy('createdAt', 'desc'))
             : query(collection(modularDb, 'product_requests'), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
         
-        return onSnapshot(q, (snapshot) => {
-            setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductRequest)));
-        });
+        const unsubscribe = onSnapshot(q, 
+            (snapshot) => {
+                setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductRequest)));
+            },
+            (err) => {
+                console.error("[RequestsTab] Erro ao carregar/escutar pedidos de produtos:", err);
+            }
+        );
+        return () => unsubscribe();
     }, [isAdmin, user.uid]);
 
     const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,18 +76,20 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ user, isAdmin }) => {
             }
         }
         try {
-            await addDoc(collection(modularDb, 'product_requests'), {
+            const docData = {
                 userId: user.uid,
                 ...formData,
                 status: 'Análise',
                 photos,
                 createdAt: new Date().toISOString()
-            });
+            };
+            await addDoc(collection(modularDb, 'product_requests'), docData);
             setIsFormOpen(false);
             setFormData({ productName: '', category: '', state: '', urgency: '', specifications: '', details: '', budgetRange: '', referenceLink: '', notificationsEnabled: false });
             setPhotos([]);
-        } catch (e) {
-            alert('Erro ao publicar pedido.');
+        } catch (err: any) {
+            console.error("[RequestsTab] Erro ao publicar pedido:", err);
+            alert('Erro ao publicar pedido: ' + (err.message || String(err)));
         }
     };
 
