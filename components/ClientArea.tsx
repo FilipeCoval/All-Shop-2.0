@@ -155,7 +155,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
   useEffect(() => {
       if (activeTab === 'support' && user.email) {
           setLoadingTickets(true);
-          const unsubscribe = onSnapshot(query(collection(modularDb, 'support_tickets'), where('customerEmail', '==', user.email)), snapshot => {
+          const unsubscribe = onSnapshot(query(collection(modularDb, 'support_tickets'), where('userId', '==', user.uid)), snapshot => {
                   const loadedTickets = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as SupportTicket));
                   // Ordenação em memória
                   loadedTickets.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

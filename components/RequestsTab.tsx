@@ -49,7 +49,11 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ user, isAdmin }) => {
         setIsUploading(true);
         const storageRef = ref(storage, `requests/${user.uid}/${Date.now()}`);
         const uploadTask = uploadBytesResumable(storageRef, file);
-        uploadTask.on('state_changed', null, (err) => { console.error(err); setIsUploading(false); }, async () => {
+        uploadTask.on('state_changed', null, (err) => { 
+            console.error(err); 
+            setIsUploading(false); 
+            alert('Erro ao enviar imagem. Sem permissão. (Storage rules update may take a minute)');
+        }, async () => {
             const url = await getDownloadURL(uploadTask.snapshot.ref);
             setPhotos(prev => [...prev, url]);
             setIsUploading(false);

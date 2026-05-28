@@ -39,6 +39,12 @@ service firebase.storage {
       allow write: if true;
     }
 
+    // Regra para Pedidos de Produtos
+    match /requests/{userId}/{imageId} {
+      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read: if true;
+    }
+
     // NOVA REGRA: Fotos de Perfil
     // Permite que um utilizador autenticado escreva/atualize a sua própria foto.
     match /profile_pictures/{userId} {

@@ -1395,8 +1395,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                     }}
                     className={`w-full flex items-center gap-3 px-4 py-3 text-left rounded-xl text-base font-bold transition-all ${activeTab === item.id ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
                   >
-                    <item.icon size={20} />
-                    {item.label}
+                    <item.icon size={20} className="flex-shrink-0" />
+                    <span className="truncate">{item.label}</span>
                   </button>
                 ))}
               </nav>
@@ -1433,8 +1433,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                       onClick={() => setActiveTab(item.id as any)}
                       className={`w-full flex items-center gap-3 px-4 py-2 text-left rounded-lg text-sm font-bold transition-all ${activeTab === item.id ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800'}`}
                   >
-                      <item.icon size={18} />
-                      {item.label}
+                      <item.icon size={18} className="flex-shrink-0" />
+                      <span className="truncate">{item.label}</span>
                   </button>
               ))}
           </nav>
