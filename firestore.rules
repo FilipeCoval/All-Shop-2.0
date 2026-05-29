@@ -12,10 +12,11 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Check if the current user is an admin by matching their token email (case-insensitive)
     function isAdmin() {
-      return isSignedIn() && 
-             'email' in request.auth.token &&
-             request.auth.token.email is string && (
+      return request.auth != null && 
+             request.auth.token != null &&
+             request.auth.token.email != null && (
                 request.auth.token.email.lower() == "filipe_coval_90@hotmail.com" ||
                 request.auth.token.email.lower() == "mcpoleca@gmail.com" ||
                 request.auth.token.email.lower() == "filipe@teste.com" ||
