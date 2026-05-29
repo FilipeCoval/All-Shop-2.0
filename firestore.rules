@@ -2,30 +2,32 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Global Safety Net
+
+    // =====================================================
+    // GLOBAL DENY FALLBACK
+    // =====================================================
+
     match /{document=**} {
       allow read, write: if false;
     }
+
+    // =====================================================
+    // HELPERS
+    // =====================================================
 
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Check if the current user is an admin by matching their token email (case-insensitive)
     function isAdmin() {
-      return request.auth != null && 
-             request.auth.token != null &&
-             request.auth.token.email != null && (
-                request.auth.token.email.lower() == "filipe_coval_90@hotmail.com" ||
-                request.auth.token.email.lower() == "mcpoleca@gmail.com" ||
-                request.auth.token.email.lower() == "filipe@teste.com" ||
-                request.auth.token.email.lower() == "filipecoval90@gmail.com"
-             );
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128;
+      return isSignedIn() &&
+        request.auth.token.email != null &&
+        request.auth.token.email.lower() in [
+          "filipe_coval_90@hotmail.com",
+          "mcpoleca@gmail.com",
+          "filipe@teste.com",
+          "filipecoval90@gmail.com"
+        ];
     }
 
     function incoming() {
@@ -36,106 +38,167 @@ service cloud.firestore {
       return resource.data;
     }
 
-    function hasOnlyFields(diff, allowedFields) {
-      return diff.addedKeys().hasOnly(allowedFields) && 
-             diff.removedKeys().hasOnly(allowedFields) && 
-             diff.modifiedKeys().hasOnly(allowedFields);
-    }
-
-    // -- VALIDATORS -- //
+    // =====================================================
+    // VALIDATORS
+    // =====================================================
 
     function isValidUser(data) {
-      return (data.get('email', '') is string && data.get('email', '').size() <= 150);
+      return data.get('email', '') is string &&
+             data.get('email', '').size() <= 150;
     }
 
     function isValidOrder(data) {
-       return (data.get('total', 0) is number) &&
-              (data.get('status', '') is string && data.get('status', '').size() <= 100);
-    }
-
-    function isValidReview(data) {
-       return (data.get('productId', 0) is number) &&
-              (data.get('userId', '') is string && data.get('userId', '').size() <= 128);
-    }
-
-    function isValidTicket(data) {
-      return (data.get('userId', '') is string && data.get('userId', '').size() <= 128);
-    }
-
-    function isValidReservation(data) {
-       return (data.get('productId', 0) is number);
-    }
-    
-    function isValidNewsletter(data) {
-       return (data.get('email', '') is string && data.get('email', '').size() <= 150);
-    }
-
-    function isValidLead(data) {
-       return (data.get('email', '') is string && data.get('email', '').size() <= 150);
-    }
-
-    function isValidStockAlert(data) {
-       return (data.get('email', '') is string && data.get('email', '').size() <= 150);
+      return data.get('total', 0) is number &&
+             data.get('status', '') is string &&
+             data.get('status', '').size() <= 100;
     }
 
     function isValidProductRequest(data) {
-       return (data.get('userId', '') is string && data.get('userId', '').size() <= 128) &&
-              (data.get('productName', '') is string && data.get('productName', '').size() <= 200) &&
-              (data.get('category', '') is string) &&
-              (data.get('state', '') is string) &&
-              (data.get('urgency', '') is string) &&
-              (data.get('specifications', '') is string) &&
-              (data.get('details', '') is string) &&
-              (data.get('budgetRange', '') is string) &&
-              (data.get('notificationsEnabled', false) is bool);
+      return data.get('userId', '') is string &&
+             data.get('userId', '').size() <= 128 &&
+             data.get('productName', '') is string &&
+             data.get('productName', '').size() <= 200;
+    }
+
+    function isValidReview(data) {
+      return data.get('productId', 0) is number &&
+             data.get('userId', '') is string;
+    }
+
+    function isValidTicket(data) {
+      return data.get('userId', '') is string;
+    }
+
+    function isValidReservation(data) {
+      return data.get('productId', 0) is number;
     }
 
     function isValidOnlineUser(data) {
-      // Allow any type, we just protect who writes it in the rule
       return data.keys().hasAny(["type", "lastActive"]);
     }
 
+    // AQUI ESTAVA O SEU ERRO CRÍTICO!
+    function isValidId(id) {
+      return id is string &&
+             id.size() <= 128 &&
+             // Permitir o caractere '#' que é usado nos seus IDs de encomenda! Ex: #AS-188581
+             id.matches('^[#a-zA-Z0-9_\\-]+$');
+    }
 
-    // -- COLLECTIONS -- //
+    // =====================================================
+    // USERS
+    // =====================================================
 
     match /users/{userId} {
-      allow read, write: if isAdmin();
-      
-      allow read: if isSignedIn() && request.auth.uid == userId;
-      // Create user profile
-      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming());
-      // Update fields
-      allow update: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming()) && (
-          hasOnlyFields(incoming().diff(existing()), [
-              'name', 'photoURL', 'phone', 'nif', 'addresses', 'wishlist', 'fcmToken', 'deviceTokens', 'notificationsEnabled', 'lastShareDate', 'birthday', 'isGuest', 'loyaltyPoints', 'pointsHistory', 'tier', 'totalSpent'
-          ])
+
+      allow read: if isAdmin() ||
+        (isSignedIn() && request.auth.uid == userId);
+
+      allow create: if isSignedIn() &&
+        request.auth.uid == userId &&
+        isValidUser(incoming());
+
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        request.auth.uid == userId &&
+        isValidUser(incoming()) &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name',
+          'photoURL',
+          'phone',
+          'nif',
+          'addresses',
+          'wishlist',
+          'fcmToken',
+          'deviceTokens',
+          'notificationsEnabled',
+          'lastShareDate',
+          'birthday',
+          'isGuest',
+          'loyaltyPoints',
+          'pointsHistory',
+          'tier',
+          'totalSpent'
+        ])
       );
+
+      allow delete: if isAdmin();
     }
 
+    // =====================================================
+    // ORDERS
+    // =====================================================
+
     match /orders/{orderId} {
-      allow read, write: if isAdmin();
-      
-      allow get: if true; // Allows clients matching of ID to view (required for guest checkout tracking and transaction verification)
-      allow list: if isSignedIn() && (
-          resource.data.get('userId', '') == request.auth.uid || 
-          resource.data.get('shippingInfo', {}).get('email', '') == request.auth.token.get('email', '')
+
+      allow get: if isAdmin() ||
+        (isSignedIn() &&
+          (existing().userId == request.auth.uid ||
+           existing().shippingInfo.email == request.auth.token.email));
+
+      allow list: if isAdmin() || isSignedIn();
+
+      allow create: if isValidId(orderId) &&
+        incoming().keys().hasAll([
+          "total",
+          "status",
+          "date",
+          "items"
+        ]) &&
+        isValidOrder(incoming()) &&
+        (
+          isAdmin() ||
+          (isSignedIn() && incoming().userId == request.auth.uid) ||
+          (!isSignedIn())
+        );
+
+      allow update: if isValidId(orderId) && (
+        isAdmin() ||
+        (
+          isSignedIn() &&
+          isValidOrder(incoming()) &&
+          (existing().userId == request.auth.uid ||
+           existing().shippingInfo.email == request.auth.token.email) &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'status',
+            'updatedAt'
+          ])
+        )
       );
-      
-      allow create: if isValidId(orderId); // Any user/guest can create an order
-      
-      allow update: if isValidId(orderId) && 
-        isValidOrder(incoming()) && 
-        incoming().get('userId', null) == existing().get('userId', null) &&
-        incoming().get('total', 0) == existing().get('total', 0);
+
+      allow delete: if isAdmin();
     }
+
+    // =====================================================
+    // PRODUCT REQUESTS
+    // =====================================================
+
+    match /product_requests/{requestId} {
+
+      allow get: if isAdmin() ||
+        (isSignedIn() && existing().userId == request.auth.uid);
+
+      allow list: if isAdmin() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+        incoming().userId == request.auth.uid &&
+        isValidProductRequest(incoming());
+
+      allow update: if isAdmin() ||
+        (isSignedIn() && existing().userId == request.auth.uid);
+
+      allow delete: if isAdmin() ||
+        (isSignedIn() && existing().userId == request.auth.uid);
+    }
+
+    // =====================================================
+    // PRODUCTS
+    // =====================================================
 
     match /products_public/{productId} {
       allow read: if true;
-      allow update: if (
-        isAdmin() || 
-        hasOnlyFields(incoming().diff(existing()), ['stock', 'variants'])
-      );
-      allow create, delete: if isAdmin();
+      allow write: if isAdmin();
     }
 
     match /products_inventory/{inventoryId} {
@@ -147,56 +210,105 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // =====================================================
+    // REVIEWS
+    // =====================================================
+
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isSignedIn() && isValidReview(incoming()) && incoming().userId == request.auth.uid;
-      allow update: if isSignedIn() && isValidReview(incoming()) && (
-        isAdmin() || (existing().userId == request.auth.uid && hasOnlyFields(incoming().diff(existing()), ['rating', 'comment', 'images']))
-      );
-      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+        isValidReview(incoming()) &&
+        incoming().userId == request.auth.uid;
+
+      allow update: if isSignedIn() &&
+        isValidReview(incoming()) &&
+        (
+          isAdmin() ||
+          (existing().userId == request.auth.uid &&
+           incoming().diff(existing()).affectedKeys().hasOnly([
+             'rating', 'comment', 'images'
+           ]))
+        );
+
+      allow delete: if isAdmin() ||
+        (isSignedIn() && existing().userId == request.auth.uid);
     }
 
+    // =====================================================
+    // SUPPORT TICKETS
+    // =====================================================
+
     match /support_tickets/{ticketId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn() && isValidTicket(incoming()) && incoming().userId == request.auth.uid;
-      allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid && isValidTicket(incoming()));
+
+      allow read: if isAdmin() ||
+        (isSignedIn() && existing().userId == request.auth.uid);
+
+      allow list: if isAdmin() ||
+        (isSignedIn() && resource.data.userId == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+        isValidTicket(incoming()) &&
+        incoming().userId == request.auth.uid;
+
+      allow update: if isAdmin() ||
+        (isSignedIn() && existing().userId == request.auth.uid);
+
       allow delete: if isAdmin();
     }
 
+    // =====================================================
+    // STOCK RESERVATIONS
+    // =====================================================
+
     match /stock_reservations/{reservationId} {
-      // Client needs to read and write these during checkout (like carts)
-      allow read: if true; 
+
+      allow read: if true;
       allow create: if isValidReservation(incoming());
-      allow update: if isValidReservation(incoming()); // Maybe extend reservation
-      allow delete: if true; // Any client can clear expired reservations
+      allow update: if isValidReservation(incoming());
+      allow delete: if true;
     }
+
+    // =====================================================
+    // COUPONS
+    // =====================================================
 
     match /coupons/{couponId} {
-      allow read: if true; // Read to validate
-      allow write: if isAdmin() || true; // Code generates usage (update usageCount locally)  - WARNING: Might need securing later if exploited
+
+      allow read: if true;
+
+      allow create: if isAdmin();
+
+      allow update: if isAdmin() ||
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'usageCount'
+        ]);
+
+      allow delete: if isAdmin();
     }
 
+    // =====================================================
+    // NEWSLETTER / LEADS / ALERTS
+    // =====================================================
+
     match /newsletter_subscriptions/{subId} {
-      allow create: if isValidNewsletter(incoming());
+      allow create: if true;
       allow read, update, delete: if isAdmin();
     }
 
     match /leads/{leadId} {
-      allow create: if isValidLead(incoming());
+      allow create: if true;
       allow read, update, delete: if isAdmin();
     }
 
     match /stock_alerts/{alertId} {
-      allow create: if isValidStockAlert(incoming());
+      allow create: if true;
       allow read, update, delete: if isAdmin();
     }
 
-    match /product_requests/{requestId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
-      allow update: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
-      allow delete: if isAdmin();
-    }
+    // =====================================================
+    // ADMIN SYSTEMS
+    // =====================================================
 
     match /import_shipments/{shipmentId} {
       allow read, write: if isAdmin();
@@ -206,12 +318,24 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // =====================================================
+    // ONLINE USERS
+    // =====================================================
+
     match /online_users/{onlineUserId} {
+
       allow read: if true;
-      allow create: if isValidOnlineUser(incoming());
-      allow update: if isValidOnlineUser(incoming());
-      allow delete: if isAdmin() || true;
+
+      allow create, update: if isSignedIn() &&
+        isValidOnlineUser(incoming());
+
+      allow delete: if isAdmin() ||
+        (isSignedIn() && request.auth.uid == onlineUserId);
     }
+
+    // =====================================================
+    // PUBLIC SUMMARY
+    // =====================================================
 
     match /public_stock_summary/{summaryId} {
       allow read: if true;

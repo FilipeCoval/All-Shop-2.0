@@ -220,7 +220,7 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
                                         </button>
                                     )}
                                     <button onClick={() => onViewDetails(order)} className="text-indigo-600 dark:text-indigo-400 font-bold text-xs hover:underline">Detalhes</button>
-                                    {isAdmin && order.status === 'Cancelado' && (
+                                    {isAdmin && (
                                         <button onClick={() => onDeleteOrder(order.id)} className="p-1.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="Apagar Encomenda">
                                             <Trash2 size={16} />
                                         </button>

@@ -6,7 +6,7 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { 
     Loader2, Plus, Camera, X, Package, DollarSign, Image as ImageIcon, Bell, 
     ChevronDown, ChevronUp, ExternalLink, Calendar, Eye, CheckCircle2, XCircle, 
-    MessageSquare, Clock, Tag, User, ShieldAlert 
+    MessageSquare, Clock, Tag, User, ShieldAlert, Trash2
 } from 'lucide-react';
 
 interface RequestsTabProps {
@@ -136,6 +136,17 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ user, isAdmin }) => {
         } catch (err: any) {
             console.error("[RequestsTab] Erro ao mudar estado do pedido:", err);
             alert("Erro ao mudar estado: " + err.message);
+        }
+    };
+
+    const handleDelete = async (id: string) => {
+        if (!window.confirm('Tem a certeza que deseja apagar este pedido permanentemente?')) return;
+        try {
+            const { deleteDoc } = await import('firebase/firestore');
+            await deleteDoc(doc(modularDb, 'product_requests', id));
+        } catch (err: any) {
+            console.error("[RequestsTab] Erro ao apagar pedido:", err);
+            alert("Erro ao apagar pedido: " + err.message);
         }
     };
 
@@ -371,6 +382,18 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ user, isAdmin }) => {
 
                                         {/* Status Badge */}
                                         {getStatusBadge(r.status)}
+
+                                        {/* Delete Action */}
+                                        <button 
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDelete(r.id);
+                                            }}
+                                            title="Apagar Pedido"
+                                            className="ml-2 text-red-400 hover:text-red-600 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/50 p-1.5 rounded-lg border border-transparent hover:border-red-200 dark:hover:border-red-900/50 transition-colors"
+                                        >
+                                            <Trash2 size={16} />
+                                        </button>
 
                                         {/* Expand Chevron */}
                                         <div className="text-gray-400 hover:text-gray-600 transition-colors pl-2">
