@@ -721,7 +721,7 @@ const App: React.FC = () => {
           console.log("DEBUG handleCheckout cleanOrder:", cleanOrder, "User UID from app state:", user?.uid);
           cleanOrder.stockDeducted = true; // Indica que o stock público já foi deduzido na altura da compra
           
-          const alreadyExists = await runTransaction(modularDb, async (transaction) => {
+          const alreadyExists = await runTransaction(db, async (transaction) => {
               console.log("[DEBUG TX] Iniciou a transação");
               const orderRef = doc(modularDb, "orders", cleanOrder.id);
               console.log("[DEBUG TX] Tentando obter a encomenda em:", orderRef.path);
