@@ -57,6 +57,7 @@ export interface Order {
   status: 'Pendente' | 'Processamento' | 'Pago' | 'Enviado' | 'Entregue' | 'Cancelado' | 'Reclamação' | 'Devolvido' | 'Levantamento em Loja';
   items: (OrderItem | string)[];
   userId?: string | null;
+  guestToken?: string;
   shippingInfo: UserCheckoutInfo;
   trackingNumber?: string;
   packages?: OrderPackage[]; // NOVO: Suporte para múltiplos volumes

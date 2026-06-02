@@ -334,6 +334,15 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
         storeShippingCost: 5.40, // Valor por defeito do custo de envio para a loja
     };
 
+    if (!user) {
+        let gt = localStorage.getItem("guestToken");
+        if (!gt) {
+            gt = Math.random().toString(36).substring(2) + Date.now().toString(36);
+            localStorage.setItem("guestToken", gt);
+        }
+        newOrder.guestToken = gt;
+    }
+
     if (discountAmount > 0) {
         newOrder.discountValue = discountAmount;
     }

@@ -780,6 +780,7 @@ const App: React.FC = () => {
                   };
                   if (cleanOrder.shippingInfo !== undefined) updateData.shippingInfo = cleanOrder.shippingInfo;
                   if (cleanOrder.couponCode !== undefined) updateData.couponCode = cleanOrder.couponCode || null;
+                  if (cleanOrder.guestToken !== undefined) updateData.guestToken = cleanOrder.guestToken;
 
                   transaction.update(orderRef, updateData);
               }

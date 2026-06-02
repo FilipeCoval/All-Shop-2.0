@@ -126,46 +126,51 @@ service cloud.firestore {
     }
 
     // =====================================================
-    // ORDERS
+    // ORDERS (🔥 PRO VERSION)
     // =====================================================
 
     match /orders/{orderId} {
 
-      allow get: if isAdmin() ||
-        (isSignedIn() &&
-          (existing().userId == request.auth.uid ||
-           existing().shippingInfo.email == request.auth.token.email));
+      function isOwner() {
+        // Para transacoes CREATE onde o doc nao existe
+        let isNew = resource == null;
+        
+        let isUserOwner = isSignedIn() && !isNew && resource.data.userId == request.auth.uid;
+        
+        // Protege contra brute-force de IDs: guests so podem ler se for "Pendente" 
+        // ou se estiverem a fazer um UPDATE valido (com o token no payload).
+        let isGuestOwner = !isSignedIn() && !isNew && resource.data.keys().hasAll(['guestToken']) && resource.data.guestToken is string && (
+          (request.resource == null && resource.data.status == 'Pendente') || 
+          (request.resource != null && request.resource.data.guestToken == resource.data.guestToken)
+        );
+
+        return isNew || isUserOwner || isGuestOwner;
+      }
+
+      function isCreatingOwnOrder() {
+        return (
+          (isSignedIn() && request.resource.data.userId == request.auth.uid)
+          ||
+          (!isSignedIn() && request.resource.data.guestToken is string)
+        );
+      }
+
+      // READ
+      allow get: if isAdmin() || isOwner();
 
       allow list: if isAdmin() || isSignedIn();
 
-      allow create: if isValidId(orderId) &&
-        incoming().keys().hasAll([
-          "total",
-          "status",
-          "date",
-          "items"
-        ]) &&
-        isValidOrder(incoming()) &&
-        (
-          isAdmin() ||
-          (isSignedIn() && incoming().userId == request.auth.uid) ||
-          (!isSignedIn())
-        );
+      // CREATE
+      allow create: if isValidId(orderId)
+        && isValidOrder(request.resource.data)
+        && (isAdmin() || isCreatingOwnOrder());
 
-      allow update: if isValidId(orderId) && (
-        isAdmin() ||
-        (
-          isSignedIn() &&
-          isValidOrder(incoming()) &&
-          (existing().userId == request.auth.uid ||
-           existing().shippingInfo.email == request.auth.token.email) &&
-          incoming().diff(existing()).affectedKeys().hasOnly([
-            'status',
-            'updatedAt'
-          ])
-        )
-      );
+      // UPDATE
+      allow update: if isValidId(orderId)
+        && isValidOrder(request.resource.data)
+        && (isAdmin() || isOwner());
 
+      // DELETE
       allow delete: if isAdmin();
     }
 
