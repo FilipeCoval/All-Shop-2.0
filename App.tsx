@@ -67,6 +67,7 @@ import { notifyNewOrder } from './services/telegramNotifier';
 import { supabaseSync } from './services/supabaseSync';
 import LoyaltyPage from './components/LoyaltyPage';
 import { trackVisit } from './services/analyticsService';
+import { reserveStock, finalizeOrder } from './services/api';
 
 // LAZY LOADING DO DASHBOARD
 // O código do Dashboard (gráficos, tabelas grandes, scanners) só é baixado se o utilizador for admin e clicar na rota.
@@ -482,99 +483,16 @@ const App: React.FC = () => {
   };
 
   const updateReservationInFirebase = async (productId: number, variantName: string | undefined | null, newQuantity: number): Promise<boolean> => {
-      await new Promise(resolve => setTimeout(resolve, 200));
-
+      // In prod mode, we call our backend API instead of direct Firestore writes
       try {
-          const productDoc = await getDoc(doc(modularDb, 'products_public', productId.toString()));
+          // Note: Variant name mapping might need adjustment based on how it's stored.
+          // Assuming product.variants[vIndex].name matches variantName.
           
-          if (!productDoc.exists) {
-              const isDemoProduct = INITIAL_PRODUCTS.some(p => p.id === productId);
-              if (isDemoProduct) {
-                  console.warn("Produto de demonstração (não sincronizado) adicionado ao carrinho.");
-                  return true;
-              }
-              console.error("Produto não encontrado na base de dados pública:", productId);
-              alert("Erro: Este produto parece não estar sincronizado com o sistema. Por favor, tente recarregar a página ou contacte o suporte.");
-              return false;
-          }
-
-          const productData = productDoc.data() as Product;
-          
-          let totalStock = productData.stock || 0;
-          if (variantName && productData.variants) {
-              const variant = productData.variants.find(v => v.name === variantName);
-              if (variant && variant.stock !== undefined) {
-                  totalStock = variant.stock;
-              }
-          } else if (!variantName && productData.variants && productData.variants.length > 0) {
-              totalStock = productData.variants.reduce((acc, v) => acc + (v.stock || 0), 0);
-          }
-
-          const activeReservationsSnap = await getDocs(query(collection(modularDb, 'stock_reservations'),
-              where('productId', '==', productId)
-          ));
-
-          let reservedByOthers = 0;
-          let myCurrentResDoc: any = null;
-          const now = Date.now();
-
-          activeReservationsSnap.forEach(doc => {
-              const data = doc.data();
-              if (data.expiresAt <= now) return;
-              
-              // Only consider reservations for the same variant, OR if neither has a variant
-              // (If one has variant and other doesn't, they are separate stocks)
-              const dataVariant = data.variantName || null;
-              const targetVariant = variantName || null;
-              
-              if (dataVariant !== targetVariant) return;
-
-              const isMine = (data.sessionId === sessionId) || (user?.uid && data.userId === user.uid);
-              if (isMine) {
-                  myCurrentResDoc = doc; 
-              } else {
-                  reservedByOthers += data.quantity; 
-              }
-          });
-
-          const availableForMe = totalStock - reservedByOthers;
-          
-          if (newQuantity > availableForMe) {
-              if (availableForMe <= 0) {
-                  alert("Lamentamos, mas este artigo acabou de esgotar ou está reservado por outro cliente.");
-              } else {
-                  alert(`Stock insuficiente! Restam apenas ${availableForMe} unidades disponíveis.`);
-              }
-              return false;
-          }
-
-          const batch = writeBatch(modularDb);
-          if (newQuantity <= 0) {
-              if (myCurrentResDoc) batch.delete(myCurrentResDoc.ref);
-          } else {
-              const resData: any = {
-                  productId,
-                  variantName: variantName || null,
-                  quantity: newQuantity,
-                  sessionId,
-                  expiresAt: Date.now() + (15 * 60 * 1000)
-              };
-              if (user?.uid) resData.userId = user.uid;
-
-              if (myCurrentResDoc) {
-                  batch.update(doc(modularDb, 'stock_reservations', myCurrentResDoc.id), resData);
-              } else {
-                  const newRef = doc(collection(modularDb, 'stock_reservations'));
-                  batch.set(newRef, resData);
-              }
-          }
-
-          await batch.commit();
+          await reserveStock(productId.toString(), newQuantity, localStorage.getItem('guestToken') || undefined);
           return true;
-
-      } catch (e) {
-          console.error("Erro crítico na transação de reserva:", e);
-          alert("Ocorreu um erro de comunicação com o servidor. Verifique a sua internet.");
+      } catch (e: any) {
+          console.error("Erro na reserva de stock:", e);
+          alert(e.message || "Erro ao reservar stock.");
           return false;
       }
   };
@@ -721,21 +639,17 @@ const App: React.FC = () => {
           console.log("DEBUG handleCheckout cleanOrder:", cleanOrder, "User UID from app state:", user?.uid);
           cleanOrder.stockDeducted = true; // Indica que o stock público já foi deduzido na altura da compra
           
-          // FIX: Bypassing transaction due to persistent network/permission errors
-          // Sending to server-side API to bypass client permission/network issues
-          const response = await fetch('/api/checkout', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ order: cleanOrder })
-          });
+          // Using backend finalizeOrder instead of /api/checkout
+          await finalizeOrder(
+              cleanOrder.items,
+              localStorage.getItem('guestToken') || '',
+              cleanOrder.shippingInfo,
+              cleanOrder.id // idempotencyKey
+          );
+
+          console.info("Order processed successfully via finalizeOrder");
           
-          if (!response.ok) {
-              const errData = await response.json();
-              throw new Error(errData.error || "Erro no servidor ao guardar encomenda.");
-          }
-          const exists = false; // We treat it as success, logic handled in backend
-          
-          const alreadyExists = exists;
+          const alreadyExists = false;
 
           // 4. Limpar reservas do carrinho (fora da transação principal para não bloquear se falhar)
           try {

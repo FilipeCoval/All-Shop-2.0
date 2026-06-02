@@ -56,6 +56,42 @@ async function startServer() {
     }
   });
 
+  app.all('/api/reserve-stock', async (req, res) => {
+    try {
+        const handler = await import('./api/reserve-stock.ts');
+        await handler.default(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.all('/api/finalize-order', async (req, res) => {
+    try {
+        const handler = await import('./api/finalize-order.ts');
+        await handler.default(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.all('/api/cleanup-reservations', async (req, res) => {
+    try {
+        const handler = await import('./api/cleanup-reservations.ts');
+        await handler.default(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.all('/api/update-order', async (req, res) => {
+    try {
+        const handler = await import('./api/update-order.ts');
+        await handler.default(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+  });
+
   // Replicate Vercel rewrites
   app.get(["/product/:id", "/p/:id"], async (req, res) => {
     req.query.id = req.params.id;

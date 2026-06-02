@@ -410,7 +410,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   // ... (Manual Order & Push Functions remain the same) ...
   const handleManualOrderConfirm = async (order: Order, deductions: { batchId: string, quantity: number, saleRecord: SaleRecord }[]) => {
       try {
-        await setDoc(doc(modularDb, 'orders', order.id), order);
+        const response = await fetch('/api/update-order', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                orderId: order.id, 
+                action: 'set', 
+                data: order 
+            }),
+        });
+        if (!response.ok) throw new Error("Erro ao guardar encomenda.");
+
         for (const ded of deductions) {
             const product = products.find(p => p.id === ded.batchId);
             if (product) {
