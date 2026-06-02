@@ -90,7 +90,7 @@ ${itemsList}
             return true;
         }
     } catch (error) {
-        console.error("Falha ao enviar notificação Telegram:", error);
-        throw error;
+        console.error("Falha ao enviar notificação Telegram (Checkout prosseguiu normalmente):", error);
+        return false; // Return false instead of throwing
     }
 };
