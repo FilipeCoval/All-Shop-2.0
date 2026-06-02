@@ -41,11 +41,27 @@ export default async function handler(req: Request, res: Response) {
                     const productDoc = await t.get(productRef);
                     if (productDoc.exists) {
                         const productData = productDoc.data()!;
+                        console.log("DEBUG: Product data found:", productData);
+                        if (!productData) {
+                             console.error("DEBUG: productDoc.exists but productData is undefined");
+                             continue;
+                        }
                         if (item.selectedVariant && productData.variants) {
                             const vIndex = productData.variants.findIndex((v: any) => v.name === item.selectedVariant);
-                            if (vIndex !== -1) productData.variants[vIndex].stock = (productData.variants[vIndex].stock || 0) - item.quantity;
+                            if (vIndex !== -1) {
+                                console.log("DEBUG: Updating variant stock. Found variant:", productData.variants[vIndex]);
+                                if (!productData.variants[vIndex]) {
+                                    console.error("DEBUG: Variant is undefined at index", vIndex);
+                                    continue;
+                                }
+                                productData.variants[vIndex].stock = (productData.variants[vIndex].stock || 0) - item.quantity;
+                            } else {
+                                console.log("DEBUG: Variant not found.");
+                            }
                         } else {
+                            console.log("DEBUG: Updating base product stock. Base value:", productData.stock);
                             productData.stock = (productData.stock || 0) - item.quantity;
+                            console.log("DEBUG: Base product stock updated to:", productData.stock);
                         }
                         t.update(productRef, productData);
                     }
