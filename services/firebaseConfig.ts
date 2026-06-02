@@ -27,6 +27,7 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Services
 export const auth = getAuth(app);
+console.log("DEBUG: Using Firestore database ID:", firebaseConfig.firestoreDatabaseId);
 export const modularDb = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)" ? getFirestore(app, firebaseConfig.firestoreDatabaseId) : getFirestore(app); // Modular DB for v9 syntax
 export const storage = getStorage(app);
 
