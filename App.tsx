@@ -722,34 +722,19 @@ const App: React.FC = () => {
           cleanOrder.stockDeducted = true; // Indica que o stock público já foi deduzido na altura da compra
           
           // FIX: Bypassing transaction due to persistent network/permission errors
-          const orderRef = doc(modularDb, "orders", cleanOrder.id);
-          const existingOrderDoc = await getDoc(orderRef);
-          const exists = existingOrderDoc.exists();
+          // Sending to server-side API to bypass client permission/network issues
+          const response = await fetch('/api/checkout', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ order: cleanOrder })
+          });
           
-          const batch = writeBatch(modularDb);
-
-          if (!exists) {
-              for (const item of cleanOrder.items) {
-                  if (typeof item !== 'object' || item === null) continue;
-                  const productRef = doc(modularDb, 'products_public', item.productId.toString());
-                  const productDoc = await getDoc(productRef);
-                  if (productDoc.exists()) {
-                      const productData = productDoc.data() as Product;
-                      const variantName = item.selectedVariant;
-                      if (variantName && productData.variants) {
-                          const variantIndex = productData.variants.findIndex(v => v.name === variantName);
-                          if (variantIndex !== -1) productData.variants[variantIndex].stock = (productData.variants[variantIndex].stock || 0) - item.quantity;
-                      } else {
-                          productData.stock = (productData.stock || 0) - item.quantity;
-                      }
-                      batch.update(productRef, productData);
-                  }
-              }
-              batch.set(orderRef, cleanOrder);
-          } else {
-              batch.update(orderRef, cleanOrder);
+          if (!response.ok) {
+              const errData = await response.json();
+              throw new Error(errData.error || "Erro no servidor ao guardar encomenda.");
           }
-          await batch.commit();
+          const exists = false; // We treat it as success, logic handled in backend
+          
           const alreadyExists = exists;
 
           // 4. Limpar reservas do carrinho (fora da transação principal para não bloquear se falhar)

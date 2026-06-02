@@ -47,6 +47,15 @@ async function startServer() {
     }
   });
 
+  app.all('/api/checkout', async (req, res) => {
+    try {
+        const handler = await import('./api/checkout.ts');
+        await handler.default(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+  });
+
   // Replicate Vercel rewrites
   app.get(["/product/:id", "/p/:id"], async (req, res) => {
     req.query.id = req.params.id;
