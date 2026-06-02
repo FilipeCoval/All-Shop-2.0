@@ -3,34 +3,41 @@ import admin from 'firebase-admin';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Admin SDK
-console.log("DEBUG: Initializing Admin SDK with project ID:", firebaseConfig.projectId);
-if (!admin.apps.length) {
-    admin.initializeApp({
-        credential: admin.credential.applicationDefault(),
-        projectId: firebaseConfig.projectId
-    });
-}
-console.log("DEBUG: Admin SDK initialized.");
+let db: admin.firestore.Firestore;
 
-const db = admin.firestore();
+async function getDb() {
+    if (!admin.apps.length) {
+        console.log("DEBUG: Initializing Admin SDK with project ID:", firebaseConfig.projectId);
+        admin.initializeApp({
+            credential: admin.credential.applicationDefault(),
+            projectId: firebaseConfig.projectId
+        });
+        console.log("DEBUG: Admin SDK initialized.");
+    }
+    if (!db) {
+        db = admin.firestore();
+    }
+    return db;
+}
 
 export default async function handler(req: Request, res: Response) {
     if (req.method !== 'POST') return res.status(405).end();
     
     console.log("DEBUG: Checkout handler called.");
     try {
+        const theDb = await getDb();
         const { order } = req.body;
         console.log("DEBUG: Order received:", order?.id);
-        const orderRef = db.collection('orders').doc(order.id);
+        const orderRef = theDb.collection('orders').doc(order.id);
         
         // Use a runTransaction on the admin SDK
-        await db.runTransaction(async (t) => {
+        await theDb.runTransaction(async (t) => {
             const existingOrder = await t.get(orderRef);
             
             if (!existingOrder.exists) {
                 // Stock update logic
                 for (const item of order.items) {
-                    const productRef = db.collection('products_public').doc(item.productId.toString());
+                    const productRef = theDb.collection('products_public').doc(item.productId.toString());
                     const productDoc = await t.get(productRef);
                     if (productDoc.exists) {
                         const productData = productDoc.data()!;
