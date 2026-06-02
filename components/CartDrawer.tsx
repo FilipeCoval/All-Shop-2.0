@@ -77,13 +77,22 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
 }) => {
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'info' | 'platform' | 'tutorial' | 'success'>('cart');
   const [isFinalizing, setIsFinalizing] = useState(false);
-  const [currentOrderId, setCurrentOrderId] = useState(() => localStorage.getItem('as_cart_order_id') || '');
+  const [currentOrderId, setCurrentOrderId] = useState(() => {
+    const saved = localStorage.getItem('as_cart_order_id') || '';
+    return saved.trim().replace(/^#+/, '');
+  });
   const [selectedFreebieForSelection, setSelectedFreebieForSelection] = useState<Product | null>(null);
   const [selectedVariantForFreebie, setSelectedVariantForFreebie] = useState<string>('');
   
   useEffect(() => {
      if (currentOrderId && cartItems.length > 0) {
-         localStorage.setItem('as_cart_order_id', currentOrderId);
+         const cleanId = currentOrderId.trim().replace(/^#+/, '');
+         if (cleanId !== currentOrderId) {
+             setCurrentOrderId(cleanId);
+             localStorage.setItem('as_cart_order_id', cleanId);
+         } else {
+             localStorage.setItem('as_cart_order_id', currentOrderId);
+         }
          // Guardar um hash simples do carrinho para invalidar se o utilizador alterar
          localStorage.setItem('as_cart_hash', JSON.stringify(cartItems));
      } else {

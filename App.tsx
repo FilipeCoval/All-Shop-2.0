@@ -712,6 +712,10 @@ const App: React.FC = () => {
 
   const handleCheckout = async (newOrder: Order, isAutoSave: boolean = false): Promise<boolean> => {
       try {
+          // Garantir que o ID não contém '#' que atua como fragmento de URL
+          if (newOrder.id && typeof newOrder.id === 'string') {
+              newOrder.id = newOrder.id.trim().replace(/^#+/, '');
+          }
           // Limpar dados para evitar erros de 'undefined' no Firebase
           const cleanOrder = JSON.parse(JSON.stringify(newOrder));
           console.log("DEBUG handleCheckout cleanOrder:", cleanOrder, "User UID from app state:", user?.uid);
