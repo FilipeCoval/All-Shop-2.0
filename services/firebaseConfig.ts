@@ -36,7 +36,7 @@ export const storage = getStorage(app);
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
 }
-export const db = firebase.firestore(); // Old DB for v8 syntax
+export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)" ? (firebase.app() as any).firestore(firebaseConfig.firestoreDatabaseId) : firebase.firestore(); // Old DB for v8 syntax
 
 export let messaging: any = null;
 
