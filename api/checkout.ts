@@ -1,9 +1,13 @@
 import { Request, Response } from 'express';
 import admin from 'firebase-admin';
+import firebaseConfig from '../firebase-applet-config.json';
 
-// Initialize Admin SDK - assume it picks up environment configuration
+// Initialize Admin SDK
 if (!admin.apps.length) {
-    admin.initializeApp();
+    admin.initializeApp({
+        credential: admin.credential.applicationDefault(),
+        projectId: firebaseConfig.projectId
+    });
 }
 
 const db = admin.firestore();
