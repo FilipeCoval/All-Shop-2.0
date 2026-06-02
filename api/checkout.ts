@@ -3,20 +3,24 @@ import admin from 'firebase-admin';
 import firebaseConfig from '../firebase-applet-config.json';
 
 // Initialize Admin SDK
+console.log("DEBUG: Initializing Admin SDK with project ID:", firebaseConfig.projectId);
 if (!admin.apps.length) {
     admin.initializeApp({
         credential: admin.credential.applicationDefault(),
         projectId: firebaseConfig.projectId
     });
 }
+console.log("DEBUG: Admin SDK initialized.");
 
 const db = admin.firestore();
 
 export default async function handler(req: Request, res: Response) {
     if (req.method !== 'POST') return res.status(405).end();
     
+    console.log("DEBUG: Checkout handler called.");
     try {
         const { order } = req.body;
+        console.log("DEBUG: Order received:", order?.id);
         const orderRef = db.collection('orders').doc(order.id);
         
         // Use a runTransaction on the admin SDK
@@ -48,6 +52,6 @@ export default async function handler(req: Request, res: Response) {
         res.status(200).json({ success: true });
     } catch (error: any) {
         console.error("Backend checkout error:", error);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: error?.message || "Unknown error" });
     }
 }
