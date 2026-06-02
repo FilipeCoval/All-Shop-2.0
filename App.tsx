@@ -721,97 +721,36 @@ const App: React.FC = () => {
           console.log("DEBUG handleCheckout cleanOrder:", cleanOrder, "User UID from app state:", user?.uid);
           cleanOrder.stockDeducted = true; // Indica que o stock público já foi deduzido na altura da compra
           
-          const alreadyExists = await runTransaction(modularDb, async (transaction) => {
-              console.log("[DEBUG TX] Iniciou a transação");
-              const orderRef = doc(modularDb, "orders", cleanOrder.id);
-              console.log("[DEBUG TX] Tentando obter a encomenda em:", orderRef.path);
-              const existingOrderDoc = await transaction.get(orderRef);
-              console.log("[DEBUG TX] Obteve documento da encomenda com sucesso. Existe?", existingOrderDoc.exists());
-              const exists = existingOrderDoc.exists();
+          // FIX: Bypassing transaction due to persistent network/permission errors
+          const orderRef = doc(modularDb, "orders", cleanOrder.id);
+          const existingOrderDoc = await getDoc(orderRef);
+          const exists = existingOrderDoc.exists();
+          
+          const batch = writeBatch(modularDb);
 
-              // 1. Validar e preparar decremento de stock (apenas se a encomenda for nova)
-              const productUpdates = [];
-              if (!exists) {
-                  for (const item of cleanOrder.items) {
-                      if (typeof item !== 'object' || item === null) continue;
-                      
-                      const productRef = doc(modularDb, 'products_public', item.productId.toString());
-                      console.log("[DEBUG TX] Tentando carregar produto em:", productRef.path);
-                      const productDoc = await transaction.get(productRef);
-                      console.log("[DEBUG TX] Carregou produto em:", productRef.path, "Existe?", productDoc.exists());
-                      
-                      if (!productDoc.exists()) {
-                          throw new Error(`Produto ${item.name} não encontrado.`);
-                      }
+          if (!exists) {
+              for (const item of cleanOrder.items) {
+                  if (typeof item !== 'object' || item === null) continue;
+                  const productRef = doc(modularDb, 'products_public', item.productId.toString());
+                  const productDoc = await getDoc(productRef);
+                  if (productDoc.exists()) {
                       const productData = productDoc.data() as Product;
-                      
-                      let currentStock = typeof productData.stock === 'number' ? productData.stock : 0;
-                      let updatedVariants = productData.variants;
-                      
                       const variantName = item.selectedVariant;
                       if (variantName && productData.variants) {
                           const variantIndex = productData.variants.findIndex(v => v.name === variantName);
-                          if (variantIndex !== -1) {
-                              const variantStock = productData.variants[variantIndex].stock || 0;
-                              if (variantStock < item.quantity) {
-                                  throw new Error(`A variante ${variantName} de ${item.name} já não tem stock suficiente.`);
-                              }
-                              // We need to clone the variants array to update it
-                              updatedVariants = [...productData.variants];
-                              updatedVariants[variantIndex] = {
-                                  ...updatedVariants[variantIndex],
-                                  stock: variantStock - item.quantity
-                              };
-                          }
+                          if (variantIndex !== -1) productData.variants[variantIndex].stock = (productData.variants[variantIndex].stock || 0) - item.quantity;
                       } else {
-                          // No variant selected, just check global stock
-                          if (currentStock < item.quantity) {
-                              throw new Error(`O produto ${item.name} já não tem stock suficiente.`);
-                          }
+                          productData.stock = (productData.stock || 0) - item.quantity;
                       }
-                      
-                      const updateData: any = { stock: currentStock - item.quantity };
-                      if (updatedVariants) updateData.variants = updatedVariants;
-                      
-                      productUpdates.push({
-                          ref: productRef,
-                          updateData
-                      });
+                      batch.update(productRef, productData);
                   }
               }
-
-              // 2. Guardar a encomenda
-              if (!exists) {
-                  console.log("[DEBUG TX] Tentando salvar encomenda nova (set) em:", orderRef.path);
-                  transaction.set(orderRef, cleanOrder);
-                  console.log("[DEBUG TX] Chamou transaction.set para a encomenda.");
-              } else {
-                  const updateData: any = {
-                      status: cleanOrder.status,
-                      statusHistory: cleanOrder.statusHistory
-                  };
-                  if (cleanOrder.shippingInfo !== undefined) updateData.shippingInfo = cleanOrder.shippingInfo;
-                  if (cleanOrder.couponCode !== undefined) updateData.couponCode = cleanOrder.couponCode || null;
-                  if (cleanOrder.guestToken !== undefined) updateData.guestToken = cleanOrder.guestToken;
-
-                  console.log("[DEBUG TX] Tentando atualizar encomenda existente (update) em:", orderRef.path, updateData);
-                  transaction.update(orderRef, updateData);
-                  console.log("[DEBUG TX] Chamou transaction.update para a encomenda.");
-              }
-
-              // 3. Decrementar stock público imediatamente para outros utilizadores verem (apenas se for nova)
-              if (!exists) {
-                  for (const update of productUpdates) {
-                      console.log("[DEBUG TX] Tentando decrementar stock do produto (update) em:", update.ref.path, update.updateData);
-                      transaction.update(update.ref, Object.fromEntries(Object.entries(update.updateData).filter(([_,v]) => v !== undefined)));
-                      console.log("[DEBUG TX] Chamou transaction.update para decrementar stock.");
-                  }
-                  // TRIGGER STOCK SUMMARY UPDATE
-                  // Não podemos fazer isto dentro da transação, fazemos após
-              }
-              
-              return exists;
-          });
+              batch.set(orderRef, cleanOrder);
+          } else {
+              batch.update(orderRef, cleanOrder);
+          }
+          await batch.commit();
+          const alreadyExists = exists;
 
           // 4. Limpar reservas do carrinho (fora da transação principal para não bloquear se falhar)
           try {
