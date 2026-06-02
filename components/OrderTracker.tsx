@@ -24,13 +24,13 @@ const OrderTracker: React.FC = () => {
     setOrder(null);
 
     try {
-        // Normalizar ID (adicionar # se faltar, uppercar)
-        let normalizedId = searchId.trim();
-        if (!normalizedId.startsWith('#')) normalizedId = '#' + normalizedId;
-        normalizedId = normalizedId.toUpperCase();
+        // Normalizar ID (remover # se existir, uppercase)
+        let normalizedId = searchId.trim().toUpperCase();
+        const cleanedId = normalizedId.startsWith('#') ? normalizedId.substring(1) : normalizedId;
+        const withHashId = normalizedId.startsWith('#') ? normalizedId : '#' + normalizedId;
 
         const snapshot = await db.collection('orders')
-            .where('id', '==', normalizedId)
+            .where('id', 'in', [cleanedId, withHashId])
             .where('shippingInfo.email', '==', email.trim().toLowerCase())
             .limit(1)
             .get();

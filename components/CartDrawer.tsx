@@ -280,7 +280,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
         }
 
         if (!currentOrderId) {
-            const id = `#AS-${Math.floor(100000 + Math.random() * 900000)}`;
+            const id = `AS-${Math.floor(100000 + Math.random() * 900000)}`;
             setCurrentOrderId(id);
         }
         setCheckoutStep('platform');
@@ -350,7 +350,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
         newOrder.couponCode = appliedCoupon.code;
     }
 
-    let msg = `🛍️ Pedido ${currentOrderId}\n`;
+    let msg = `🛍️ Pedido ${currentOrderId.startsWith('#') ? currentOrderId : `#${currentOrderId}`}\n`;
     msg += `Método: ${deliveryMethod === 'Pickup' ? '🏪 Levantamento em Loja (Leiria)' : '🚚 Envio CTT'}\n`;
     msg += `Pagamento: ${userInfo.paymentMethod}\n`;
     msg += `Cliente: ${userInfo.name} (${userInfo.phone})\n`;
@@ -702,7 +702,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
 
                 <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-100 dark:border-slate-700 w-full mb-8">
                     <p className="text-xs text-gray-400 uppercase font-bold mb-1">Referência do Pedido</p>
-                    <p className="text-xl font-mono font-bold text-primary">{currentOrderId}</p>
+                    <p className="text-xl font-mono font-bold text-primary">{currentOrderId.startsWith('#') ? currentOrderId : `#${currentOrderId}`}</p>
                 </div>
 
                 <button onClick={onClose} className="bg-gray-900 dark:bg-slate-700 text-white px-8 py-4 rounded-xl font-bold w-full shadow-xl hover:scale-[1.02] transition-transform">
