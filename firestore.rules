@@ -10,7 +10,7 @@ service cloud.firestore {
 
     // Orders: Read user's own orders only, no client writes
     match /orders/{orderId} {
-      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || request.auth.token.email == resource.data.shippingInfo.email);
       allow write: if false; // Backend only
     }
 

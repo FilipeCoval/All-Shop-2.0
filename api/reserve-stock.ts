@@ -19,20 +19,34 @@ export default async function handler(req: Request, res: Response) {
             throw new Error("Internal Server Error: Database not connected");
         }
         
-        await db.runTransaction(async (t) => {
+        const result = await db.runTransaction(async (t) => {
             console.log("DEBUG: transaction attempt");
             
             // Query for the product by publicProductId
+            console.log("DEBUG: Looking for products_inventory with publicProductId:", Number(productId));
             const productQuery = db.collection('products_inventory').where('publicProductId', '==', Number(productId));
             const snapshot = await t.get(productQuery);
             
             console.log("DEBUG: snapshot empty:", snapshot.empty);
-            if (snapshot.empty) throw new Error('Product not found in inventory');
+            if (snapshot.empty) {
+                // Try looking up by ID as fallback if Number(productId) fails
+                console.log("DEBUG: Trying fallback lookup by doc ID:", productId);
+                const fallbackRef = db.collection('products_inventory').doc(productId);
+                const fallbackDoc = await t.get(fallbackRef);
+                if (fallbackDoc.exists) {
+                    console.log("DEBUG: Found product via fallback doc ID");
+                    return { productRef: fallbackRef, productDoc: fallbackDoc };
+                }
+                throw new Error(`Product not found in inventory with productId: ${productId}`);
+            }
             
             const productDoc = snapshot.docs[0];
-            const productRef = productDoc.ref;
-            
-            const data = productDoc.data()!;
+            return { productRef: productDoc.ref, productDoc };
+        });
+        
+        const { productRef, productDoc } = result;
+        
+        const data = productDoc.data()!;
             console.log("DEBUG: product data", data);
             
             const stock = data.quantityBought || 0; // Fixed field name based on Dashboard.tsx/useInventory.ts
