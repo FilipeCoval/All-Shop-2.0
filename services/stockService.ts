@@ -1,5 +1,6 @@
 
-import {  db } from './firebaseConfig';
+import { modularDb } from './firebaseConfig';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { InventoryProduct, StockReservation, Order } from '../types';
 
 export const calculateAvailableStock = async (
@@ -8,24 +9,28 @@ export const calculateAvailableStock = async (
 ): Promise<number> => {
     // 1. Total Físico (Batches)
     const productBatches = inventoryProducts.filter(p => p.publicProductId === publicProductId);
-    const totalPhysical = productBatches.reduce((acc, p) => acc + (p.quantityBought - p.quantitySold), 0);
+    const totalPhysical = productBatches.reduce((acc, p) => acc + (p.quantityBought - (p.quantitySold || 0)), 0);
 
     // 2. Reservas de Carrinho (ativas, < 15min)
-    const now = Date.now();
-    const cartReservationsSnapshot = await db.collection('stock_reservations')
-        .where('productId', '==', publicProductId)
-        .where('type', '==', 'CART')
-        .where('expiresAt', '>', now)
-        .get();
+    const nowTime = Date.now();
+    const resQ = query(
+        collection(modularDb, 'stock_reservations'),
+        where('productId', '==', publicProductId),
+        where('type', '==', 'CART'),
+        where('expiresAt', '>', nowTime)
+    );
+    const cartReservationsSnapshot = await getDocs(resQ);
     
     const totalCartReservations = cartReservationsSnapshot.docs.reduce((acc, doc) => acc + (doc.data().quantity || 0), 0);
 
     // 3. Reservas de Encomendas (Pendentes)
     let totalOrderReservations = 0;
     try {
-        const ordersSnapshot = await db.collection('orders')
-            .where('status', 'in', ['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue'])
-            .get();
+        const ordQ = query(
+            collection(modularDb, 'orders'),
+            where('status', 'in', ['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue'])
+        );
+        const ordersSnapshot = await getDocs(ordQ);
         
         const now = new Date();
         const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));

@@ -1,6 +1,5 @@
-import firebase from 'firebase/compat/app';
-import 'firebase/compat/firestore';
-import { db } from '../services/firebaseConfig';
+import { modularDb } from '../services/firebaseConfig';
+import { collection, doc, query, where, getDocs, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { Order, OrderItem, InventoryProduct } from '../types';
 
 export const forceStockDeduction = async (
@@ -8,14 +7,12 @@ export const forceStockDeduction = async (
     serialNumber: string
 ): Promise<{ success: boolean, message: string }> => {
     try {
-        let productRef = db.collection('products_inventory').doc(productId);
-        let productSnap = await productRef.get();
+        let productRef = doc(modularDb, 'products_inventory', productId);
+        let productSnap = await getDoc(productRef);
         
         // Se nao encontrar pelo ID direto, tentar pelo publicProductId
-        if (!productSnap.exists) {
-            const querySnap = await db.collection('products_inventory')
-                .where('publicProductId', '==', Number(productId))
-                .get();
+        if (!productSnap.exists()) {
+            const querySnap = await getDocs(query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', Number(productId))));
             if (querySnap.empty) throw new Error("Produto não encontrado no inventário.");
             productSnap = querySnap.docs[0];
             productRef = productSnap.ref;
@@ -35,7 +32,7 @@ export const forceStockDeduction = async (
             status: 'SOLD'
         };
 
-        await productRef.update({ 
+        await updateDoc(productRef, { 
             units: updatedUnits,
             quantitySold: (product.quantitySold || 0) + 1
         });
@@ -53,14 +50,12 @@ export const manualFixStockStatus = async (
     serialNumber: string
 ): Promise<{ success: boolean, message: string }> => {
     try {
-        let productRef = db.collection('products_inventory').doc(productId);
-        let productSnap = await productRef.get();
+        let productRef = doc(modularDb, 'products_inventory', productId);
+        let productSnap = await getDoc(productRef);
         
         // Se nao encontrar pelo ID direto, tentar pelo publicProductId
-        if (!productSnap.exists) {
-            const querySnap = await db.collection('products_inventory')
-                .where('publicProductId', '==', Number(productId))
-                .get();
+        if (!productSnap.exists()) {
+            const querySnap = await getDocs(query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', Number(productId))));
             if (querySnap.empty) throw new Error("Produto não encontrado no inventário.");
             productSnap = querySnap.docs[0];
             productRef = productSnap.ref;
@@ -83,15 +78,15 @@ export const manualFixStockStatus = async (
             soldAt: new Date().toISOString()
         };
 
-        await productRef.update({ 
+        await updateDoc(productRef, { 
             units: updatedUnits,
             quantitySold: (product.quantitySold || 0) + 1
         });
         
         // Ensure order also has it
-        const orderRef = db.collection('orders').doc(orderId);
-        await orderRef.update({
-            serialNumbersUsed: firebase.firestore.FieldValue.arrayUnion(serialNumber)
+        const orderRef = doc(modularDb, 'orders', orderId);
+        await updateDoc(orderRef, {
+            serialNumbersUsed: arrayUnion(serialNumber)
         });
 
         return { success: true, message: `Serial ${serialNumber} marcado como vendido para a encomenda ${orderId} e stock atualizado.` };
@@ -104,14 +99,14 @@ export const manualFixStockStatus = async (
 // Otimização: aceita inventário já carregado
 export const backfillOrderSerials = async (orderId: string, inventorySnap?: any): Promise<{ success: boolean, message: string }> => {
     try {
-        const orderRef = db.collection('orders').doc(orderId);
-        const orderSnap = await orderRef.get();
-        if (!orderSnap.exists) throw new Error("Encomenda não encontrada.");
+        const orderRef = doc(modularDb, 'orders', orderId);
+        const orderSnap = await getDoc(orderRef);
+        if (!orderSnap.exists()) throw new Error("Encomenda não encontrada.");
         
         const order = orderSnap.data() as Order;
         
         // Find units in inventory sold to this order
-        const docs = inventorySnap ? inventorySnap.docs : (await db.collection('products_inventory').get()).docs;
+        const docs = inventorySnap ? inventorySnap.docs : (await getDocs(collection(modularDb, 'products_inventory'))).docs;
         const updatedItems = [...order.items];
         let hasChanges = false;
 
@@ -124,7 +119,7 @@ export const backfillOrderSerials = async (orderId: string, inventorySnap?: any)
                     updatedItems.forEach((item, idx) => {
                         if (typeof item !== 'string' && item.productId === product.publicProductId) {
                             const currentSerials = (item as OrderItem).serialNumbers || [];
-                            const newSerials = [...new Set([...currentSerials, ...soldUnits.map(u => u.id)])];
+                            const newSerials = [...new Set([...currentSerials, ...soldUnits.map(({ id }) => id)])];
                             if (newSerials.length > currentSerials.length) {
                                 updatedItems[idx] = { ...(item as OrderItem), serialNumbers: newSerials };
                                 hasChanges = true;
@@ -136,7 +131,7 @@ export const backfillOrderSerials = async (orderId: string, inventorySnap?: any)
         });
 
         if (hasChanges) {
-            await orderRef.update({ items: updatedItems });
+            await updateDoc(orderRef, { items: updatedItems });
             return { success: true, message: `Seriais recuperados para a encomenda ${orderId}.` };
         } else {
             return { success: false, message: `Já não existem seriais em falta para esta encomenda ${orderId}.` };
@@ -150,8 +145,8 @@ export const backfillOrderSerials = async (orderId: string, inventorySnap?: any)
 
 export const backfillAllOrdersSerials = async (): Promise<{ success: boolean, message: string }> => {
     try {
-        const inventorySnap = await db.collection('products_inventory').get();
-        const ordersSnap = await db.collection('orders').get(); // Cuidado com o tamanho, mas ok para este caso
+        const inventorySnap = await getDocs(collection(modularDb, 'products_inventory'));
+        const ordersSnap = await getDocs(collection(modularDb, 'orders')); // Cuidado com o tamanho, mas ok para este caso
         
         let successCount = 0;
         

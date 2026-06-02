@@ -154,6 +154,46 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   // Manual Order Modal State
   const [isManualOrderModalOpen, setIsManualOrderModalOpen] = useState(false);
   
+  const handleSyncPublicStore = async () => {
+    if (!window.confirm("Esta ação irá reconstruir todos os produtos públicos com base no seu Gestor de Inventário. Deseja continuar?")) return;
+    
+    setSyncStatus({ current: 'Sincronizando loja com o inventário...', progress: 10 });
+    try {
+        const invQ = await getDocs(collection(modularDb, 'products_inventory'));
+        const publicIds = new Set<number>();
+        
+        invQ.docs.forEach(d => {
+            const data = d.data();
+            if (data.publicProductId) {
+                publicIds.add(Number(data.publicProductId));
+            }
+        });
+        
+        let i = 0;
+        for (const pid of Array.from(publicIds)) {
+            // Re-trigger stock sync, which will also recreate missing products because of our previous fix
+            await updateDoc(doc(modularDb, 'products_inventory', invQ.docs[0].id), { _lastSync: Date.now() }); // dummy update to force refresh
+            const pIdNum = Number(pid);
+            if (!isNaN(pIdNum)) {
+               const pds = await getDocs(query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', pIdNum)));
+               if (!pds.empty) {
+                   await updateProduct(pds.docs[0].id, { _lastSync: Date.now() }); // This triggers refreshPublicProductStock internally!
+               }
+            }
+            i++;
+            setSyncStatus({ current: `A reconstruir produto ${i}/${publicIds.size}`, progress: 10 + Math.round((i / publicIds.size) * 80) });
+        }
+        
+        setSyncStatus({ current: 'Loja Sincronizada com Sucesso!', progress: 100 });
+        setTimeout(() => setSyncStatus(null), 3000);
+        window.location.reload();
+    } catch (e) {
+        console.error("Erro na sincronização:", e);
+        alert("Erro ao sincronizar loja.");
+        setSyncStatus(null);
+    }
+  };
+
   const handleSyncAllData = async () => {
     if (!isSupabaseEnabled()) {
         alert("O Supabase não está configurado. Adicione as chaves VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nos segredos antes de sincronizar.");
@@ -1515,14 +1555,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                         </h2>
                         <p className="text-gray-500 dark:text-gray-400 mt-1">Sincronize os dados do Firebase com o Supabase para redundância offline.</p>
                     </div>
-                    <button 
-                        onClick={handleSyncAllData}
-                        disabled={isSyncingAll}
-                        className="flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
-                    >
-                        {isSyncingAll ? <Loader2 className="animate-spin" size={20} /> : <UploadCloud size={20} />}
-                        {isSyncingAll ? 'Sincronizando...' : 'Sincronizar Tudo agora'}
-                    </button>
+                    <div className="flex flex-col gap-2">
+                        <button 
+                            onClick={handleSyncPublicStore}
+                            disabled={isSyncingAll}
+                            className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-purple-200 dark:shadow-none"
+                        >
+                            <UploadCloud size={20} />
+                            Construir Loja a partir do Inventário
+                        </button>
+                        <button 
+                            onClick={handleSyncAllData}
+                            disabled={isSyncingAll}
+                            className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
+                        >
+                            {isSyncingAll ? <Loader2 className="animate-spin" size={20} /> : <UploadCloud size={20} />}
+                            {isSyncingAll ? 'Sincronizando...' : 'Sincronizar Tudo agora'}
+                        </button>
+                    </div>
                 </div>
 
                 {syncStatus && (

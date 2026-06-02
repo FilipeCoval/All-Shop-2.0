@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react';
-import {  db } from '../services/firebaseConfig';
+import { modularDb } from '../services/firebaseConfig';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { Order } from '../types';
 
 export const usePendingOrders = (isAdmin: boolean) => {
@@ -17,9 +18,13 @@ export const usePendingOrders = (isAdmin: boolean) => {
     // Escutar encomendas que ainda não foram enviadas ou processadas no inventário físico
     // Incluímos 'Pendente', 'Processamento', 'Pago', 'Enviado' e 'Entregue' porque se o admin ainda não "Registou a Venda" no inventário, 
     // o stock físico ainda está lá e precisa de ser subtraído para o público.
-    const unsubscribe = db.collection('orders')
-      .where('status', 'in', ['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue'])
-      .onSnapshot((snapshot) => {
+    const q = query(
+      collection(modularDb, 'orders'),
+      where('status', 'in', ['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue'])
+    );
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
         const orders: Order[] = [];
         snapshot.forEach(doc => {
           const data = doc.data() as Order;
@@ -38,10 +43,12 @@ export const usePendingOrders = (isAdmin: boolean) => {
         });
         setPendingOrders(orders);
         setLoading(false);
-      }, (error) => {
+      }, 
+      (error) => {
         console.error("Erro ao escutar encomendas pendentes:", error);
         setLoading(false);
-      });
+      }
+    );
 
     return () => unsubscribe();
   }, [isAdmin]);

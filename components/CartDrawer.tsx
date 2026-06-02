@@ -3,7 +3,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { CartItem, UserCheckoutInfo, Order, Coupon, User, Product, ProductVariant } from '../types';
 import { X, Trash2, Check, Loader2, ChevronLeft, User as UserIcon, Clock, Tag, AlertCircle, Store, Truck, MapPin, Smartphone, Landmark, Banknote, Sparkles, PartyPopper, Info, Gift } from 'lucide-react';
 import { SELLER_PHONE, TELEGRAM_LINK } from '../constants';
-import {  db } from '../services/firebaseConfig';
+import { modularDb } from '../services/firebaseConfig';
+import { collection, query, where, getDocs, limit, doc, updateDoc } from 'firebase/firestore';
 import OrderTutorial from './OrderTutorial';
 
 const ReservationBanner: React.FC<{ items: CartItem[] }> = ({ items }) => {
@@ -179,10 +180,12 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
       setAppliedCoupon(null);
 
       try {
-          const snapshot = await db.collection('coupons')
-              .where('code', '==', couponCode.trim().toUpperCase())
-              .limit(1)
-              .get();
+          const q = query(
+              collection(modularDb, 'coupons'),
+              where('code', '==', couponCode.trim().toUpperCase()),
+              limit(1)
+          );
+          const snapshot = await getDocs(q);
 
           if (snapshot.empty) {
               console.warn(`[CartDrawer] Cupão não encontrado: "${couponCode.trim().toUpperCase()}"`);
@@ -310,7 +313,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
                 updateData.isActive = false;
             }
 
-            await db.collection('coupons').doc(appliedCoupon.id).update(updateData);
+            await updateDoc(doc(modularDb, 'coupons', appliedCoupon.id), updateData);
         } catch (e) { console.error("Erro ao atualizar cupão", e); }
     }
 

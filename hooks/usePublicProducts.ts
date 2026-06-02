@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import {  db } from '../services/firebaseConfig';
+import { modularDb } from '../services/firebaseConfig';
+import { collection, onSnapshot, query } from 'firebase/firestore';
 import { Product } from '../types';
 import { INITIAL_PRODUCTS } from '../constants';
 
@@ -25,13 +26,14 @@ export const usePublicProducts = () => {
     loadingTimeout = setTimeout(() => {
         if (isActive && loading) {
             console.warn("Timeout ao carregar produtos do Firebase.");
-            setProducts(INITIAL_PRODUCTS);
+            setProducts([]);
             setLoading(false);
         }
     }, 5000);
 
     // Acede à coleção pública 'products_public'
-    const unsubscribe = db.collection('products_public').onSnapshot(
+    const unsubscribe = onSnapshot(
+      collection(modularDb, 'products_public'),
       (snapshot) => {
         if (!isActive) return;
         clearTimeout(loadingTimeout);
@@ -56,8 +58,8 @@ export const usePublicProducts = () => {
         });
 
         if (items.length === 0) {
-            console.log("Base de dados vazia ou sem produtos válidos, a carregar produtos iniciais como fallback...");
-            setProducts(INITIAL_PRODUCTS);
+            console.log("Base de dados vazia para produtos.");
+            setProducts([]);
         } else {
             // Ordena por ID decrescente (mais recentes primeiro)
             items.sort((a, b) => b.id - a.id);
@@ -69,7 +71,7 @@ export const usePublicProducts = () => {
         console.warn("A usar produtos de fallback devido a erro:", err);
         clearTimeout(loadingTimeout);
         if (isActive) {
-            setProducts(INITIAL_PRODUCTS);
+            setProducts([]);
             setLoading(false);
         }
       }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import {  db, storage } from '../services/firebaseConfig';
+import { modularDb, storage } from '../services/firebaseConfig';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { collection, doc, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { Category } from '../types';
 import { Plus, Trash2, Save, Image as ImageIcon, Upload, Loader2 } from 'lucide-react';
 import { useStoreCategories } from '../hooks/useStoreCategories';
@@ -53,9 +54,9 @@ export default function CategoriesTab() {
     
     try {
       if (editingId && editingId !== 'new') {
-        await db.collection('store_categories').doc(editingId).update(formData);
+        await updateDoc(doc(modularDb, 'store_categories', editingId), formData);
       } else {
-        await db.collection('store_categories').add(formData);
+        await addDoc(collection(modularDb, 'store_categories'), formData);
       }
       setEditingId(null);
     } catch (error) {
@@ -66,7 +67,7 @@ export default function CategoriesTab() {
 
   const handleDelete = async (id: string) => {
     if(confirm('Tem a certeza que deseja eliminar esta categoria?')) {
-        await db.collection('store_categories').doc(id).delete();
+        await deleteDoc(doc(modularDb, 'store_categories', id));
     }
   };
 

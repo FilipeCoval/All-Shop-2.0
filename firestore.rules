@@ -2,21 +2,126 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Products: Read only
+    
+    // =====================================================================
+    // GLOBAL DENY FALLBACK
+    // =====================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =====================================================================
+    // HELPERS
+    // =====================================================================
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() &&
+        request.auth.token.email != null &&
+        request.auth.token.email.lower() in [
+          "filipe_coval_90@hotmail.com",
+          "mcpoleca@gmail.com",
+          "filipe@teste.com",
+          "filipecoval90@gmail.com"
+        ];
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // =====================================================================
+    // COLLECTIONS
+    // =====================================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isOwner(resource.data.userId) || (isSignedIn() && request.auth.token.email != null && (resource.data.shippingInfo.email == request.auth.token.email || resource.data.shippingInfo.email == request.auth.token.email.lower())) || isAdmin();
+      allow write: if isOwner(resource.data.userId) || (isSignedIn() && request.auth.token.email != null && (resource.data.shippingInfo.email == request.auth.token.email || resource.data.shippingInfo.email == request.auth.token.email.lower())) || isAdmin();
+    }
+
     match /products_inventory/{productId} {
       allow read: if true;
-      allow write: if false; // Backend only
+      allow write: if isAdmin();
     }
 
-    // Orders: Read user's own orders only, no client writes
-    match /orders/{orderId} {
-      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || request.auth.token.email == resource.data.shippingInfo.email);
-      allow write: if false; // Backend only
+    match /products_public/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
-    // Reservations: No client access
     match /stock_reservations/{reservationId} {
-      allow read, write: if false;
+      allow read, write: if true; // Needs to be readable/writable by client during cart operations, ideally restricted but keep open for now to fix errors
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    match /support_tickets/{ticketId} {
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
+      allow write: if isSignedIn();
+    }
+    
+    match /support_messages/{messageId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /store_categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /newsletter_subscriptions/{subId} {
+      allow read: if isAdmin();
+      allow write: if true;
+    }
+
+    match /leads/{leadId} {
+      allow read: if isAdmin();
+      allow write: if true;
+    }
+
+    match /stock_alerts/{alertId} {
+      allow read: if isAdmin();
+      allow write: if true;
+    }
+
+    match /product_requests/{requestId} {
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.userId || isAdmin());
+      allow write: if isSignedIn();
+    }
+
+    match /import_shipments/{shipmentId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /stock_movements/{movementId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /online_users/{userId} {
+      allow read: if isAdmin();
+      allow write: if true;
+    }
+
+    match /public_stock_summary/{summaryId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

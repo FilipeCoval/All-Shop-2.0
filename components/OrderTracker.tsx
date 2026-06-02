@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
 import { Search, Package, Truck, CheckCircle, Clock, AlertCircle, Copy, ArrowRight } from 'lucide-react';
-import {  db } from '../services/firebaseConfig';
+import { modularDb } from '../services/firebaseConfig';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { Order } from '../types';
 
 const OrderTracker: React.FC = () => {
@@ -29,11 +30,13 @@ const OrderTracker: React.FC = () => {
         const cleanedId = normalizedId.startsWith('#') ? normalizedId.substring(1) : normalizedId;
         const withHashId = normalizedId.startsWith('#') ? normalizedId : '#' + normalizedId;
 
-        const snapshot = await db.collection('orders')
-            .where('id', 'in', [cleanedId, withHashId])
-            .where('shippingInfo.email', '==', email.trim().toLowerCase())
-            .limit(1)
-            .get();
+        const q = query(
+            collection(modularDb, 'orders'),
+            where('id', 'in', [cleanedId, withHashId]),
+            where('shippingInfo.email', '==', email.trim().toLowerCase()),
+            limit(1)
+        );
+        const snapshot = await getDocs(q);
 
         if (snapshot.empty) {
             setError('Encomenda não encontrada. Verifique o ID e o email associado.');

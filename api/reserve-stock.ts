@@ -19,7 +19,7 @@ export default async function handler(req: Request, res: Response) {
             throw new Error("Internal Server Error: Database not connected");
         }
         
-        const result = await db.runTransaction(async (t) => {
+        await db.runTransaction(async (t) => {
             console.log("DEBUG: transaction attempt");
             
             // Query for the product by publicProductId
@@ -28,28 +28,26 @@ export default async function handler(req: Request, res: Response) {
             const snapshot = await t.get(productQuery);
             
             console.log("DEBUG: snapshot empty:", snapshot.empty);
+            let productRef;
+            let productDoc;
             if (snapshot.empty) {
                 // Try looking up by ID as fallback if Number(productId) fails
                 console.log("DEBUG: Trying fallback lookup by doc ID:", productId);
-                const fallbackRef = db.collection('products_inventory').doc(productId);
-                const fallbackDoc = await t.get(fallbackRef);
-                if (fallbackDoc.exists) {
-                    console.log("DEBUG: Found product via fallback doc ID");
-                    return { productRef: fallbackRef, productDoc: fallbackDoc };
+                productRef = db.collection('products_inventory').doc(productId);
+                productDoc = await t.get(productRef);
+                if (!productDoc.exists) {
+                    throw new Error(`Product not found in inventory with productId: ${productId}`);
                 }
-                throw new Error(`Product not found in inventory with productId: ${productId}`);
+                console.log("DEBUG: Found product via fallback doc ID");
+            } else {
+                productDoc = snapshot.docs[0];
+                productRef = productDoc.ref;
             }
             
-            const productDoc = snapshot.docs[0];
-            return { productRef: productDoc.ref, productDoc };
-        });
-        
-        const { productRef, productDoc } = result;
-        
-        const data = productDoc.data()!;
+            const data = productDoc.data()!;
             console.log("DEBUG: product data", data);
             
-            const stock = data.quantityBought || 0; // Fixed field name based on Dashboard.tsx/useInventory.ts
+            const stock = data.quantityBought || 0; 
             const reserved = data.reserved || 0;
             const available = stock - (data.quantitySold || 0) - reserved;
             

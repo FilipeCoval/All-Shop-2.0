@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Product, ProductVariant, Review } from '../types';
 import { X, Save, Image as ImageIcon, Plus, Trash2, Star, Layers, ListPlus, Settings, Upload, Loader2, MessageSquare, Globe, ArrowRight as ArrowRightIcon } from 'lucide-react';
 import {  db, storage, modularDb } from '../services/firebaseConfig';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { deleteDoc, doc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { useStoreCategories } from '../hooks/useStoreCategories';
@@ -183,7 +184,8 @@ const CatalogModal: React.FC<CatalogModalProps> = ({ isOpen, onClose, product, o
   const loadReviews = async (productId: number) => {
     setIsReviewsLoading(true);
     try {
-      const snapshot = await db.collection('reviews').where('productId', '==', productId).get();
+      const q = query(collection(modularDb, 'reviews'), where('productId', '==', productId));
+      const snapshot = await getDocs(q);
       const loadedReviews = snapshot.docs.map(doc => doc.data() as Review);
       setReviews(loadedReviews.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     } catch (error) {

@@ -1,7 +1,7 @@
 
-import {  db } from './firebaseConfig';
+import { modularDb } from './firebaseConfig';
+import { collection, query, where, getDocs, doc, runTransaction } from 'firebase/firestore';
 import { Order, OrderItem } from '../types';
-import firebase from 'firebase/compat/app';
 
 export const cancelOrderItem = async (
     orderId: string,
@@ -10,17 +10,17 @@ export const cancelOrderItem = async (
     reason: string
 ): Promise<{ success: boolean; message: string }> => {
     try {
-        const orderRef = db.collection('orders').doc(orderId);
+        const orderRef = doc(modularDb, 'orders', orderId);
         // Procurar o produto no inventário pelo publicProductId
-        const inventoryQuery = db.collection('products_inventory').where('publicProductId', '==', productId);
+        let inventoryQuery = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', productId));
         console.log("Searching for publicProductId:", productId);
-        let snapshots = await inventoryQuery.get();
+        let snapshots = await getDocs(inventoryQuery);
         console.log("Found inventory docs:", snapshots.size);
         
         if (snapshots.empty) {
             // Tentativa de fallback: procurar por ID se for string ou productId se for igual a id
-            const fallbackQuery = db.collection('products_inventory').where('id', '==', productId.toString());
-            const fallbackSnap = await fallbackQuery.get();
+            const fallbackQuery = query(collection(modularDb, 'products_inventory'), where('id', '==', productId.toString()));
+            const fallbackSnap = await getDocs(fallbackQuery);
             console.log("Fallback search (id) found:", fallbackSnap.size);
 
             if (fallbackSnap.empty) {
@@ -29,26 +29,26 @@ export const cancelOrderItem = async (
             snapshots = fallbackSnap;
         }
 
-        const publicProductRef = db.collection('products_public').doc(productId.toString());
+        const publicProductRef = doc(modularDb, 'products_public', productId.toString());
 
-        return await db.runTransaction(async (transaction) => {
+        return await runTransaction(modularDb, async (transaction) => {
             // ALL READS FIRST
             const orderDoc = await transaction.get(orderRef);
             
             // Get all candidate inventory batches
             const inventoryDocs = await Promise.all(
-                snapshots.docs.map(doc => transaction.get(doc.ref))
+                snapshots.docs.map(d => transaction.get(d.ref))
             );
 
             // Get public product doc
             const publicDoc = await transaction.get(publicProductRef);
             
-            if (!orderDoc.exists) {
+            if (!orderDoc.exists()) {
                 throw new Error("Encomenda não encontrada.");
             }
 
             const orderData = orderDoc.data() as Order;
-            const itemIndex = orderData.items.findIndex(item => typeof item === 'object' && (item as OrderItem).productId === productId);
+            const itemIndex = orderData.items.findIndex((item: any) => typeof item === 'object' && (item as OrderItem).productId === productId);
             
             if (itemIndex === -1) {
                 throw new Error("Produto não encontrado nesta encomenda.");
@@ -121,7 +121,7 @@ export const cancelOrderItem = async (
                 transaction.update(write.ref, write.data);
             }
 
-            if (publicDoc.exists) {
+            if (publicDoc.exists()) {
                 const publicData = publicDoc.data() as any;
                 transaction.update(publicProductRef, {
                     stock: (publicData.stock || 0) + serialNumbersToReturn.length

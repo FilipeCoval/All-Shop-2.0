@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import {  db } from '../services/firebaseConfig';
+import { modularDb } from '../services/firebaseConfig';
+import { collection, query, orderBy, onSnapshot, writeBatch, doc } from 'firebase/firestore';
 import { Category } from '../types';
 
 export const useStoreCategories = () => {
@@ -7,7 +8,9 @@ export const useStoreCategories = () => {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        const unsubscribe = db.collection('store_categories').orderBy('order').onSnapshot(
+        const q = query(collection(modularDb, 'store_categories'), orderBy('order'));
+        const unsubscribe = onSnapshot(
+            q,
             async (snapshot) => {
                 if (snapshot.empty && !loading) {
                     // Seed defaults if empty
@@ -19,9 +22,9 @@ export const useStoreCategories = () => {
                         { name: 'Adaptadores', image: 'https://images.unsplash.com/photo-1624823183424-df359b83b8b6?auto=format&fit=crop&q=80', order: 5 }
                     ];
                     try {
-                        const batch = db.batch();
+                        const batch = writeBatch(modularDb);
                         defaults.forEach(cat => {
-                            const docRef = db.collection('store_categories').doc();
+                            const docRef = doc(collection(modularDb, 'store_categories'));
                             batch.set(docRef, cat);
                         });
                         await batch.commit();
@@ -29,7 +32,7 @@ export const useStoreCategories = () => {
                         console.error('Error seeding categories:', err);
                     }
                 } else {
-                    const catsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
+                    const catsData = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Category));
                     setCategories(catsData);
                 }
                 setLoading(false);

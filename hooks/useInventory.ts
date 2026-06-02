@@ -1,9 +1,45 @@
 
 import { useState, useEffect } from 'react';
-import {  db } from '../services/firebaseConfig';
+import { modularDb } from '../services/firebaseConfig';
+import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { InventoryProduct, Product, ProductVariant, Order } from '../types';
 import { calculateAvailableStock } from '../services/stockService';
 import { supabaseSync } from '../services/supabaseSync';
+
+// Função auxiliar para mapear Produto de Inventário -> Produto Público (Base)
+const mapToPublicProduct = (inv: Omit<InventoryProduct, 'id'> | InventoryProduct, publicIdRaw: number | string): Product => {
+  const publicId = Number(publicIdRaw);
+  
+  const product: Product = {
+      id: publicId,
+      name: inv.name,
+      category: inv.category,
+      price: inv.salePrice || 0, 
+      originalPrice: inv.originalPrice, // Mapeado
+      promoEndsAt: inv.promoEndsAt,     // Mapeado
+      image: '', 
+      description: inv.description || `Produto ${inv.name}`,
+      stock: 0, // Será calculado pelo refreshPublicProductStock
+      features: inv.features || [],
+      comingSoon: inv.comingSoon || false,
+      badges: inv.badges || [],
+      images: [],
+      variantLabel: 'Opção',
+      weight: inv.weight || 0,
+      specs: inv.specs || {}
+  };
+
+  if (inv.images && inv.images.length > 0) {
+      product.images = inv.images;
+      product.image = inv.images[0];
+  } else {
+      product.image = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300"%3E%3Crect width="300" height="300" fill="%23e2e8f0"/%3E%3C/svg%3E';
+      delete (product as any).images;
+      delete (product as any).image;
+  }
+
+  return product;
+};
 
 export const useInventory = (isAdmin: boolean = false) => {
   const [products, setProducts] = useState<InventoryProduct[]>([]);
@@ -16,11 +52,12 @@ export const useInventory = (isAdmin: boolean = false) => {
       return;
     }
 
-    const unsubscribe = db.collection('products_inventory').onSnapshot(
+    const unsubscribe = onSnapshot(
+      collection(modularDb, 'products_inventory'),
       (snapshot) => {
         const items: InventoryProduct[] = [];
-        snapshot.forEach((doc) => {
-          items.push({ id: doc.id, ...doc.data() } as InventoryProduct);
+        snapshot.forEach((d) => {
+          items.push({ id: d.id, ...d.data() } as InventoryProduct);
         });
         setProducts(items);
         setLoading(false);
@@ -47,18 +84,31 @@ export const useInventory = (isAdmin: boolean = false) => {
           if (isNaN(publicId)) return;
 
           // 1. Fetch public product 
-          const publicRef = db.collection('products_public').doc(publicId.toString());
-          const publicSnap = await publicRef.get();
-          if (!publicSnap.exists) return;
-          const publicData = publicSnap.data() as Product;
+          const publicRef = doc(modularDb, 'products_public', publicId.toString());
+          const publicSnap = await getDoc(publicRef);
+          
+          let publicData = publicSnap.exists() ? publicSnap.data() as Product : null;
+          
+          if (!publicData) {
+              console.log("No public product found, attempting to recreate from inventory...", publicId);
+              // Fallback to recreate skeleton from inventory if it somehow got deleted
+              const fallbackInvQ = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId));
+              const fallbackInvSnap = await getDocs(fallbackInvQ);
+              if (fallbackInvSnap.empty) return;
+              
+              const baseInv = fallbackInvSnap.docs[0].data() as InventoryProduct;
+              publicData = mapToPublicProduct(baseInv, publicId);
+              publicData.id = publicId;
+          }
 
           // 2. Calculate physical stock & variants from inventory
-          const inventorySnap = await db.collection('products_inventory').where('publicProductId', '==', publicId).get();
+          const invQ = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId));
+          const inventorySnap = await getDocs(invQ);
           let physicalStock = 0;
           let variantStock: Record<string, number> = {};
 
-          inventorySnap.forEach(doc => {
-              const data = doc.data() as InventoryProduct;
+          inventorySnap.forEach(d => {
+              const data = d.data() as InventoryProduct;
               const qty = Math.max(0, (data.quantityBought || 0) - (data.quantitySold || 0));
               physicalStock += qty;
               
@@ -68,7 +118,8 @@ export const useInventory = (isAdmin: boolean = false) => {
           });
 
           // 3. Subtract pending orders
-          const ordersSnap = await db.collection('orders').where('status', 'in', ['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue']).get();
+          const ordQ = query(collection(modularDb, 'orders'), where('status', 'in', ['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue']));
+          const ordersSnap = await getDocs(ordQ);
           let pending = 0;
           let variantPending: Record<string, number> = {};
           
@@ -76,8 +127,8 @@ export const useInventory = (isAdmin: boolean = false) => {
           const thirtyDaysAgo = new Date();
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-          ordersSnap.forEach(doc => {
-              const order = doc.data() as Order;
+          ordersSnap.forEach(d => {
+              const order = d.data() as Order;
               const orderDate = new Date(order.date || new Date());
               const isExplicitlyPending = order.stockDeducted === false;
               const isOldButStuck = order.stockDeducted === undefined && 
@@ -132,12 +183,12 @@ export const useInventory = (isAdmin: boolean = false) => {
               updateData.variants = updatedVariants;
           }
 
-          await publicRef.set(updateData, { merge: true });
+          await setDoc(publicRef, updateData, { merge: true });
           console.log(`Stock sincronizado para Produto ${publicId}.`);
 
           // Supabase Backup Sync
-          const finalPublicSnap = await publicRef.get();
-          if (finalPublicSnap.exists) {
+          const finalPublicSnap = await getDoc(publicRef);
+          if (finalPublicSnap.exists()) {
             supabaseSync.saveProduct({ id: publicId, ...finalPublicSnap.data() } as Product);
           }
 
@@ -146,48 +197,10 @@ export const useInventory = (isAdmin: boolean = false) => {
       }
   };
 
-  // Função auxiliar para mapear Produto de Inventário -> Produto Público (Base)
-  const mapToPublicProduct = (inv: Omit<InventoryProduct, 'id'> | InventoryProduct, publicIdRaw: number | string): Product => {
-    const publicId = Number(publicIdRaw);
-    
-    const product: Product = {
-        id: publicId,
-        name: inv.name,
-        category: inv.category,
-        price: inv.salePrice || 0, 
-        originalPrice: inv.originalPrice, // Mapeado
-        promoEndsAt: inv.promoEndsAt,     // Mapeado
-        image: '', 
-        description: inv.description || `Produto ${inv.name}`,
-        stock: 0, // Será calculado pelo refreshPublicProductStock
-        features: inv.features || [],
-        comingSoon: inv.comingSoon || false,
-        badges: inv.badges || [],
-        images: [],
-        variantLabel: 'Opção',
-        weight: inv.weight || 0,
-        specs: inv.specs || {}
-    };
-
-    if (inv.images && inv.images.length > 0) {
-        product.images = inv.images;
-        product.image = inv.images[0];
-    } else {
-        // Se não houver imagens no lote, não definimos para não apagar as da loja
-        // Mas precisamos de uma imagem padrão se for um produto novo
-        product.image = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300"%3E%3Crect width="300" height="300" fill="%23e2e8f0"/%3E%3C/svg%3E';
-        // Removemos images do objeto para que o merge: true não as apague
-        delete (product as any).images;
-        delete (product as any).image;
-    }
-
-    return product;
-  };
-
   const addProduct = async (product: Omit<InventoryProduct, 'id'>) => {
     try {
       // 1. Adicionar ao Inventário (Privado)
-      const docRef = await db.collection('products_inventory').add(product);
+      const docRef = await addDoc(collection(modularDb, 'products_inventory'), product as any);
       
       const publicId = product.publicProductId !== undefined && product.publicProductId !== null 
         ? Number(product.publicProductId) 
@@ -201,11 +214,11 @@ export const useInventory = (isAdmin: boolean = false) => {
 
       if (product.publicProductId !== undefined && product.publicProductId !== null) {
           // If publicProductId exists, ensure the document exists and has the 'id' field
-          await db.collection('products_public').doc(publicId.toString()).set(cleanPublicProduct, { merge: true });
+          await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct, { merge: true });
       } else {
           // If it's a new product, create it
-          await db.collection('products_public').doc(publicId.toString()).set(cleanPublicProduct);
-          await docRef.update({ publicProductId: publicId });
+          await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct);
+          await updateDoc(docRef, { publicProductId: publicId });
       }
 
       // 3. SINCRONIZAÇÃO AUTOMÁTICA DE STOCK
@@ -220,10 +233,10 @@ export const useInventory = (isAdmin: boolean = false) => {
   const updateProduct = async (id: string, updates: Partial<InventoryProduct>) => {
     try {
       // 1. Atualizar Inventário
-      await db.collection('products_inventory').doc(id).update(updates);
+      await updateDoc(doc(modularDb, 'products_inventory', id), updates as any);
 
       // 2. Obter dados atualizados para sincronizar info pública
-      const docSnap = await db.collection('products_inventory').doc(id).get();
+      const docSnap = await getDoc(doc(modularDb, 'products_inventory', id));
       const currentData = docSnap.data() as InventoryProduct;
       
       if (currentData && currentData.publicProductId !== undefined && currentData.publicProductId !== null) {
@@ -245,21 +258,21 @@ export const useInventory = (isAdmin: boolean = false) => {
 
   const deleteProduct = async (id: string) => {
     try {
-      const docSnap = await db.collection('products_inventory').doc(id).get();
+      const docSnap = await getDoc(doc(modularDb, 'products_inventory', id));
       const data = docSnap.data() as InventoryProduct;
 
       // 1. Apagar do Inventário
-      await db.collection('products_inventory').doc(id).delete();
+      await deleteDoc(doc(modularDb, 'products_inventory', id));
 
       // 2. Se tinha ID público, recalcular stock (ou apagar se for o último)
       if (data && data.publicProductId !== undefined && data.publicProductId !== null) {
           const publicId = Number(data.publicProductId);
-          const remainingInventory = await db.collection('products_inventory')
-              .where('publicProductId', '==', publicId)
-              .get();
+          
+          const remQ = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId));
+          const remainingInventory = await getDocs(remQ);
               
           if (remainingInventory.empty) {
-              await db.collection('products_public').doc(publicId.toString()).delete();
+              await deleteDoc(doc(modularDb, 'products_public', publicId.toString()));
           } else {
               // Ainda existem outros lotes, recalcula o total
               await refreshPublicProductStock(publicId);

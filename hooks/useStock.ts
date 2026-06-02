@@ -1,6 +1,7 @@
 
 import { useState, useEffect } from 'react';
-import {  db } from '../services/firebaseConfig';
+import { modularDb } from '../services/firebaseConfig';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { InventoryProduct, StockReservation, Order, OrderItem } from '../types';
 
 export const useStock = (isAdmin: boolean) => {
@@ -13,17 +14,20 @@ export const useStock = (isAdmin: boolean) => {
     setLoading(true);
 
     // 1. Escutar Reservas Temporárias em Carrinhos (Todos os utilizadores)
-    const unsubRes = db.collection('stock_reservations')
-      .where('expiresAt', '>', Date.now())
-      .onSnapshot((snapshot) => {
+    const resQ = query(collection(modularDb, 'stock_reservations'), where('expiresAt', '>', Date.now()));
+    const unsubRes = onSnapshot(
+      resQ,
+      (snapshot) => {
         const resList: StockReservation[] = [];
         snapshot.forEach(doc => {
             resList.push({ id: doc.id, ...doc.data() } as StockReservation);
         });
         setReservations(resList);
-      }, (error) => {
+      }, 
+      (error) => {
         console.error("Erro no listener de reservas:", error);
-      });
+      }
+    );
 
     // Se o utilizador não for admin, não tenta aceder a dados privados.
     if (!isAdmin) {
@@ -34,7 +38,8 @@ export const useStock = (isAdmin: boolean) => {
     }
 
     // 2. Escutar Inventário Físico (Apenas Admin)
-    const unsubInv = db.collection('products_inventory').onSnapshot(
+    const unsubInv = onSnapshot(
+      collection(modularDb, 'products_inventory'),
       (snapshot) => {
         const items: InventoryProduct[] = [];
         snapshot.forEach((doc) => {
@@ -49,9 +54,13 @@ export const useStock = (isAdmin: boolean) => {
     );
 
     // 3. Escutar Encomendas Pendentes (Apenas Admin)
-    const unsubOrders = db.collection('orders')
-      .where('status', 'in', ['Processamento', 'Pago', 'Enviado', 'Entregue'])
-      .onSnapshot((snapshot) => {
+    const orderQ = query(
+      collection(modularDb, 'orders'),
+      where('status', 'in', ['Processamento', 'Pago', 'Enviado', 'Entregue'])
+    );
+    const unsubOrders = onSnapshot(
+      orderQ,
+      (snapshot) => {
           const ordersList: Order[] = [];
           const now = new Date();
           const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));
@@ -74,10 +83,12 @@ export const useStock = (isAdmin: boolean) => {
           });
           setPendingOrders(ordersList);
           setLoading(false);
-      }, (error) => {
+      }, 
+      (error) => {
           console.error("Erro no listener de encomendas (Admin):", error);
           setLoading(false);
-      });
+      }
+    );
 
     return () => {
         unsubInv();
