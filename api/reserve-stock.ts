@@ -12,16 +12,34 @@ export default async function handler(req: Request, res: Response) {
     if (!productId || !quantity) return res.status(400).json({ error: 'Missing data' });
 
     try {
+        console.log("DEBUG: reserve-stock transaction start, productId:", productId, "quantity:", quantity);
+        
+        if (!db) {
+            console.error("DEBUG: db is not defined!");
+            throw new Error("Internal Server Error: Database not connected");
+        }
+        
         await db.runTransaction(async (t) => {
-            const productRef = db.collection('products_inventory').doc(productId);
-            const productDoc = await t.get(productRef);
+            console.log("DEBUG: transaction attempt");
             
-            if (!productDoc.exists) throw new Error('Product not found');
+            // Query for the product by publicProductId
+            const productQuery = db.collection('products_inventory').where('publicProductId', '==', Number(productId));
+            const snapshot = await t.get(productQuery);
+            
+            console.log("DEBUG: snapshot empty:", snapshot.empty);
+            if (snapshot.empty) throw new Error('Product not found in inventory');
+            
+            const productDoc = snapshot.docs[0];
+            const productRef = productDoc.ref;
             
             const data = productDoc.data()!;
-            const stock = data.stock || 0;
+            console.log("DEBUG: product data", data);
+            
+            const stock = data.quantityBought || 0; // Fixed field name based on Dashboard.tsx/useInventory.ts
             const reserved = data.reserved || 0;
-            const available = stock - reserved;
+            const available = stock - (data.quantitySold || 0) - reserved;
+            
+            console.log("DEBUG: stock details", { stock, sold: data.quantitySold, reserved, available });
             
             if (available < quantity) throw new Error('Insufficient stock');
             
@@ -30,8 +48,9 @@ export default async function handler(req: Request, res: Response) {
             
             // Create reservation
             const reservationRef = db.collection('stock_reservations').doc();
+            console.log("DEBUG: creating reservation");
             t.set(reservationRef, {
-                productId,
+                productId: Number(productId),
                 quantity,
                 userId: userId || null,
                 guestToken: guestToken || null,
@@ -40,8 +59,11 @@ export default async function handler(req: Request, res: Response) {
             });
         });
         
+        console.log("DEBUG: reserve-stock transaction success");
         return res.status(200).json({ success: true });
     } catch (e: any) {
-        return res.status(400).json({ error: e.message });
+        console.error("DEBUG: reserve-stock error caught:", e);
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        return res.status(400).json({ error: errorMessage });
     }
 }
