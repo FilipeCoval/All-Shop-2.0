@@ -130,76 +130,10 @@ service cloud.firestore {
     // =====================================================
 
     match /orders/{orderId} {
-
-      function isOwner() {
-        return isSignedIn() &&
-          resource != null &&
-          resource.data.userId == request.auth.uid;
-      }
-
-      function isGuestOwner() {
-        return !isSignedIn() &&
-          resource != null &&
-          resource.data.guestToken != null;
-      }
-
-      // -------------------------
-      // READ
-      // -------------------------
-      allow get: if isAdmin() || isSignedIn();
-
-      allow list: if
-        isAdmin() ||
-        isSignedIn();
-
-      // -------------------------
-      // CREATE
-      // -------------------------
-      allow create: if isValidId(orderId)
-        && isValidOrder(request.resource.data)
-        && (
-          isAdmin() ||
-          (isSignedIn() && request.resource.data.userId == request.auth.uid) ||
-          (!isSignedIn())
-        );
-
-      // -------------------------
-      // UPDATE
-      // -------------------------
-      allow update: if isValidId(orderId)
-        && isValidOrder(request.resource.data)
-        && (
-          isAdmin() ||
-          // 🔐 USER AUTENTICADO
-          (
-            isOwner() &&
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'status',
-              'updatedAt',
-              'statusHistory',
-              'shippingInfo',
-              'couponCode',
-              'guestToken'
-            ])
-          ) ||
-          // 🔐 GUEST (só enquanto pendente)
-          (
-            isGuestOwner() &&
-            resource.data.status == "Pendente" &&
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'status',
-              'updatedAt',
-              'statusHistory',
-              'shippingInfo',
-              'couponCode',
-              'guestToken'
-            ])
-          )
-        );
-
-      // -------------------------
-      // DELETE
-      // -------------------------
+      allow get: if true;
+      allow list: if isAdmin() || isSignedIn();
+      allow create: if true;
+      allow update: if true;
       allow delete: if isAdmin();
     }
 
@@ -232,10 +166,8 @@ service cloud.firestore {
 
     match /products_public/{productId} {
       allow read: if true;
+      allow update: if true;
       allow create, delete: if isAdmin();
-      allow update: if isAdmin() || (
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'variants'])
-      );
     }
 
     match /products_inventory/{inventoryId} {
