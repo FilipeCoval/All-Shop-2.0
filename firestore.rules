@@ -126,51 +126,84 @@ service cloud.firestore {
     }
 
     // =====================================================
-    // ORDERS (🔥 PRO VERSION)
+    // ORDERS (🔥 FIXED VERSION)
     // =====================================================
 
     match /orders/{orderId} {
 
       function isOwner() {
-        // Para transacoes CREATE onde o doc nao existe
-        let isNew = resource == null;
-        
-        let isUserOwner = isSignedIn() && !isNew && resource.data.userId == request.auth.uid;
-        
-        // Protege contra brute-force de IDs: guests so podem ler se for "Pendente" 
-        // ou se estiverem a fazer um UPDATE valido (com o token no payload).
-        let isGuestOwner = !isSignedIn() && !isNew && resource.data.keys().hasAll(['guestToken']) && resource.data.guestToken is string && (
-          (request.resource == null && resource.data.status == 'Pendente') || 
-          (request.resource != null && request.resource.data.guestToken == resource.data.guestToken)
-        );
-
-        return isNew || isUserOwner || isGuestOwner;
+        return isSignedIn() &&
+          resource != null &&
+          resource.data.userId == request.auth.uid;
       }
 
-      function isCreatingOwnOrder() {
-        return (
-          (isSignedIn() && request.resource.data.userId == request.auth.uid)
-          ||
-          (!isSignedIn() && request.resource.data.guestToken is string)
-        );
+      function isGuestOwner() {
+        return !isSignedIn() &&
+          resource != null &&
+          resource.data.guestToken != null;
       }
 
+      // -------------------------
       // READ
-      allow get: if isAdmin() || isOwner();
+      // -------------------------
+      allow get: if
+        resource == null ||
+        isAdmin() ||
+        isOwner() ||
+        isGuestOwner();
 
-      allow list: if isAdmin() || isSignedIn();
+      allow list: if
+        isAdmin() ||
+        isSignedIn();
 
+      // -------------------------
       // CREATE
+      // -------------------------
       allow create: if isValidId(orderId)
         && isValidOrder(request.resource.data)
-        && (isAdmin() || isCreatingOwnOrder());
+        && (
+          isAdmin() ||
+          (isSignedIn() && request.resource.data.userId == request.auth.uid) ||
+          (!isSignedIn())
+        );
 
+      // -------------------------
       // UPDATE
+      // -------------------------
       allow update: if isValidId(orderId)
         && isValidOrder(request.resource.data)
-        && (isAdmin() || isOwner());
+        && (
+          isAdmin() ||
+          // 🔐 USER AUTENTICADO
+          (
+            isOwner() &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status',
+              'updatedAt',
+              'statusHistory',
+              'shippingInfo',
+              'couponCode',
+              'guestToken'
+            ])
+          ) ||
+          // 🔐 GUEST (só enquanto pendente)
+          (
+            isGuestOwner() &&
+            resource.data.status == "Pendente" &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status',
+              'updatedAt',
+              'statusHistory',
+              'shippingInfo',
+              'couponCode',
+              'guestToken'
+            ])
+          )
+        );
 
+      // -------------------------
       // DELETE
+      // -------------------------
       allow delete: if isAdmin();
     }
 
@@ -203,7 +236,10 @@ service cloud.firestore {
 
     match /products_public/{productId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'variants'])
+      );
     }
 
     match /products_inventory/{inventoryId} {
