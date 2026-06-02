@@ -315,7 +315,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       const unsubscribe = onSnapshot(ordersQuery, snapshot => { 
           if (isInitialLoadRef.current) {
               snapshot.forEach(doc => notifiedOrders.current.add(doc.id));
-              isInitialLoadRef.current = false;
+              // Só marca como carregado se já veio do servidor, ou se formos forçados pela cache a achar que é "completo"
+              if (!snapshot.metadata.fromCache) {
+                  isInitialLoadRef.current = false;
+              }
               return;
           }
 
@@ -323,9 +326,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                 const order = change.doc.data() as Order;
                 
                 // 1. Notificar se for encomenda NOVA e já não for pendente (ex: manual)
-                const isNewReal = change.type === 'added' && order.status !== 'Pendente';
+                // Não notificar se a encomenda tiver mais de 5 minutos, para evitar spam se a aba esteve suspensa
+                const orderDate = new Date(order.date).getTime();
+                const isRecent = order.date ? (Date.now() - orderDate < 300000) : false;
+                
+                const isNewReal = change.type === 'added' && order.status !== 'Pendente' && isRecent;
                 // 2. Notificar se for uma encomenda que foi AGORA confirmada pelo cliente
-                const isNowConfirmed = change.type === 'modified' && order.status === 'Processamento';
+                const isNowConfirmed = change.type === 'modified' && order.status === 'Processamento' && isRecent;
 
                 if ((isNewReal || isNowConfirmed) && !notifiedOrders.current.has(order.id)) {
                       notifiedOrders.current.add(order.id);
