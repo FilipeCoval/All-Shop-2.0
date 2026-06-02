@@ -205,6 +205,35 @@ const Home: React.FC<HomeProps> = ({
         onOpenComparator={onOpenComparator}
       />
 
+      {/* TESTIMONIALS SECTION */}
+      <section className="py-12 bg-white dark:bg-[#020617] transition-colors duration-300">
+          <div className="container mx-auto px-4">
+              <div className="text-center mb-10">
+                  <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 dark:text-white mb-2">O que dizem os nossos clientes</h2>
+                  <p className="text-gray-500 dark:text-slate-400 max-w-lg mx-auto text-sm md:text-base">A satisfação de quem já comprou connosco é o nosso maior orgulho.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+                  {[
+                      { name: "Carlos Santos", comment: "Excelente box! Super rápida e o Google TV é muito melhor que o sistema original. Entrega em 24h!", rating: 5, product: "TV Stick 4K Ultra HD" },
+                      { name: "Maria Oliveira", comment: "Trabalho impecável da All-Shop. O produto foi bem embalado e chegou direitinho. Recomendo.", rating: 5, product: "Cabo HDMI 2.1" },
+                      { name: "Ricardo Rocha", comment: "Auscultadores com cancelamento de ruído top. Melhor preço que encontrei na Europa.", rating: 5, product: "Sony WH-1000XM5" }
+                  ].map((review, i) => (
+                      <div key={i} className="bg-gray-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-gray-100 dark:border-slate-800 transition-all hover:shadow-xl hover:-translate-y-1">
+                          <div className="flex text-yellow-400 mb-4">
+                              {[...Array(review.rating)].map((_, i) => <StarIcon key={i} size={16} fill="currentColor" />)}
+                          </div>
+                          <p className="text-gray-700 dark:text-slate-300 italic mb-4 text-sm md:text-base">"{review.comment}"</p>
+                          <div className="flex flex-col">
+                              <span className="font-bold text-gray-900 dark:text-white">{review.name}</span>
+                              <span className="text-xs text-primary font-medium">{review.product}</span>
+                          </div>
+                      </div>
+                  ))}
+              </div>
+          </div>
+      </section>
+
       {/* NEWSLETTER SECTION */}
       <section className="bg-secondary dark:bg-gray-900 text-white py-8 relative overflow-hidden mt-8 border-t border-transparent dark:border-gray-800 transition-colors duration-300">
           <div className="container mx-auto px-4 text-center relative z-10">

@@ -74,6 +74,15 @@ async function startServer() {
     }
   });
 
+  app.all('/api/diagnose', async (req, res) => {
+    try {
+        const handler = await import('./api/diagnose.ts');
+        await handler.default(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+  });
+
   app.all('/api/cleanup-reservations', async (req, res) => {
     try {
         const handler = await import('./api/cleanup-reservations.ts');

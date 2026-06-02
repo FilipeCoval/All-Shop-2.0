@@ -1,0 +1,23 @@
+{
+  "databaseId": "ai-studio-eb96f82b-d857-4490-a008-e26d5f5acdb9",
+  "collections": {
+    "products_public": {
+      "error": "7 PERMISSION_DENIED: Missing or insufficient permissions."
+    },
+    "products_inventory": {
+      "error": "7 PERMISSION_DENIED: Missing or insufficient permissions."
+    },
+    "reviews": {
+      "error": "7 PERMISSION_DENIED: Missing or insufficient permissions."
+    },
+    "store_categories": {
+      "error": "7 PERMISSION_DENIED: Missing or insufficient permissions."
+    },
+    "orders": {
+      "error": "7 PERMISSION_DENIED: Missing or insufficient permissions."
+    },
+    "users": {
+      "error": "7 PERMISSION_DENIED: Missing or insufficient permissions."
+    }
+  }
+}

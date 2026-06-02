@@ -84,7 +84,18 @@ const ProductList: React.FC<ProductListProps> = ({
         }
     });
 
-    return ['Todas', ...predefinedCats, ...Array.from(extraCats)];
+    const all = ['Todas', ...predefinedCats, ...Array.from(extraCats)];
+    const seen = new Set<string>();
+    const uniqueList: string[] = [];
+    all.forEach(cat => {
+        const norm = normalizeString(cat);
+        if (!seen.has(norm)) {
+            seen.add(norm);
+            uniqueList.push(cat);
+        }
+    });
+
+    return uniqueList;
   }, [products, storeCategories]);
 
   const filteredAndSortedProducts = useMemo(() => {

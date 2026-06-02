@@ -177,7 +177,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
             if (!isNaN(pIdNum)) {
                const pds = await getDocs(query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', pIdNum)));
                if (!pds.empty) {
-                   await updateProduct(pds.docs[0].id, { _lastSync: Date.now() }); // This triggers refreshPublicProductStock internally!
+                   await updateProduct(pds.docs[0].id, { _lastSync: Date.now() } as any); // This triggers refreshPublicProductStock internally!
                }
             }
             i++;

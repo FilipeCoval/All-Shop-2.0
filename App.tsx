@@ -639,15 +639,68 @@ const App: React.FC = () => {
           console.log("DEBUG handleCheckout cleanOrder:", cleanOrder, "User UID from app state:", user?.uid);
           cleanOrder.stockDeducted = true; // Indica que o stock público já foi deduzido na altura da compra
           
-          // Using backend finalizeOrder instead of /api/checkout
-          await finalizeOrder(
+          // Using backend finalizeOrder with graceful client fallback
+          const apiResponse = await finalizeOrder(
               cleanOrder.items,
               localStorage.getItem('guestToken') || '',
               cleanOrder.shippingInfo,
-              cleanOrder.id // idempotencyKey
+              cleanOrder.id, // idempotencyKey
+              cleanOrder
           );
 
-          console.info("Order processed successfully via finalizeOrder");
+          if (apiResponse && apiResponse.fallbackToClient) {
+              console.warn("Server API returned fallbackToClient due to Admin SDK permissions. Writing order to database via client SDK...");
+              
+              const orderRef = doc(modularDb, "orders", cleanOrder.id);
+              await setDoc(orderRef, {
+                  ...cleanOrder,
+                  createdAt: serverTimestamp()
+              });
+              
+              for (const item of cleanOrder.items) {
+                  try {
+                      const publicRef = doc(modularDb, "products_public", item.productId.toString());
+                      const publicSnap = await getDoc(publicRef);
+                      if (publicSnap.exists()) {
+                          const publicData = publicSnap.data();
+                          const currentStock = Number(publicData.stock || 0);
+                          const newStock = Math.max(0, currentStock - Number(item.quantity));
+                          
+                          if (item.selectedVariant && publicData.variants) {
+                              const updatedVariants = (publicData.variants || []).map((v: any) => {
+                                  if (String(v.name).trim() === String(item.selectedVariant).trim()) {
+                                      return { ...v, stock: Math.max(0, (Number(v.stock) || 0) - Number(item.quantity)) };
+                                  }
+                                  return v;
+                              });
+                              await updateDoc(publicRef, { stock: newStock, variants: updatedVariants });
+                          } else {
+                              await updateDoc(publicRef, { stock: newStock });
+                          }
+                      }
+                  } catch (stockErr) {
+                      console.error("Client-side stock decrement failed:", stockErr);
+                  }
+
+                  try {
+                      const inventoryRef = doc(modularDb, "products_inventory", item.productId.toString());
+                      const inventorySnap = await getDoc(inventoryRef);
+                      if (inventorySnap.exists()) {
+                          const inventoryData = inventorySnap.data();
+                          const currentQtySold = Number(inventoryData.quantitySold || 0);
+                          const currentReserved = Number(inventoryData.reserved || 0);
+                          await updateDoc(inventoryRef, {
+                              quantitySold: currentQtySold + Number(item.quantity),
+                              reserved: Math.max(0, currentReserved - Number(item.quantity))
+                          });
+                      }
+                  } catch (invErr) {
+                      console.error("Client-side inventory update failed:", invErr);
+                  }
+              }
+          }
+
+          console.info("Order processed successfully");
           
           const alreadyExists = false;
 

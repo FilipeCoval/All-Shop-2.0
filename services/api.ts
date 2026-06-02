@@ -15,14 +15,14 @@ export async function reserveStock(productId: string, quantity: number, guestTok
     return response.json();
 }
 
-export async function finalizeOrder(items: any[], guestToken: string, shippingInfo: any, idempotencyKey: string) {
+export async function finalizeOrder(items: any[], guestToken: string, shippingInfo: any, idempotencyKey: string, order?: any) {
     const response = await fetch('/api/finalize-order', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             // In a real app, add Authorization header with token
         },
-        body: JSON.stringify({ items, guestToken, shippingInfo, idempotencyKey }),
+        body: JSON.stringify({ items, guestToken, shippingInfo, idempotencyKey, order }),
     });
     if (!response.ok) {
         const error = await response.json();
