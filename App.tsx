@@ -714,6 +714,7 @@ const App: React.FC = () => {
       try {
           // Limpar dados para evitar erros de 'undefined' no Firebase
           const cleanOrder = JSON.parse(JSON.stringify(newOrder));
+          console.log("DEBUG handleCheckout cleanOrder:", cleanOrder, "User UID from app state:", user?.uid);
           cleanOrder.stockDeducted = true; // Indica que o stock público já foi deduzido na altura da compra
           
           const alreadyExists = await runTransaction(modularDb, async (transaction) => {
