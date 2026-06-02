@@ -146,11 +146,7 @@ service cloud.firestore {
       // -------------------------
       // READ
       // -------------------------
-      allow get: if
-        resource == null ||
-        isAdmin() ||
-        isOwner() ||
-        isGuestOwner();
+      allow get: if isAdmin() || isSignedIn();
 
       allow list: if
         isAdmin() ||
