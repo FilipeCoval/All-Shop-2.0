@@ -131,7 +131,7 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       allow get: if true;
-      allow list: if isAdmin() || isSignedIn();
+      allow list: if true;
       allow create: if true;
       allow update: if true;
       allow delete: if isAdmin();
@@ -250,7 +250,7 @@ service cloud.firestore {
 
       allow update: if isAdmin() ||
         incoming().diff(existing()).affectedKeys().hasOnly([
-          'usageCount'
+          'usageCount', 'isActive'
         ]);
 
       allow delete: if isAdmin();

@@ -722,8 +722,11 @@ const App: React.FC = () => {
           cleanOrder.stockDeducted = true; // Indica que o stock público já foi deduzido na altura da compra
           
           const alreadyExists = await runTransaction(modularDb, async (transaction) => {
+              console.log("[DEBUG TX] Iniciou a transação");
               const orderRef = doc(modularDb, "orders", cleanOrder.id);
+              console.log("[DEBUG TX] Tentando obter a encomenda em:", orderRef.path);
               const existingOrderDoc = await transaction.get(orderRef);
+              console.log("[DEBUG TX] Obteve documento da encomenda com sucesso. Existe?", existingOrderDoc.exists());
               const exists = existingOrderDoc.exists();
 
               // 1. Validar e preparar decremento de stock (apenas se a encomenda for nova)
@@ -733,7 +736,9 @@ const App: React.FC = () => {
                       if (typeof item !== 'object' || item === null) continue;
                       
                       const productRef = doc(modularDb, 'products_public', item.productId.toString());
+                      console.log("[DEBUG TX] Tentando carregar produto em:", productRef.path);
                       const productDoc = await transaction.get(productRef);
+                      console.log("[DEBUG TX] Carregou produto em:", productRef.path, "Existe?", productDoc.exists());
                       
                       if (!productDoc.exists()) {
                           throw new Error(`Produto ${item.name} não encontrado.`);
@@ -777,7 +782,9 @@ const App: React.FC = () => {
 
               // 2. Guardar a encomenda
               if (!exists) {
+                  console.log("[DEBUG TX] Tentando salvar encomenda nova (set) em:", orderRef.path);
                   transaction.set(orderRef, cleanOrder);
+                  console.log("[DEBUG TX] Chamou transaction.set para a encomenda.");
               } else {
                   const updateData: any = {
                       status: cleanOrder.status,
@@ -787,13 +794,17 @@ const App: React.FC = () => {
                   if (cleanOrder.couponCode !== undefined) updateData.couponCode = cleanOrder.couponCode || null;
                   if (cleanOrder.guestToken !== undefined) updateData.guestToken = cleanOrder.guestToken;
 
+                  console.log("[DEBUG TX] Tentando atualizar encomenda existente (update) em:", orderRef.path, updateData);
                   transaction.update(orderRef, updateData);
+                  console.log("[DEBUG TX] Chamou transaction.update para a encomenda.");
               }
 
               // 3. Decrementar stock público imediatamente para outros utilizadores verem (apenas se for nova)
               if (!exists) {
                   for (const update of productUpdates) {
+                      console.log("[DEBUG TX] Tentando decrementar stock do produto (update) em:", update.ref.path, update.updateData);
                       transaction.update(update.ref, Object.fromEntries(Object.entries(update.updateData).filter(([_,v]) => v !== undefined)));
+                      console.log("[DEBUG TX] Chamou transaction.update para decrementar stock.");
                   }
                   // TRIGGER STOCK SUMMARY UPDATE
                   // Não podemos fazer isto dentro da transação, fazemos após
