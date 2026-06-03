@@ -292,6 +292,8 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                             
                             // Use catalog product as source of truth for stock if linked
                             const catalogProd = catalogProducts?.find(p => String(p.id) === String(mainItem.publicProductId));
+                            if (catalogProd) console.log(`[INV-DEBUG] Prod ${mainItem.publicProductId} in Catalog -> Stock: ${catalogProd.stock}`);
+                            
                             const totalPhysicalStock = catalogProd !== undefined 
                                 ? (catalogProd.stock || 0) 
                                 : items.reduce((acc, i) => acc + Math.max(0, (i.quantityBought || 0) - (i.quantitySold || 0)), 0);

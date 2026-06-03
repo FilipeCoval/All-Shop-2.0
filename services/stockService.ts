@@ -10,6 +10,7 @@ export const calculateAvailableStock = async (
     // 1. Total Físico (Batches)
     const productBatches = inventoryProducts.filter(p => p.publicProductId === publicProductId);
     const totalPhysical = productBatches.reduce((acc, p) => acc + (p.quantityBought - (p.quantitySold || 0)), 0);
+    console.log(`[STK-DEBUG] Prod ${publicProductId} -> Physical: ${totalPhysical}`);
 
     // 2. Reservas de Carrinho (ativas, < 15min)
     const nowTime = Date.now();
@@ -22,6 +23,7 @@ export const calculateAvailableStock = async (
     const cartReservationsSnapshot = await getDocs(resQ);
     
     const totalCartReservations = cartReservationsSnapshot.docs.reduce((acc, doc) => acc + (doc.data().quantity || 0), 0);
+    console.log(`[STK-DEBUG] Prod ${publicProductId} -> CartRes: ${totalCartReservations}`);
 
     // 3. Reservas de Encomendas (Pendentes)
     let totalOrderReservations = 0;
@@ -52,6 +54,7 @@ export const calculateAvailableStock = async (
                 });
             }
         });
+        console.log(`[STK-DEBUG] Prod ${publicProductId} -> OrderRes: ${totalOrderReservations}`);
     } catch (e) {
         // Se falhar (ex: permissão negada por não ser admin), assume-se 0 aqui.
         // O método seguro real deve ser implementado, mas isto impede o crash e
@@ -59,5 +62,7 @@ export const calculateAvailableStock = async (
         console.warn("Não foi possível aceder ao total de encomendas (assumindo 0 reservas):", e);
     }
 
-    return totalPhysical - totalCartReservations - totalOrderReservations;
+    const available = totalPhysical - totalCartReservations - totalOrderReservations;
+    console.log(`[STK-DEBUG] Prod ${publicProductId} -> Final Available: ${available}`);
+    return available;
 };
