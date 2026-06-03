@@ -2,9 +2,88 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // allow read and write for all collections to guarantee seamless dashboard and client experience
+  
+    // Helpers
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "filipe_coval_90@hotmail.com" ||
+        request.auth.token.email == "filipecoval90@gmail.com" ||
+        request.auth.token.email == "mcpoleca@gmail.com" ||
+        request.auth.token.email == "filipe@teste.com"
+      );
+    }
+
+    // Default deny
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if isAdmin();
+    }
+
+    // Public collections (Products, Categories, etc.)
+    match /products_public/{product} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /store_categories/{category} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /reviews/{review} {
+      allow read: if true;
+      allow write: if isAuthenticated();
+    }
+
+    match /coupons/{coupon} {
+      allow read: if true; // Some logic checks codes client-side
+      allow write: if isAdmin();
+    }
+
+    // Users
+    match /users/{userId} {
+      allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+    }
+    match /online_users/{userId} {
+      allow read, write: if true; // Needs to track online presence
+    }
+
+    // Orders
+    match /orders/{orderId} {
+      // Allows creating orders, reading if owner/admin
+      allow create: if true;
+      allow read, update: if isAdmin() || (isAuthenticated() && request.resource.data.userId == request.auth.uid) || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow delete: if isAdmin();
+    }
+
+    // Restricted backend collections
+    match /products_inventory/{item} {
+      allow read, write: if isAdmin();
+    }
+    match /import_shipments/{item} {
+      allow read, write: if isAdmin();
+    }
+    match /stock_alerts/{item} {
+      allow read, write: if isAdmin();
+    }
+    match /stock_reservations/{item} {
+      allow read, write: if true; // Guest visitors create reservations
+    }
+    match /newsletter_subscriptions/{item} {
+      allow create: if true;
+      allow read, write: if isAdmin();
+    }
+    match /support_tickets/{item} {
+      allow create: if true;
+      allow read, write: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+    }
+    match /product_requests/{item} {
+      allow create: if true;
+      allow read, write: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
   }
 }
+
