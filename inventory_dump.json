@@ -1,0 +1,3593 @@
+[
+  {
+    "id": "1",
+    "name": "Xiaomi TV Box S (2ª Geração) - 4K Ultra HD",
+    "variant": "",
+    "publicProductId": 1,
+    "salePrice": 40.95,
+    "cashbackValue": 22.5,
+    "cashbackStatus": "RECEIVED",
+    "quantityBought": 15,
+    "_lastSync": 1780494501717,
+    "purchaseDate": "2026-06-03T07:44:55.193Z",
+    "reserved": 0,
+    "units": [
+      {
+        "soldAt": "2026-03-23T10:48:31.202Z",
+        "addedAt": "2026-03-23T10:48:31.202Z",
+        "soldToOrder": "#AS-114290",
+        "id": "40152/700001164629",
+        "status": "SOLD"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.193Z",
+        "id": "40152/700001721975",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.193Z",
+        "id": "40152/700001238756",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.193Z",
+        "id": "40152/700001442862",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "40152/700001340693",
+        "addedAt": "2026-06-03T07:44:55.193Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "40152/700001894263",
+        "addedAt": "2026-06-03T07:44:55.193Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.193Z",
+        "id": "40152/700001599958",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "40152/700001264490",
+        "addedAt": "2026-06-03T07:44:55.193Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.193Z",
+        "id": "40152/700001458165",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.193Z",
+        "status": "AVAILABLE",
+        "id": "40152/700001984303"
+      },
+      {
+        "id": "40152/700001742038",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.193Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.193Z",
+        "id": "40152/700001372776",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.193Z",
+        "id": "40152/700001562113",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "40152/700001201593",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.193Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "40152/700001741066",
+        "addedAt": "2026-06-03T07:44:55.193Z"
+      }
+    ],
+    "purchasePrice": 18.43,
+    "cashbackExpectedDate": "",
+    "quantitySold": 1,
+    "cashbackPlatform": "AliExpress Special",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "status": "IN_STOCK",
+    "targetSalePrice": 40.95,
+    "category": "TV & Streaming"
+  },
+  {
+    "id": "13_Design_Branco_Cl_ssico__V1_",
+    "specs": {},
+    "quantitySold": 0,
+    "reserved": 0,
+    "units": [
+      {
+        "addedAt": "2026-06-03T07:44:55.105Z",
+        "id": "INT-TLKBX8",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-9BQF35",
+        "addedAt": "2026-06-03T07:44:55.105Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.105Z",
+        "id": "INT-FWMC9V",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-P3DAMU",
+        "addedAt": "2026-06-03T07:44:55.105Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-849SOD",
+        "addedAt": "2026-06-03T07:44:55.105Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-OTGWJB",
+        "addedAt": "2026-06-03T07:44:55.105Z"
+      },
+      {
+        "id": "INT-WN0VUC",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.105Z"
+      },
+      {
+        "id": "INT-BOZ070",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.105Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-EA33LO",
+        "addedAt": "2026-06-03T07:44:55.105Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-BGTUT8",
+        "addedAt": "2026-06-03T07:44:55.105Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.105Z",
+        "id": "INT-5JKJ7O",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.105Z",
+        "status": "AVAILABLE",
+        "id": "INT-9740CU"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-BPQ5XC",
+        "addedAt": "2026-06-03T07:44:55.105Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.105Z",
+        "status": "AVAILABLE",
+        "id": "INT-D5V5AF"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-QQ41XG",
+        "addedAt": "2026-06-03T07:44:55.105Z"
+      }
+    ],
+    "weight": 0,
+    "cashbackExpectedDate": "",
+    "purchasePrice": 6.29,
+    "comingSoon": false,
+    "supplierName": "",
+    "purchaseDate": "2026-06-02",
+    "description": "",
+    "_lastSync": 1780494494148,
+    "promoEndsAt": null,
+    "cashbackStatus": "RECEIVED",
+    "name": "Tapete Gaming Mouse Pad XL - Sports Car Edition",
+    "salePrice": 13.97,
+    "category": "Acessórios ",
+    "originalPrice": null,
+    "supplierOrderId": "",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "cashbackPlatform": "AliExpress Cashback",
+    "status": "IN_STOCK",
+    "targetSalePrice": 13.97,
+    "features": [],
+    "badges": [],
+    "quantityBought": 2,
+    "salesHistory": [],
+    "images": [
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products%2F1771150972719_ea3d5207-cfc4-4bf1-8c36-ff7ba12cda72.avif?alt=media&token=0eb6b256-c1b9-4355-afe9-252a54f1df39",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products%2F1771150985560_d69e7911-522c-4575-9ef0-f43ed4d064fd.avif?alt=media&token=03f7dac4-cf73-4afc-b3ad-9b063b761567"
+    ],
+    "variant": "Design Branco Clássico (V1)",
+    "publicProductId": 13,
+    "cashbackValue": 9
+  },
+  {
+    "id": "13_Design_Futurista__V2_",
+    "reserved": 0,
+    "units": [
+      {
+        "id": "INT-EN89SX",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.135Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-I2V3TP",
+        "addedAt": "2026-06-03T07:44:55.135Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.135Z",
+        "id": "INT-FYA15B",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-Z83HOO",
+        "addedAt": "2026-06-03T07:44:55.135Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.135Z",
+        "id": "INT-6RZDH8",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.135Z",
+        "id": "INT-B41WXA",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.135Z",
+        "status": "AVAILABLE",
+        "id": "INT-VM9CFE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.135Z",
+        "status": "AVAILABLE",
+        "id": "INT-GZUWML"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.135Z",
+        "id": "INT-5UUAIE",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.135Z",
+        "status": "AVAILABLE",
+        "id": "INT-PK7342"
+      },
+      {
+        "id": "INT-LALHP3",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.135Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.135Z",
+        "id": "INT-1IJB45",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-42Q2X9",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.135Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.135Z",
+        "id": "INT-536M8M",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.135Z",
+        "id": "INT-EVS7DJ",
+        "status": "AVAILABLE"
+      }
+    ],
+    "purchasePrice": 6.3,
+    "cashbackExpectedDate": "",
+    "category": "Acessórios ",
+    "quantitySold": 0,
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "status": "IN_STOCK",
+    "targetSalePrice": 13.99,
+    "cashbackStatus": "RECEIVED",
+    "name": "Tapete Gaming Mouse Pad XL - Sports Car Edition",
+    "variant": "Design Futurista (V2)",
+    "publicProductId": 13,
+    "salePrice": 13.99,
+    "cashbackValue": 9,
+    "purchaseDate": "2026-06-03T07:44:55.135Z",
+    "quantityBought": 15
+  },
+  {
+    "id": "16_Branco",
+    "category": "Áudio ",
+    "quantitySold": 0,
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "status": "IN_STOCK",
+    "targetSalePrice": 14.99,
+    "reserved": 0,
+    "units": [
+      {
+        "id": "INT-0VOA03",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.281Z"
+      },
+      {
+        "id": "INT-4E5SOB",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.281Z"
+      },
+      {
+        "id": "INT-4H1QPS",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.281Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.281Z",
+        "status": "AVAILABLE",
+        "id": "INT-9L4D64"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.281Z",
+        "status": "AVAILABLE",
+        "id": "INT-CQ2IY9"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.281Z",
+        "id": "INT-FQ4QQB",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-M3A5TY",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.281Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.281Z",
+        "id": "INT-WN7RXX",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-7THVBU",
+        "addedAt": "2026-06-03T07:44:55.281Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.281Z",
+        "id": "INT-NOXR88",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-ACJFXX",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.281Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-M4EBUR",
+        "addedAt": "2026-06-03T07:44:55.281Z"
+      },
+      {
+        "id": "INT-M2HOQB",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.281Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.281Z",
+        "id": "INT-CDWVF5",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.281Z",
+        "status": "AVAILABLE",
+        "id": "INT-VKZ1TQ"
+      }
+    ],
+    "cashbackExpectedDate": "",
+    "purchasePrice": 6.75,
+    "purchaseDate": "2026-06-03T07:44:55.281Z",
+    "quantityBought": 15,
+    "_lastSync": 1780494494648,
+    "cashbackStatus": "RECEIVED",
+    "name": "Lenovo LivePods LP40 TWS Wireless Earbuds",
+    "variant": "Branco",
+    "publicProductId": 16,
+    "salePrice": 14.99,
+    "cashbackValue": 7.5
+  },
+  {
+    "id": "16_Preto",
+    "category": "Áudio ",
+    "status": "IN_STOCK",
+    "targetSalePrice": 14.99,
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "cashbackPlatform": "AliExpress Cashback",
+    "quantitySold": 1,
+    "purchasePrice": 6.75,
+    "cashbackExpectedDate": "",
+    "reserved": 0,
+    "units": [
+      {
+        "soldAt": "2026-03-07T16:06:09.678Z",
+        "addedAt": "2026-03-07T16:06:09.678Z",
+        "soldToOrder": "#AS-516994",
+        "status": "SOLD",
+        "id": "INT-F7B64N"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-OKKBEP",
+        "addedAt": "2026-06-03T07:44:55.249Z"
+      },
+      {
+        "id": "INT-B0TEB2",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.249Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.249Z",
+        "id": "INT-IU0AO0",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.249Z",
+        "id": "INT-6761KJ",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-4TS2MM",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.249Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.249Z",
+        "status": "AVAILABLE",
+        "id": "INT-M100PB"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.249Z",
+        "status": "AVAILABLE",
+        "id": "INT-D71525"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-NQTZ20",
+        "addedAt": "2026-06-03T07:44:55.249Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.249Z",
+        "id": "INT-50VZCI",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.249Z",
+        "status": "AVAILABLE",
+        "id": "INT-8AX9BA"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.249Z",
+        "id": "INT-ZJMIX6",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.249Z",
+        "id": "INT-HF7QT5",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-FWEH7N",
+        "addedAt": "2026-06-03T07:44:55.249Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.249Z",
+        "id": "INT-X17BLV",
+        "status": "AVAILABLE"
+      }
+    ],
+    "purchaseDate": "2026-06-03T07:44:55.249Z",
+    "quantityBought": 15,
+    "cashbackStatus": "RECEIVED",
+    "publicProductId": 16,
+    "salePrice": 14.99,
+    "cashbackValue": 7.5,
+    "name": "Lenovo LivePods LP40 TWS Wireless Earbuds",
+    "variant": "Preto"
+  },
+  {
+    "id": "1769876342618_Branco",
+    "reserved": 0,
+    "units": [
+      {
+        "soldToOrder": "#AS-612591",
+        "id": "71620/CEAGDF6NA12973",
+        "status": "SOLD",
+        "addedAt": "2026-04-01T16:07:03.535Z",
+        "soldAt": "2026-04-01T16:07:03.535Z"
+      },
+      {
+        "soldToOrder": "#AS-612591",
+        "id": "71619/CEAGDF5YW04274",
+        "status": "SOLD",
+        "addedAt": "2026-04-01T16:07:03.535Z",
+        "soldAt": "2026-04-01T16:07:03.535Z"
+      },
+      {
+        "status": "SOLD",
+        "id": "71819/CEAGDF5YV02126",
+        "soldToOrder": "#AS-624120",
+        "addedAt": "2026-05-05T13:47:15.960Z",
+        "soldAt": "2026-05-05T13:47:15.960Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.134Z",
+        "status": "AVAILABLE",
+        "id": "71620/CEAGDFZ7JV4282"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.134Z",
+        "id": "71620/CEAGDFM6C74928",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "71620/CEAGDFRBFU8191",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.134Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.134Z",
+        "status": "AVAILABLE",
+        "id": "71620/CEAGDF3MX83848"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.134Z",
+        "id": "71620/CEAGDFZXHH8222",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "71620/CEAGDFUW7O8821",
+        "addedAt": "2026-06-03T07:44:56.134Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.134Z",
+        "status": "AVAILABLE",
+        "id": "71620/CEAGDFLKXZ9539"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.134Z",
+        "status": "AVAILABLE",
+        "id": "71620/CEAGDFIIFF2365"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.134Z",
+        "id": "71620/CEAGDFV38S2543",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "71620/CEAGDFI5413409",
+        "addedAt": "2026-06-03T07:44:56.134Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.135Z",
+        "id": "71620/CEAGDFVQ8H2810",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.135Z",
+        "id": "71620/CEAGDF6AU26083",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.135Z",
+        "id": "71620/CEAGDF7C4P9667",
+        "status": "AVAILABLE"
+      }
+    ],
+    "purchasePrice": 9,
+    "cashbackExpectedDate": "",
+    "category": "Audio",
+    "quantitySold": 3,
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "status": "IN_STOCK",
+    "targetSalePrice": 19.99,
+    "cashbackStatus": "RECEIVED",
+    "name": "Xiaomi Redmi Buds 8 Lite",
+    "variant": "Branco",
+    "salePrice": 19.99,
+    "publicProductId": 1769876342618,
+    "cashbackValue": 12.8,
+    "purchaseDate": "2026-06-03T07:44:56.135Z",
+    "quantityBought": 16,
+    "_lastSync": 1780494495117
+  },
+  {
+    "id": "1769876342618_Preto",
+    "purchasePrice": 9,
+    "cashbackExpectedDate": "",
+    "units": [
+      {
+        "soldAt": "2026-05-03T19:12:28.938Z",
+        "addedAt": "2026-05-03T19:12:28.938Z",
+        "soldToOrder": "#AS-490135",
+        "id": "71620/CEAGDF6P104768",
+        "status": "SOLD"
+      },
+      {
+        "id": "71620/CEAGDF6NA12973",
+        "status": "SOLD",
+        "soldToOrder": "#AS-612591",
+        "addedAt": "2026-04-01T16:07:03.535Z",
+        "soldAt": "2026-04-01T16:07:03.535Z"
+      },
+      {
+        "addedAt": "2026-04-01T16:07:03.535Z",
+        "soldAt": "2026-04-01T16:07:03.535Z",
+        "soldToOrder": "#AS-612591",
+        "status": "SOLD",
+        "id": "71619/CEAGDF5YW04274"
+      },
+      {
+        "id": "71620/CEAGDF6NA14234",
+        "status": "SOLD",
+        "soldToOrder": "#AS-733047",
+        "soldAt": "2026-04-01T15:59:40.145Z",
+        "addedAt": "2026-04-01T15:59:40.145Z"
+      },
+      {
+        "id": "71620/CEAGDFAW563624",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.095Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.095Z",
+        "id": "71620/CEAGDF58MU0155",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "71620/CEAGDF1V9F7292",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.095Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.095Z",
+        "status": "AVAILABLE",
+        "id": "71620/CEAGDFENQD5232"
+      },
+      {
+        "id": "71620/CEAGDFZQN73219",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.095Z"
+      },
+      {
+        "id": "71620/CEAGDFLN818380",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.095Z"
+      },
+      {
+        "id": "71620/CEAGDFBS2F0409",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.095Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.095Z",
+        "id": "71620/CEAGDFHQEC2138",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "71620/CEAGDF6T957323",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.095Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "71620/CEAGDFUO1U6057",
+        "addedAt": "2026-06-03T07:44:56.095Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.095Z",
+        "status": "AVAILABLE",
+        "id": "71620/CEAGDFS6F95703"
+      },
+      {
+        "id": "71620/CEAGDFS9VP3857",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.095Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.095Z",
+        "status": "AVAILABLE",
+        "id": "71620/CEAGDFL4F24010"
+      }
+    ],
+    "reserved": 0,
+    "category": "Audio",
+    "targetSalePrice": 19.99,
+    "status": "IN_STOCK",
+    "quantitySold": 4,
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackStatus": "RECEIVED",
+    "cashbackValue": 13.6,
+    "publicProductId": 1769876342618,
+    "salePrice": 19.99,
+    "name": "Xiaomi Redmi Buds 8 Lite",
+    "variant": "Preto",
+    "purchaseDate": "2026-06-03T07:44:56.095Z",
+    "quantityBought": 17
+  },
+  {
+    "id": "1776451648679_Branco",
+    "purchaseDate": "2026-06-03T07:44:56.226Z",
+    "quantityBought": 15,
+    "_lastSync": 1780494495640,
+    "cashbackStatus": "PENDING",
+    "publicProductId": 1776451648679,
+    "salePrice": 17.99,
+    "cashbackValue": 13.5,
+    "name": "REDMI Buds 8 Active",
+    "variant": "Branco",
+    "category": "Audio",
+    "status": "IN_STOCK",
+    "targetSalePrice": 17.99,
+    "quantitySold": 1,
+    "cashbackPlatform": "AliExpress Special",
+    "cashbackAccount": "mcpoleca@gmail.com",
+    "cashbackExpectedDate": "2026-07-03T07:44:56.226Z",
+    "purchasePrice": 8.1,
+    "reserved": 0,
+    "units": [
+      {
+        "status": "SOLD",
+        "id": "70468/ATAA5Y6N702899",
+        "soldToOrder": "#AS-255247",
+        "soldAt": "2026-04-18T11:54:03.379Z",
+        "addedAt": "2026-04-18T11:54:03.379Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.226Z",
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N594123"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.226Z",
+        "id": "70468/ATAA5Y6N035308",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.226Z",
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N374405"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N619526",
+        "addedAt": "2026-06-03T07:44:56.226Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N161487",
+        "addedAt": "2026-06-03T07:44:56.226Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N389655",
+        "addedAt": "2026-06-03T07:44:56.226Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.226Z",
+        "id": "70468/ATAA5Y6N307306",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N262247",
+        "addedAt": "2026-06-03T07:44:56.226Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N540495",
+        "addedAt": "2026-06-03T07:44:56.226Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.226Z",
+        "id": "70468/ATAA5Y6N502616",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "70468/ATAA5Y6N925638",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.226Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.226Z",
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N691120"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.226Z",
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N786526"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N002529",
+        "addedAt": "2026-06-03T07:44:56.226Z"
+      }
+    ]
+  },
+  {
+    "id": "1776451648679_Preto",
+    "name": "REDMI Buds 8 Active",
+    "variant": "Preto",
+    "publicProductId": 1776451648679,
+    "salePrice": 17.99,
+    "cashbackValue": 13.5,
+    "cashbackStatus": "PENDING",
+    "quantityBought": 15,
+    "purchaseDate": "2026-06-03T07:44:56.196Z",
+    "reserved": 0,
+    "units": [
+      {
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N716459",
+        "addedAt": "2026-06-03T07:44:56.196Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.196Z",
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N677880"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.196Z",
+        "id": "70468/ATAA5Y6N601822",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "70468/ATAA5Y6N078416",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.196Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N265281",
+        "addedAt": "2026-06-03T07:44:56.196Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N264071",
+        "addedAt": "2026-06-03T07:44:56.196Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.196Z",
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N893949"
+      },
+      {
+        "id": "70468/ATAA5Y6N096412",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.196Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.196Z",
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N430540"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.196Z",
+        "id": "70468/ATAA5Y6N984543",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N662319",
+        "addedAt": "2026-06-03T07:44:56.196Z"
+      },
+      {
+        "id": "70468/ATAA5Y6N270826",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.196Z"
+      },
+      {
+        "id": "70468/ATAA5Y6N424699",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.196Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.196Z",
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N076119"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "70468/ATAA5Y6N132258",
+        "addedAt": "2026-06-03T07:44:56.196Z"
+      }
+    ],
+    "purchasePrice": 8.1,
+    "cashbackExpectedDate": "2026-07-03T07:44:56.196Z",
+    "quantitySold": 0,
+    "cashbackPlatform": "AliExpress Special",
+    "cashbackAccount": "mcpoleca@gmail.com",
+    "status": "IN_STOCK",
+    "targetSalePrice": 17.99,
+    "category": "Audio"
+  },
+  {
+    "id": "1777119702513_USB_A_para_Lightning___Preto",
+    "cashbackValue": 2.25,
+    "publicProductId": 1777119702513,
+    "salePrice": 1.7,
+    "variant": "USB-A para Lightning | Preto",
+    "name": "Cabo Nylon Braided Premium",
+    "cashbackStatus": "RECEIVED",
+    "_lastSync": 1780494496146,
+    "quantityBought": 15,
+    "purchaseDate": "2026-06-03T07:44:56.443Z",
+    "cashbackExpectedDate": "",
+    "purchasePrice": 0.77,
+    "units": [
+      {
+        "soldAt": "2026-04-26T19:01:23.289Z",
+        "addedAt": "2026-04-26T19:01:23.289Z",
+        "soldToOrder": "#AS-957834",
+        "id": "INT-8L8CGK",
+        "status": "SOLD"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.443Z",
+        "id": "INT-8ZV2FM",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.443Z",
+        "id": "INT-6E97H2",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-QKI5J9",
+        "addedAt": "2026-06-03T07:44:56.443Z"
+      },
+      {
+        "id": "INT-9LYCN7",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.443Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-J3YPJW",
+        "addedAt": "2026-06-03T07:44:56.443Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.443Z",
+        "status": "AVAILABLE",
+        "id": "INT-KTF3NM"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-C3SFBL",
+        "addedAt": "2026-06-03T07:44:56.443Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.443Z",
+        "status": "AVAILABLE",
+        "id": "INT-W6BGM6"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.443Z",
+        "status": "AVAILABLE",
+        "id": "INT-B0WSGL"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-U1LUTB",
+        "addedAt": "2026-06-03T07:44:56.443Z"
+      },
+      {
+        "id": "INT-NIT13I",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.443Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.443Z",
+        "id": "INT-XII2Z9",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.443Z",
+        "status": "AVAILABLE",
+        "id": "INT-NQ9KG3"
+      },
+      {
+        "id": "INT-2PUZ1M",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.443Z"
+      }
+    ],
+    "reserved": 0,
+    "targetSalePrice": 1.7,
+    "status": "IN_STOCK",
+    "quantitySold": 1,
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "category": "Cabos"
+  },
+  {
+    "id": "1777119702513_USB_A_para_Lightning___Vermelho",
+    "quantityBought": 15,
+    "purchaseDate": "2026-06-03T07:44:56.473Z",
+    "cashbackValue": 2.25,
+    "salePrice": 1.7,
+    "publicProductId": 1777119702513,
+    "name": "Cabo Nylon Braided Premium",
+    "variant": "USB-A para Lightning | Vermelho",
+    "cashbackStatus": "RECEIVED",
+    "targetSalePrice": 1.7,
+    "status": "IN_STOCK",
+    "quantitySold": 0,
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "category": "Cabos",
+    "cashbackExpectedDate": "",
+    "purchasePrice": 0.77,
+    "units": [
+      {
+        "status": "AVAILABLE",
+        "id": "INT-F4Y2VZ",
+        "addedAt": "2026-06-03T07:44:56.473Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-2LBEGE",
+        "addedAt": "2026-06-03T07:44:56.473Z"
+      },
+      {
+        "id": "INT-K6BYGU",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.473Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-GM0O5X",
+        "addedAt": "2026-06-03T07:44:56.473Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-Y8EO8J",
+        "addedAt": "2026-06-03T07:44:56.473Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.473Z",
+        "status": "AVAILABLE",
+        "id": "INT-H0QM15"
+      },
+      {
+        "id": "INT-Q1IYMH",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.473Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.473Z",
+        "status": "AVAILABLE",
+        "id": "INT-JYXPLP"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.473Z",
+        "id": "INT-DFW5RW",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.473Z",
+        "id": "INT-5PLYF6",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.473Z",
+        "id": "INT-XJM7IQ",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.473Z",
+        "id": "INT-W69Q0N",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-HKFWQ9",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.473Z"
+      },
+      {
+        "id": "INT-MS6YZG",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.473Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-4ZEHSI",
+        "addedAt": "2026-06-03T07:44:56.473Z"
+      }
+    ],
+    "reserved": 0
+  },
+  {
+    "id": "1777119702513_USB_C_para_USB_C___Preto",
+    "cashbackExpectedDate": "",
+    "purchasePrice": 0.77,
+    "reserved": 0,
+    "units": [
+      {
+        "addedAt": "2026-05-17T12:58:03.877Z",
+        "soldAt": "2026-05-17T12:58:03.877Z",
+        "soldToOrder": "#AS-614712",
+        "id": "INT-LFPFTB",
+        "status": "SOLD"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-WQ69YK",
+        "addedAt": "2026-06-03T07:44:56.382Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.382Z",
+        "status": "AVAILABLE",
+        "id": "INT-QS67D1"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.382Z",
+        "status": "AVAILABLE",
+        "id": "INT-FT91AU"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.382Z",
+        "id": "INT-5MUXMV",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.382Z",
+        "status": "AVAILABLE",
+        "id": "INT-WG4A03"
+      },
+      {
+        "id": "INT-QD45OG",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.382Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.382Z",
+        "status": "AVAILABLE",
+        "id": "INT-MU0DX2"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.382Z",
+        "status": "AVAILABLE",
+        "id": "INT-O91CSD"
+      },
+      {
+        "id": "INT-10C55O",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.382Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.382Z",
+        "status": "AVAILABLE",
+        "id": "INT-YRD2JE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.382Z",
+        "status": "AVAILABLE",
+        "id": "INT-7J7BM1"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-KIOOMT",
+        "addedAt": "2026-06-03T07:44:56.382Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.382Z",
+        "id": "INT-EO85T9",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-Q47DCN",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.382Z"
+      }
+    ],
+    "status": "IN_STOCK",
+    "targetSalePrice": 1.7,
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "quantitySold": 1,
+    "category": "Cabos",
+    "publicProductId": 1777119702513,
+    "salePrice": 1.7,
+    "cashbackValue": 2.25,
+    "name": "Cabo Nylon Braided Premium",
+    "variant": "USB-C para USB-C | Preto",
+    "cashbackStatus": "RECEIVED",
+    "quantityBought": 15,
+    "purchaseDate": "2026-06-03T07:44:56.382Z"
+  },
+  {
+    "id": "1777119702513_USB_C_para_USB_C___Vermelho",
+    "quantityBought": 15,
+    "purchaseDate": "2026-06-03T07:44:56.411Z",
+    "cashbackValue": 2.25,
+    "publicProductId": 1777119702513,
+    "salePrice": 1.7,
+    "name": "Cabo Nylon Braided Premium",
+    "variant": "USB-C para USB-C | Vermelho",
+    "cashbackStatus": "RECEIVED",
+    "targetSalePrice": 1.7,
+    "status": "IN_STOCK",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "cashbackPlatform": "AliExpress Cashback",
+    "quantitySold": 0,
+    "category": "Cabos",
+    "purchasePrice": 0.77,
+    "cashbackExpectedDate": "",
+    "units": [
+      {
+        "id": "INT-R5RO3D",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.411Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.411Z",
+        "status": "AVAILABLE",
+        "id": "INT-UU44VY"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.411Z",
+        "id": "INT-MGLNX1",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.411Z",
+        "status": "AVAILABLE",
+        "id": "INT-DJS9A3"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-YMV6PC",
+        "addedAt": "2026-06-03T07:44:56.411Z"
+      },
+      {
+        "id": "INT-L7Z8EN",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.411Z"
+      },
+      {
+        "id": "INT-YHQY7X",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.411Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.411Z",
+        "status": "AVAILABLE",
+        "id": "INT-CO25PG"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.411Z",
+        "id": "INT-1N0BOR",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.411Z",
+        "status": "AVAILABLE",
+        "id": "INT-1KHTCK"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-UJBP0M",
+        "addedAt": "2026-06-03T07:44:56.411Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.411Z",
+        "id": "INT-U1AFOP",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-0JGX93",
+        "addedAt": "2026-06-03T07:44:56.411Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-1LHQNB",
+        "addedAt": "2026-06-03T07:44:56.411Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-UKC4GU",
+        "addedAt": "2026-06-03T07:44:56.411Z"
+      }
+    ],
+    "reserved": 0
+  },
+  {
+    "id": "1777141219448_10000_mAh",
+    "cashbackPlatform": "Temu Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "quantitySold": 5,
+    "status": "IN_STOCK",
+    "targetSalePrice": 24.99,
+    "category": "Acessórios",
+    "reserved": 0,
+    "units": [
+      {
+        "addedAt": "2026-04-26T11:29:29.006Z",
+        "soldAt": "2026-04-26T11:29:29.006Z",
+        "soldToOrder": "#AS-831365",
+        "status": "SOLD",
+        "id": "INT-FEARFP"
+      },
+      {
+        "addedAt": "2026-04-26T19:01:23.289Z",
+        "soldAt": "2026-04-26T19:01:23.289Z",
+        "soldToOrder": "#AS-957834",
+        "status": "SOLD",
+        "id": "INT-VEZO56"
+      },
+      {
+        "status": "SOLD",
+        "id": "INT-K92TJH",
+        "soldToOrder": "MANUAL-422075",
+        "addedAt": "2026-05-02T08:27:02.075Z",
+        "soldAt": "2026-05-02T08:27:02.075Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.320Z",
+        "id": "INT-NAMTHI",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.320Z",
+        "status": "AVAILABLE",
+        "id": "INT-TY7H88"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.320Z",
+        "status": "AVAILABLE",
+        "id": "INT-XANU4M"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.320Z",
+        "status": "AVAILABLE",
+        "id": "INT-U616UG"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-MOFSJA",
+        "addedAt": "2026-06-03T07:44:56.320Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-GGVARK",
+        "addedAt": "2026-06-03T07:44:56.320Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-LTL05F",
+        "addedAt": "2026-06-03T07:44:56.320Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.320Z",
+        "id": "INT-FIPYS3",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.320Z",
+        "status": "AVAILABLE",
+        "id": "INT-P8UG99"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-EKLGYN",
+        "addedAt": "2026-06-03T07:44:56.320Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-VHXDXF",
+        "addedAt": "2026-06-03T07:44:56.320Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-UUNMBV",
+        "addedAt": "2026-06-03T07:44:56.320Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.320Z",
+        "id": "INT-R3YPUH",
+        "status": "AVAILABLE"
+      }
+    ],
+    "purchasePrice": 11.25,
+    "cashbackExpectedDate": "",
+    "quantityBought": 17,
+    "_lastSync": 1780494496649,
+    "purchaseDate": "2026-06-03T07:44:56.320Z",
+    "name": "Power bank portátil ultrafino",
+    "variant": "10000 mAh",
+    "salePrice": 24.99,
+    "publicProductId": 1777141219448,
+    "cashbackValue": 24,
+    "cashbackStatus": "RECEIVED"
+  },
+  {
+    "id": "1777141219448_5000_mAh",
+    "cashbackExpectedDate": "",
+    "purchasePrice": 9,
+    "units": [
+      {
+        "addedAt": "2026-05-06T15:37:33.333Z",
+        "soldAt": "2026-05-06T15:37:33.333Z",
+        "soldToOrder": "#AS-327893",
+        "status": "SOLD",
+        "id": "INT-DOW7FV"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-X9IL66",
+        "addedAt": "2026-06-03T07:44:56.287Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.287Z",
+        "id": "INT-79T6MV",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-2VGZ6E",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.287Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.287Z",
+        "id": "INT-2RSC7V",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.287Z",
+        "id": "INT-HL0RQL",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.287Z",
+        "id": "INT-Q3CY3C",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-6YNWR9",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.287Z"
+      },
+      {
+        "id": "INT-JN5MBC",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.287Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-AHFHVS",
+        "addedAt": "2026-06-03T07:44:56.287Z"
+      },
+      {
+        "id": "INT-8RB12S",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.287Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.287Z",
+        "id": "INT-2WMCQQ",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-M0P4A4",
+        "addedAt": "2026-06-03T07:44:56.287Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-KQEMXC",
+        "addedAt": "2026-06-03T07:44:56.287Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-M76M7A",
+        "addedAt": "2026-06-03T07:44:56.287Z"
+      }
+    ],
+    "reserved": 0,
+    "category": "Acessórios",
+    "targetSalePrice": 19.99,
+    "status": "IN_STOCK",
+    "quantitySold": 1,
+    "cashbackPlatform": "Temu Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "cashbackStatus": "RECEIVED",
+    "cashbackValue": 22.5,
+    "publicProductId": 1777141219448,
+    "salePrice": 19.99,
+    "name": "Power bank portátil ultrafino",
+    "variant": "5000 mAh",
+    "purchaseDate": "2026-06-03T07:44:56.287Z",
+    "quantityBought": 15
+  },
+  {
+    "id": "1779111942975",
+    "purchasePrice": 20.25,
+    "cashbackExpectedDate": "",
+    "units": [
+      {
+        "addedAt": "2026-05-19T06:31:48.651Z",
+        "soldAt": "2026-05-19T06:31:48.651Z",
+        "soldToOrder": "#AS-316504",
+        "id": "66444/800000436087",
+        "status": "SOLD"
+      },
+      {
+        "soldToOrder": "#AS-316504",
+        "id": "66444/800000312995",
+        "status": "SOLD",
+        "soldAt": "2026-05-19T06:31:48.651Z",
+        "addedAt": "2026-05-19T06:31:48.651Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.528Z",
+        "id": "66444/800000027440",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "66444/800000782326",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "66444/800000782327",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "66444/800000199625",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "66444/800000957081",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "66444/800000358182",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.528Z",
+        "status": "AVAILABLE",
+        "id": "66444/800000487173"
+      },
+      {
+        "id": "66444/800000162480",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "id": "66444/800000091441",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.528Z",
+        "status": "AVAILABLE",
+        "id": "66444/800000568641"
+      },
+      {
+        "id": "66444/800000864033",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.528Z",
+        "status": "AVAILABLE",
+        "id": "66444/800000325005"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "66444/800000870937",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.528Z",
+        "status": "AVAILABLE",
+        "id": "66444/800000502511"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.528Z",
+        "id": "66444/800000746300",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.528Z",
+        "status": "AVAILABLE",
+        "id": "66444/800000012200"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.528Z",
+        "id": "66444/800000832785",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.528Z",
+        "id": "66444/800000682471",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "66444/800000274507",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "66444/800000658769",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "id": "66444/800000211235",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "id": "66444/800000814390",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.528Z",
+        "id": "66444/800000595929",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "66444/800000512987",
+        "addedAt": "2026-06-03T07:44:56.528Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.528Z",
+        "status": "AVAILABLE",
+        "id": "66444/800000471417"
+      }
+    ],
+    "reserved": 0,
+    "category": "TV & Streaming",
+    "targetSalePrice": 45,
+    "status": "IN_STOCK",
+    "cashbackPlatform": "",
+    "quantitySold": 4,
+    "cashbackAccount": "",
+    "cashbackStatus": "NONE",
+    "cashbackValue": 0,
+    "publicProductId": 1779111942975,
+    "salePrice": 45,
+    "name": "Xiaomi TV Stick 4K (2nd Gen)",
+    "variant": "",
+    "purchaseDate": "2026-06-03T07:44:56.528Z",
+    "_lastSync": 1780494497149,
+    "quantityBought": 28
+  },
+  {
+    "id": "17_Branco",
+    "purchasePrice": 6.97,
+    "cashbackExpectedDate": "",
+    "reserved": 0,
+    "units": [
+      {
+        "soldToOrder": "#AS-859708",
+        "id": "57676/CEAGDF5TN10692",
+        "status": "SOLD",
+        "addedAt": "2026-01-27T18:13:36.218Z",
+        "soldAt": "2026-01-27T18:13:36.218Z"
+      },
+      {
+        "id": "57676/CEAGDF19MX9498",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.368Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.368Z",
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDFX0ZI7522"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.368Z",
+        "id": "57676/CEAGDF1ACA1353",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.368Z",
+        "id": "57679/CEAGDFPSXR1895",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.368Z",
+        "id": "57679/CEAGDFE1QC8945",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "57679/CEAGDFHSU67627",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.368Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "57676/CEAGDF57PI1809",
+        "addedAt": "2026-06-03T07:44:55.368Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDF4T6K7630",
+        "addedAt": "2026-06-03T07:44:55.368Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.368Z",
+        "status": "AVAILABLE",
+        "id": "57676/CEAGDFJ0FG2445"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.368Z",
+        "status": "AVAILABLE",
+        "id": "57676/CEAGDFSHFH0183"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDFEM9W7801",
+        "addedAt": "2026-06-03T07:44:55.368Z"
+      },
+      {
+        "id": "57676/CEAGDFUCUU7658",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.368Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDFOOBT8728",
+        "addedAt": "2026-06-03T07:44:55.368Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.368Z",
+        "id": "57679/CEAGDFJJNR2992",
+        "status": "AVAILABLE"
+      }
+    ],
+    "category": "Áudio ",
+    "status": "IN_STOCK",
+    "targetSalePrice": 15.49,
+    "quantitySold": 1,
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "mcpoleca@gmail.com",
+    "cashbackStatus": "RECEIVED",
+    "publicProductId": 17,
+    "salePrice": 15.49,
+    "cashbackValue": 10.5,
+    "variant": "Branco",
+    "name": "Xiaomi Redmi Buds 6 Play TWS Bluetooth 5.4",
+    "purchaseDate": "2026-06-03T07:44:55.368Z",
+    "quantityBought": 15,
+    "_lastSync": 1780494497655
+  },
+  {
+    "id": "17_Preto",
+    "targetSalePrice": 15.49,
+    "status": "IN_STOCK",
+    "quantitySold": 0,
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "mcpoleca@gmail.com",
+    "category": "Áudio ",
+    "purchasePrice": 6.97,
+    "cashbackExpectedDate": "",
+    "units": [
+      {
+        "addedAt": "2026-06-03T07:44:55.339Z",
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDFELY47291"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.339Z",
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDFQA0I4074"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDF16016658",
+        "addedAt": "2026-06-03T07:44:55.339Z"
+      },
+      {
+        "id": "57676/CEAGDFOT2L2219",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.339Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.339Z",
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDFOIW34489"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.339Z",
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDFQKPX8078"
+      },
+      {
+        "id": "57679/CEAGDFTGAQ2679",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.339Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.339Z",
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDF11758524"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.339Z",
+        "id": "57679/CEAGDF9TIR4801",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.339Z",
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDF5EHN4001"
+      },
+      {
+        "id": "57679/CEAGDFY2U18763",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.339Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.339Z",
+        "id": "57679/CEAGDF7BDB1540",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDF86W59333",
+        "addedAt": "2026-06-03T07:44:55.339Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.339Z",
+        "status": "AVAILABLE",
+        "id": "57679/CEAGDFAX494934"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.339Z",
+        "id": "57676/CEAGDF6M5D1035",
+        "status": "AVAILABLE"
+      }
+    ],
+    "reserved": 0,
+    "quantityBought": 15,
+    "purchaseDate": "2026-06-03T07:44:55.339Z",
+    "cashbackValue": 10.5,
+    "publicProductId": 17,
+    "salePrice": 15.49,
+    "variant": "Preto",
+    "name": "Xiaomi Redmi Buds 6 Play TWS Bluetooth 5.4",
+    "cashbackStatus": "RECEIVED"
+  },
+  {
+    "id": "2",
+    "category": "Tv & Streaming",
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "quantitySold": 24,
+    "targetSalePrice": 38.5,
+    "status": "IN_STOCK",
+    "units": [
+      {
+        "soldAt": "2026-04-28T13:26:08.540Z",
+        "addedAt": "2026-04-28T13:26:08.540Z",
+        "soldToOrder": "#AS-203851",
+        "id": "INT-B5LA57",
+        "status": "SOLD"
+      },
+      {
+        "soldAt": "2026-02-18T14:20:52.616Z",
+        "addedAt": "2026-02-18T14:20:52.616Z",
+        "soldToOrder": "#AS-210516",
+        "id": "INT-VZ42T9",
+        "status": "SOLD"
+      },
+      {
+        "soldToOrder": "#AS-210516",
+        "id": "INT-QWDA7L",
+        "status": "SOLD",
+        "addedAt": "2026-02-18T14:20:52.616Z",
+        "soldAt": "2026-02-18T14:20:52.616Z"
+      },
+      {
+        "soldToOrder": "#AS-363385",
+        "id": "INT-05294V",
+        "status": "SOLD",
+        "addedAt": "2026-05-15T19:47:12.557Z",
+        "soldAt": "2026-05-15T19:47:12.557Z"
+      },
+      {
+        "soldAt": "2026-05-15T19:47:12.557Z",
+        "addedAt": "2026-05-15T19:47:12.557Z",
+        "status": "SOLD",
+        "id": "INT-E43HID",
+        "soldToOrder": "#AS-363385"
+      },
+      {
+        "id": "INT-41HTE4",
+        "status": "SOLD",
+        "soldToOrder": "#AS-402906",
+        "soldAt": "2026-04-15T20:55:35.982Z",
+        "addedAt": "2026-04-15T20:55:35.982Z"
+      },
+      {
+        "id": "INT-79VCV0",
+        "status": "SOLD",
+        "soldToOrder": "#AS-402906",
+        "soldAt": "2026-04-15T20:55:35.982Z",
+        "addedAt": "2026-04-15T20:55:35.982Z"
+      },
+      {
+        "id": "INT-7B24LI",
+        "status": "SOLD",
+        "soldToOrder": "#AS-545636",
+        "addedAt": "2026-02-18T11:51:15.284Z",
+        "soldAt": "2026-02-18T11:51:15.284Z"
+      },
+      {
+        "id": "INT-JKMEAW",
+        "status": "SOLD",
+        "soldToOrder": "#AS-545636",
+        "soldAt": "2026-02-18T11:51:15.284Z",
+        "addedAt": "2026-02-18T11:51:15.284Z"
+      },
+      {
+        "soldToOrder": "#AS-545636",
+        "id": "INT-ESH34I",
+        "status": "SOLD",
+        "addedAt": "2026-02-18T11:51:15.284Z",
+        "soldAt": "2026-02-18T11:51:15.284Z"
+      },
+      {
+        "id": "INT-FOMDR6",
+        "status": "SOLD",
+        "soldToOrder": "#AS-663946",
+        "soldAt": "2026-03-12T14:28:28.097Z",
+        "addedAt": "2026-03-12T14:28:28.097Z"
+      },
+      {
+        "soldToOrder": "#AS-663946",
+        "status": "SOLD",
+        "id": "INT-R10DI7",
+        "addedAt": "2026-03-12T14:28:28.097Z",
+        "soldAt": "2026-03-12T14:28:28.097Z"
+      },
+      {
+        "soldAt": "2026-03-08T19:05:54.412Z",
+        "addedAt": "2026-03-08T19:05:54.412Z",
+        "status": "SOLD",
+        "id": "INT-J7C9HJ",
+        "soldToOrder": "#AS-901342"
+      },
+      {
+        "soldToOrder": "#AS-999604",
+        "status": "SOLD",
+        "id": "INT-YMQT3X",
+        "soldAt": "2026-02-18T22:21:08.900Z",
+        "addedAt": "2026-02-18T22:21:08.900Z"
+      },
+      {
+        "addedAt": "2026-02-18T22:21:08.900Z",
+        "soldAt": "2026-02-18T22:21:08.900Z",
+        "id": "INT-SD4I31",
+        "status": "SOLD",
+        "soldToOrder": "#AS-999604"
+      },
+      {
+        "soldAt": "2026-02-18T22:21:08.900Z",
+        "addedAt": "2026-02-18T22:21:08.900Z",
+        "soldToOrder": "#AS-999604",
+        "status": "SOLD",
+        "id": "INT-C7K47S"
+      },
+      {
+        "id": "INT-26PI1X",
+        "status": "SOLD",
+        "soldToOrder": "#AS-999604",
+        "addedAt": "2026-02-18T22:21:08.900Z",
+        "soldAt": "2026-02-18T22:21:08.900Z"
+      },
+      {
+        "addedAt": "2026-02-18T22:21:08.900Z",
+        "soldAt": "2026-02-18T22:21:08.900Z",
+        "soldToOrder": "#AS-999604",
+        "id": "INT-2B4VJ4",
+        "status": "SOLD"
+      },
+      {
+        "soldAt": "2026-02-18T22:21:08.900Z",
+        "addedAt": "2026-02-18T22:21:08.900Z",
+        "id": "INT-1LT239",
+        "status": "SOLD",
+        "soldToOrder": "#AS-999604"
+      },
+      {
+        "id": "INT-VCSJ91",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.974Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.974Z",
+        "id": "INT-B2XNJU",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.974Z",
+        "id": "INT-Q3GHNE",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.974Z",
+        "status": "AVAILABLE",
+        "id": "INT-KPPJRW"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.974Z",
+        "id": "INT-Z82SKR",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.974Z",
+        "id": "INT-23YV9O",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.974Z",
+        "status": "AVAILABLE",
+        "id": "INT-EUC187"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.974Z",
+        "status": "AVAILABLE",
+        "id": "INT-UGLJTN"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-KFI8OY",
+        "addedAt": "2026-06-03T07:44:55.974Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-V5M7K9",
+        "addedAt": "2026-06-03T07:44:55.974Z"
+      }
+    ],
+    "reserved": 0,
+    "purchasePrice": 17.32,
+    "cashbackExpectedDate": "",
+    "purchaseDate": "2026-06-03T07:44:55.974Z",
+    "_lastSync": 1780494498216,
+    "quantityBought": 32,
+    "cashbackStatus": "RECEIVED",
+    "variant": "",
+    "name": "TV Box H96 Max M2",
+    "cashbackValue": 34.8,
+    "publicProductId": 2,
+    "salePrice": 38.5
+  },
+  {
+    "id": "3",
+    "cashbackStatus": "NONE",
+    "cashbackValue": 0,
+    "salePrice": 6.5,
+    "publicProductId": 3,
+    "name": "Cabo HDMI 2.1 Ultra Speed (2m)",
+    "variant": "",
+    "purchaseDate": "2026-06-03T07:44:55.423Z",
+    "_lastSync": 1780494498717,
+    "quantityBought": 15,
+    "purchasePrice": 2.93,
+    "cashbackExpectedDate": "",
+    "units": [
+      {
+        "id": "INT-SNSANU",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.422Z"
+      },
+      {
+        "id": "INT-ESL79V",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.422Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.422Z",
+        "id": "INT-MJTRO4",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.422Z",
+        "status": "AVAILABLE",
+        "id": "INT-L40LNT"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-22ME3U",
+        "addedAt": "2026-06-03T07:44:55.422Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.422Z",
+        "status": "AVAILABLE",
+        "id": "INT-0XYLY7"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.422Z",
+        "status": "AVAILABLE",
+        "id": "INT-UHCC4F"
+      },
+      {
+        "id": "INT-658TJT",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.422Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.422Z",
+        "status": "AVAILABLE",
+        "id": "INT-FH14WW"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.422Z",
+        "status": "AVAILABLE",
+        "id": "INT-FBELTB"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.422Z",
+        "id": "INT-515AD2",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-YPG6WY",
+        "addedAt": "2026-06-03T07:44:55.422Z"
+      },
+      {
+        "id": "INT-DGJKFZ",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.422Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.422Z",
+        "status": "AVAILABLE",
+        "id": "INT-TBVEXI"
+      },
+      {
+        "id": "INT-4ONEMP",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.422Z"
+      }
+    ],
+    "reserved": 0,
+    "category": "Cabos",
+    "targetSalePrice": 6.5,
+    "status": "IN_STOCK",
+    "quantitySold": 0,
+    "cashbackPlatform": "",
+    "cashbackAccount": ""
+  },
+  {
+    "id": "4",
+    "purchaseDate": "2026-06-03T07:44:55.481Z",
+    "quantityBought": 15,
+    "_lastSync": 1780494499212,
+    "cashbackStatus": "NONE",
+    "publicProductId": 4,
+    "salePrice": 11.99,
+    "cashbackValue": 0,
+    "name": "Cabo de Rede Ethernet Cat8 (10m)",
+    "variant": "",
+    "category": "Cabos",
+    "status": "IN_STOCK",
+    "targetSalePrice": 11.99,
+    "quantitySold": 0,
+    "cashbackPlatform": "",
+    "cashbackAccount": "",
+    "cashbackExpectedDate": "",
+    "purchasePrice": 5.4,
+    "reserved": 0,
+    "units": [
+      {
+        "addedAt": "2026-06-03T07:44:55.480Z",
+        "id": "INT-TNNVK5",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-7QX5IU",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.480Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-YSUGE2",
+        "addedAt": "2026-06-03T07:44:55.480Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.480Z",
+        "id": "INT-143E0O",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-7XBS8V",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.480Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.481Z",
+        "status": "AVAILABLE",
+        "id": "INT-P8BEJZ"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.481Z",
+        "status": "AVAILABLE",
+        "id": "INT-EXIFKW"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.481Z",
+        "status": "AVAILABLE",
+        "id": "INT-W7WHHB"
+      },
+      {
+        "id": "INT-FVSTO8",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.481Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.481Z",
+        "id": "INT-TY2Z1S",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.481Z",
+        "status": "AVAILABLE",
+        "id": "INT-A8C1C5"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.481Z",
+        "status": "AVAILABLE",
+        "id": "INT-XRACP5"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-0NC6NN",
+        "addedAt": "2026-06-03T07:44:55.481Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-V6YGUA",
+        "addedAt": "2026-06-03T07:44:55.481Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.481Z",
+        "status": "AVAILABLE",
+        "id": "INT-C3V3W0"
+      }
+    ]
+  },
+  {
+    "id": "5_Branco",
+    "purchaseDate": "2026-06-03T07:44:55.886Z",
+    "_lastSync": 1780494499708,
+    "quantityBought": 15,
+    "cashbackStatus": "NONE",
+    "cashbackValue": 0,
+    "publicProductId": 5,
+    "salePrice": 7.49,
+    "variant": "Branco",
+    "name": "Hub Acer USB-A para Ethernet LAN",
+    "category": "Acessórios ",
+    "targetSalePrice": 7.49,
+    "status": "IN_STOCK",
+    "quantitySold": 0,
+    "cashbackPlatform": "",
+    "cashbackAccount": "",
+    "cashbackExpectedDate": "",
+    "purchasePrice": 3.37,
+    "units": [
+      {
+        "status": "AVAILABLE",
+        "id": "INT-XF1YLW",
+        "addedAt": "2026-06-03T07:44:55.886Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.886Z",
+        "id": "INT-TBAMQH",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.886Z",
+        "id": "INT-NL83CW",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-9WE5XM",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.886Z"
+      },
+      {
+        "id": "INT-K22UH9",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.886Z"
+      },
+      {
+        "id": "INT-RCI648",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.886Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.886Z",
+        "status": "AVAILABLE",
+        "id": "INT-SWTHXL"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-JW7XUJ",
+        "addedAt": "2026-06-03T07:44:55.886Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-OEGTID",
+        "addedAt": "2026-06-03T07:44:55.886Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-Z98O39",
+        "addedAt": "2026-06-03T07:44:55.886Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.886Z",
+        "id": "INT-D3V4U8",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-80V3HO",
+        "addedAt": "2026-06-03T07:44:55.886Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.886Z",
+        "id": "INT-SS7H44",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.886Z",
+        "id": "INT-85QFYD",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-S5CG89",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.886Z"
+      }
+    ],
+    "reserved": 0
+  },
+  {
+    "id": "5_Preto",
+    "purchaseDate": "2026-06-03T07:44:55.915Z",
+    "quantityBought": 15,
+    "cashbackStatus": "NONE",
+    "cashbackValue": 0,
+    "publicProductId": 5,
+    "salePrice": 7.49,
+    "name": "Hub Acer USB-A para Ethernet LAN",
+    "variant": "Preto",
+    "category": "Acessórios ",
+    "targetSalePrice": 7.49,
+    "status": "IN_STOCK",
+    "quantitySold": 0,
+    "cashbackPlatform": "",
+    "cashbackAccount": "",
+    "purchasePrice": 3.37,
+    "cashbackExpectedDate": "",
+    "units": [
+      {
+        "status": "AVAILABLE",
+        "id": "INT-LXSVB8",
+        "addedAt": "2026-06-03T07:44:55.915Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.915Z",
+        "status": "AVAILABLE",
+        "id": "INT-ZY8LFQ"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.915Z",
+        "id": "INT-TF7OB0",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.915Z",
+        "status": "AVAILABLE",
+        "id": "INT-7P21ZH"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.915Z",
+        "id": "INT-8CUYW4",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-X70Q47",
+        "addedAt": "2026-06-03T07:44:55.915Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.915Z",
+        "id": "INT-D9LLPJ",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.915Z",
+        "id": "INT-C1YFPA",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.915Z",
+        "status": "AVAILABLE",
+        "id": "INT-E1PKAF"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.915Z",
+        "id": "INT-U6SIBJ",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-4EO7Q9",
+        "addedAt": "2026-06-03T07:44:55.915Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-BEJQE0",
+        "addedAt": "2026-06-03T07:44:55.915Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.915Z",
+        "id": "INT-WCVN8X",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.915Z",
+        "status": "AVAILABLE",
+        "id": "INT-BFNI68"
+      },
+      {
+        "id": "INT-0A5FE8",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.915Z"
+      }
+    ],
+    "reserved": 0
+  },
+  {
+    "id": "6",
+    "reserved": 0,
+    "units": [
+      {
+        "id": "63598/700001073101",
+        "status": "SOLD",
+        "soldToOrder": "#AS-210516",
+        "addedAt": "2026-02-18T14:20:52.616Z",
+        "soldAt": "2026-02-18T14:20:52.616Z"
+      },
+      {
+        "addedAt": "2026-04-18T11:54:03.379Z",
+        "soldAt": "2026-04-18T11:54:03.379Z",
+        "soldToOrder": "#AS-255247",
+        "id": "63598/700001600835",
+        "status": "SOLD"
+      },
+      {
+        "addedAt": "2026-03-19T19:50:19.820Z",
+        "soldAt": "2026-03-19T19:50:19.820Z",
+        "status": "SOLD",
+        "id": "63598/700001400816",
+        "soldToOrder": "#AS-272964"
+      },
+      {
+        "soldToOrder": "#AS-370540",
+        "status": "SOLD",
+        "id": "63598/700001523132",
+        "addedAt": "2026-04-19T16:43:37.479Z",
+        "soldAt": "2026-04-19T16:43:37.479Z"
+      },
+      {
+        "soldToOrder": "#AS-514889",
+        "status": "SOLD",
+        "id": "63598/700000686672",
+        "soldAt": "2026-02-05T16:41:22.788Z",
+        "addedAt": "2026-02-05T16:41:22.788Z"
+      },
+      {
+        "status": "SOLD",
+        "id": "63598/700001516061",
+        "soldToOrder": "#AS-695223",
+        "soldAt": "2026-05-01T09:08:47.367Z",
+        "addedAt": "2026-05-01T09:08:47.367Z"
+      },
+      {
+        "soldAt": "2026-01-21T18:47:30.087Z",
+        "addedAt": "2026-01-21T18:47:30.087Z",
+        "id": "63598/700001077876",
+        "status": "SOLD",
+        "soldToOrder": "#AS-752379"
+      },
+      {
+        "id": "63598/700001543351",
+        "status": "SOLD",
+        "soldToOrder": "#AS-891569",
+        "addedAt": "2026-05-12T19:24:26.968Z",
+        "soldAt": "2026-05-12T19:24:26.968Z"
+      },
+      {
+        "soldAt": "2026-05-09T15:33:25.061Z",
+        "addedAt": "2026-05-09T15:33:25.061Z",
+        "soldToOrder": "#AS-968658",
+        "id": "63598/700001532847",
+        "status": "SOLD"
+      },
+      {
+        "id": "63598/700001611955",
+        "status": "SOLD",
+        "soldToOrder": "#AS-972653",
+        "addedAt": "2026-04-05T19:33:25.781Z",
+        "soldAt": "2026-04-05T19:33:25.781Z"
+      },
+      {
+        "id": "63598/700001523793",
+        "status": "SOLD",
+        "soldToOrder": "#AS-561573",
+        "soldAt": "2026-05-28T15:40:56.763Z",
+        "addedAt": "2026-05-28T15:40:56.763Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.035Z",
+        "id": "63598/700001194014",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "63598/700001059508",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.035Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.035Z",
+        "status": "AVAILABLE",
+        "id": "63598/700001894751"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.035Z",
+        "status": "AVAILABLE",
+        "id": "63598/700001161846"
+      },
+      {
+        "id": "63598/700001752328",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.035Z"
+      },
+      {
+        "id": "63598/700001786004",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:56.035Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.035Z",
+        "status": "AVAILABLE",
+        "id": "63598/700001075390"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.035Z",
+        "status": "AVAILABLE",
+        "id": "63598/700001491039"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.035Z",
+        "id": "63598/700001889251",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:56.035Z",
+        "id": "63598/700001575688",
+        "status": "AVAILABLE"
+      }
+    ],
+    "purchasePrice": 23.4,
+    "cashbackExpectedDate": "",
+    "cashbackPlatform": "AliExpress Premium",
+    "quantitySold": 17,
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "status": "IN_STOCK",
+    "targetSalePrice": 51.99,
+    "category": "Tv & Streaming",
+    "name": "Xiaomi TV Box S (3ª Geração) - 4K Ultra HD",
+    "variant": "",
+    "publicProductId": 6,
+    "salePrice": 51.99,
+    "cashbackValue": 52.5,
+    "cashbackStatus": "RECEIVED",
+    "quantityBought": 22,
+    "_lastSync": 1780494500214,
+    "purchaseDate": "2026-06-03T07:44:56.035Z"
+  },
+  {
+    "id": "7_120W_Turbo",
+    "reserved": 0,
+    "units": [
+      {
+        "soldAt": "2026-04-19T09:22:30.737Z",
+        "addedAt": "2026-04-19T09:22:30.737Z",
+        "id": "INT-5YYISC",
+        "status": "SOLD",
+        "soldToOrder": "#AS-245391"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-NP0L33",
+        "addedAt": "2026-06-03T07:44:55.832Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-SAKTAR",
+        "addedAt": "2026-06-03T07:44:55.832Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.832Z",
+        "status": "AVAILABLE",
+        "id": "INT-JY8J53"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.832Z",
+        "id": "INT-M4MDDM",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-83ZSF3",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.832Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.832Z",
+        "id": "INT-NYUREV",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-GVYGBW",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.832Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-T0II9U",
+        "addedAt": "2026-06-03T07:44:55.832Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.832Z",
+        "status": "AVAILABLE",
+        "id": "INT-5IRE5C"
+      },
+      {
+        "id": "INT-I4WYX9",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.832Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.832Z",
+        "status": "AVAILABLE",
+        "id": "INT-5O8NRE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-MWYC6O",
+        "addedAt": "2026-06-03T07:44:55.832Z"
+      },
+      {
+        "id": "INT-1AGHQO",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.832Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.832Z",
+        "id": "INT-7R4ITH",
+        "status": "AVAILABLE"
+      }
+    ],
+    "cashbackExpectedDate": "",
+    "purchasePrice": 6.74,
+    "category": "Carregadores",
+    "quantitySold": 1,
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "status": "IN_STOCK",
+    "targetSalePrice": 14.98,
+    "cashbackStatus": "RECEIVED",
+    "variant": "120W Turbo",
+    "name": "Carregador Turbo (Sem Cabo)",
+    "publicProductId": 7,
+    "salePrice": 14.98,
+    "cashbackValue": 6,
+    "purchaseDate": "2026-06-03T07:44:55.832Z",
+    "quantityBought": 15,
+    "_lastSync": 1780494500781
+  },
+  {
+    "id": "7_33W_Turbo",
+    "purchaseDate": "2026-06-03T07:44:55.773Z",
+    "quantityBought": 15,
+    "cashbackStatus": "RECEIVED",
+    "variant": "33W Turbo",
+    "name": "Carregador Turbo (Sem Cabo)",
+    "cashbackValue": 6,
+    "publicProductId": 7,
+    "salePrice": 5.99,
+    "category": "Carregadores",
+    "quantitySold": 0,
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "targetSalePrice": 5.99,
+    "status": "IN_STOCK",
+    "units": [
+      {
+        "status": "AVAILABLE",
+        "id": "INT-PRGHDY",
+        "addedAt": "2026-06-03T07:44:55.773Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.773Z",
+        "status": "AVAILABLE",
+        "id": "INT-FQOAB1"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-1W9ZHF",
+        "addedAt": "2026-06-03T07:44:55.773Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.773Z",
+        "id": "INT-30720R",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-YNY0RC",
+        "addedAt": "2026-06-03T07:44:55.773Z"
+      },
+      {
+        "id": "INT-4RNTQ2",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.773Z"
+      },
+      {
+        "id": "INT-M7TUXO",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.773Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.773Z",
+        "status": "AVAILABLE",
+        "id": "INT-96CGRL"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.773Z",
+        "id": "INT-QLZSV4",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.773Z",
+        "status": "AVAILABLE",
+        "id": "INT-QOE5I6"
+      },
+      {
+        "id": "INT-SVAF84",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.773Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.773Z",
+        "status": "AVAILABLE",
+        "id": "INT-Z3ONJF"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.773Z",
+        "status": "AVAILABLE",
+        "id": "INT-8UBBB3"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.773Z",
+        "id": "INT-7M65XB",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-ABOWDK",
+        "addedAt": "2026-06-03T07:44:55.773Z"
+      }
+    ],
+    "reserved": 0,
+    "purchasePrice": 2.7,
+    "cashbackExpectedDate": ""
+  },
+  {
+    "id": "7_67W_Max",
+    "quantityBought": 15,
+    "purchaseDate": "2026-06-03T07:44:55.803Z",
+    "name": "Carregador Turbo (Sem Cabo)",
+    "variant": "67W Max",
+    "cashbackValue": 6,
+    "salePrice": 9.99,
+    "publicProductId": 7,
+    "cashbackStatus": "RECEIVED",
+    "quantitySold": 0,
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "targetSalePrice": 9.99,
+    "status": "IN_STOCK",
+    "category": "Carregadores",
+    "units": [
+      {
+        "status": "AVAILABLE",
+        "id": "INT-CJBSIS",
+        "addedAt": "2026-06-03T07:44:55.802Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.802Z",
+        "id": "INT-YG89TK",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-5UKCH0",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.802Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-EBE7K1",
+        "addedAt": "2026-06-03T07:44:55.802Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-SC3KN5",
+        "addedAt": "2026-06-03T07:44:55.802Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.802Z",
+        "id": "INT-DVZ8RV",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.802Z",
+        "status": "AVAILABLE",
+        "id": "INT-XLDTB3"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.802Z",
+        "status": "AVAILABLE",
+        "id": "INT-G9SC9F"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-COZRSX",
+        "addedAt": "2026-06-03T07:44:55.802Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.802Z",
+        "status": "AVAILABLE",
+        "id": "INT-T7NJLF"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.802Z",
+        "id": "INT-UOZYNV",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.802Z",
+        "id": "INT-8RT3KZ",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-4M5Z1T",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.802Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.802Z",
+        "status": "AVAILABLE",
+        "id": "INT-277PVC"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-L1DXPK",
+        "addedAt": "2026-06-03T07:44:55.802Z"
+      }
+    ],
+    "reserved": 0,
+    "cashbackExpectedDate": "",
+    "purchasePrice": 4.5
+  },
+  {
+    "id": "8_120W_HyperCharge_Combo",
+    "specs": {},
+    "quantitySold": 2,
+    "cashbackExpectedDate": "",
+    "weight": 0,
+    "purchasePrice": 7.87,
+    "reserved": 0,
+    "units": [
+      {
+        "id": "60043/00047689",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.591Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.591Z",
+        "id": "60043/00013724",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "60043/00068307",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.591Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.591Z",
+        "id": "60040/00036884",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.591Z",
+        "status": "AVAILABLE",
+        "id": "60040/00055741"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.591Z",
+        "id": "60043/00038316",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "60040/00084915",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.591Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.591Z",
+        "status": "AVAILABLE",
+        "id": "60043/00090157"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00040021",
+        "addedAt": "2026-06-03T07:44:55.591Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.591Z",
+        "status": "AVAILABLE",
+        "id": "60043/00037260"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00097443",
+        "addedAt": "2026-06-03T07:44:55.591Z"
+      },
+      {
+        "id": "60043/00098130",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.591Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00051452",
+        "addedAt": "2026-06-03T07:44:55.591Z"
+      },
+      {
+        "soldAt": "2026-04-26T09:44:45.082Z",
+        "addedAt": "2026-04-26T09:44:45.082Z",
+        "soldToOrder": "#AS-314493",
+        "id": "60040/00008374",
+        "status": "SOLD"
+      },
+      {
+        "addedAt": "2026-04-26T09:44:45.082Z",
+        "soldAt": "2026-04-26T09:44:45.082Z",
+        "soldToOrder": "#AS-314493",
+        "status": "SOLD",
+        "id": "60043/00052366"
+      }
+    ],
+    "comingSoon": false,
+    "supplierName": "",
+    "purchaseDate": "2026-05-11",
+    "promoEndsAt": null,
+    "_lastSync": 1780494501293,
+    "description": "",
+    "cashbackStatus": "RECEIVED",
+    "salePrice": 9.99,
+    "name": "Carregador Xiaomi Turbo Original (Kit)",
+    "supplierOrderId": "",
+    "category": "Carregadores",
+    "originalPrice": null,
+    "status": "PARTIAL",
+    "targetSalePrice": 9.99,
+    "cashbackPlatform": "AliExpress Premium",
+    "cashbackAccount": "mcpoleca@gmail.com",
+    "features": [],
+    "badges": [],
+    "quantityBought": 15,
+    "salesHistory": [],
+    "images": [
+      "https://wsrv.nl/?url=https%3A%2F%2Fae01.alicdn.com%2Fkf%2FS39f8f02511234451b329c5c8860fb790m.jpg",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777124916704_H4561fb42434241e89d881909f2647ec5p%20(1).avif?alt=media&token=0a79e6a9-f615-4509-bb6e-0c6918a45e98",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777124931182_H350251fc635b4b49bc6ad950bc727eec0.avif?alt=media&token=fdd94a5b-67f3-4804-b6d2-aa04a73c3e7a",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777124944249_Hb97aedfbbc2a4782a1b6547e7c76458eO.avif?alt=media&token=6195514d-1c2d-4ad9-b7d1-4488cbf3e3cf",
+      "https://wsrv.nl/?url=https%3A%2F%2Fae-pic-a1.aliexpress-media.com%2Fkf%2FS555171f359404ae89c4d848cc2fe87d9k.jpg_960x960q75.jpg_.avif",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777122553459_Hc4cafb4c20fd4ce0a7ddda87dbff2284w.avif?alt=media&token=139d7334-151f-433c-ac14-a61b082d58f9",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777122561335_Hd6d19690157247e1a8e59544433b7b42x.avif?alt=media&token=aa7d6a03-e8cb-47a6-9c78-564a7e1a92f3",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777122565572_He34ee120cf1d49378b4faff79e1f88adK.avif?alt=media&token=108f6eb4-c703-41d0-be51-eda5179dd857",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777125053544_120(1).avif?alt=media&token=618d9cbf-f896-4f26-a927-d6590bdcee1f"
+    ],
+    "publicProductId": 8,
+    "cashbackValue": 15,
+    "variant": "120W HyperCharge Combo"
+  },
+  {
+    "id": "8_33W_HyperCharge_Combo",
+    "units": [
+      {
+        "addedAt": "2026-06-03T07:44:55.713Z",
+        "status": "AVAILABLE",
+        "id": "60040/00072099"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.713Z",
+        "id": "60040/00084886",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00040603",
+        "addedAt": "2026-06-03T07:44:55.713Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00083684",
+        "addedAt": "2026-06-03T07:44:55.713Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60043/00021761",
+        "addedAt": "2026-06-03T07:44:55.713Z"
+      },
+      {
+        "id": "60043/00057665",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.713Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.713Z",
+        "status": "AVAILABLE",
+        "id": "60043/00045088"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.713Z",
+        "status": "AVAILABLE",
+        "id": "60043/00001963"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.713Z",
+        "id": "60043/00065843",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "60043/00039111",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.713Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.713Z",
+        "status": "AVAILABLE",
+        "id": "60040/00080196"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.713Z",
+        "id": "60043/00091554",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.713Z",
+        "id": "60043/00005736",
+        "status": "AVAILABLE"
+      },
+      {
+        "soldToOrder": "#AS-314493",
+        "id": "60040/00008374",
+        "status": "SOLD",
+        "soldAt": "2026-04-26T09:44:45.082Z",
+        "addedAt": "2026-04-26T09:44:45.082Z"
+      },
+      {
+        "addedAt": "2026-04-26T09:44:45.082Z",
+        "soldAt": "2026-04-26T09:44:45.082Z",
+        "soldToOrder": "#AS-314493",
+        "id": "60043/00052366",
+        "status": "SOLD"
+      }
+    ],
+    "reserved": 0,
+    "cashbackExpectedDate": "",
+    "weight": 0,
+    "purchasePrice": 3.6,
+    "comingSoon": false,
+    "specs": {},
+    "quantitySold": 2,
+    "cashbackStatus": "RECEIVED",
+    "name": "Carregador Xiaomi Turbo Original (Kit)",
+    "salePrice": 9.99,
+    "purchaseDate": "2026-06-03",
+    "supplierName": "",
+    "description": "",
+    "promoEndsAt": null,
+    "features": [],
+    "originalPrice": null,
+    "category": "Carregadores",
+    "supplierOrderId": "",
+    "cashbackAccount": "mcpoleca@gmail.com",
+    "cashbackPlatform": "AliExpress Premium",
+    "targetSalePrice": 7.99,
+    "status": "PARTIAL",
+    "images": [
+      "https://wsrv.nl/?url=https%3A%2F%2Fae01.alicdn.com%2Fkf%2FS39f8f02511234451b329c5c8860fb790m.jpg",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777124916704_H4561fb42434241e89d881909f2647ec5p%20(1).avif?alt=media&token=0a79e6a9-f615-4509-bb6e-0c6918a45e98",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777124931182_H350251fc635b4b49bc6ad950bc727eec0.avif?alt=media&token=fdd94a5b-67f3-4804-b6d2-aa04a73c3e7a",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777124944249_Hb97aedfbbc2a4782a1b6547e7c76458eO.avif?alt=media&token=6195514d-1c2d-4ad9-b7d1-4488cbf3e3cf",
+      "https://wsrv.nl/?url=https%3A%2F%2Fae-pic-a1.aliexpress-media.com%2Fkf%2FS555171f359404ae89c4d848cc2fe87d9k.jpg_960x960q75.jpg_.avif",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777122553459_Hc4cafb4c20fd4ce0a7ddda87dbff2284w.avif?alt=media&token=139d7334-151f-433c-ac14-a61b082d58f9",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777122561335_Hd6d19690157247e1a8e59544433b7b42x.avif?alt=media&token=aa7d6a03-e8cb-47a6-9c78-564a7e1a92f3",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777122565572_He34ee120cf1d49378b4faff79e1f88adK.avif?alt=media&token=108f6eb4-c703-41d0-be51-eda5179dd857",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777125053544_120(1).avif?alt=media&token=618d9cbf-f896-4f26-a927-d6590bdcee1f"
+    ],
+    "variant": "33W HyperCharge Combo",
+    "cashbackValue": 15,
+    "publicProductId": 8,
+    "badges": [],
+    "salesHistory": [],
+    "quantityBought": 15
+  },
+  {
+    "id": "8_45W__HyperCharge_Combo",
+    "purchaseDate": "2026-06-03T07:44:55.624Z",
+    "quantityBought": 15,
+    "cashbackStatus": "RECEIVED",
+    "variant": "45W  HyperCharge Combo",
+    "name": "Carregador Xiaomi Turbo Original (Kit)",
+    "publicProductId": 8,
+    "salePrice": 9.99,
+    "cashbackValue": 15,
+    "category": "Carregadores",
+    "cashbackAccount": "mcpoleca@gmail.com",
+    "cashbackPlatform": "AliExpress Premium",
+    "quantitySold": 1,
+    "status": "IN_STOCK",
+    "targetSalePrice": 9.99,
+    "reserved": 0,
+    "units": [
+      {
+        "soldToOrder": "#AS-957834",
+        "id": "55298/A62410UB00587M",
+        "status": "SOLD",
+        "soldAt": "2026-04-26T19:01:23.289Z",
+        "addedAt": "2026-04-26T19:01:23.289Z"
+      },
+      {
+        "id": "60043/00022179",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.624Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00022273",
+        "addedAt": "2026-06-03T07:44:55.624Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60043/00012601",
+        "addedAt": "2026-06-03T07:44:55.624Z"
+      },
+      {
+        "id": "60040/00004308",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.624Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.624Z",
+        "status": "AVAILABLE",
+        "id": "60043/00031795"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60043/00001197",
+        "addedAt": "2026-06-03T07:44:55.624Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.624Z",
+        "status": "AVAILABLE",
+        "id": "60040/00040009"
+      },
+      {
+        "id": "60040/00087500",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.624Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00009376",
+        "addedAt": "2026-06-03T07:44:55.624Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.624Z",
+        "status": "AVAILABLE",
+        "id": "60040/00082378"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00086313",
+        "addedAt": "2026-06-03T07:44:55.624Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.624Z",
+        "id": "60043/00008157",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60043/00084509",
+        "addedAt": "2026-06-03T07:44:55.624Z"
+      },
+      {
+        "id": "60043/00037824",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.624Z"
+      }
+    ],
+    "purchasePrice": 4.5,
+    "cashbackExpectedDate": ""
+  },
+  {
+    "id": "8_67W_HyperCharge_Combo",
+    "cashbackStatus": "RECEIVED",
+    "name": "Carregador Xiaomi Turbo Original (Kit)",
+    "variant": "67W HyperCharge Combo",
+    "cashbackValue": 15,
+    "salePrice": 13.99,
+    "publicProductId": 8,
+    "purchaseDate": "2026-06-03T07:44:55.655Z",
+    "quantityBought": 15,
+    "units": [
+      {
+        "addedAt": "2026-06-03T07:44:55.655Z",
+        "id": "60043/00046508",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.655Z",
+        "id": "60040/00030146",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "60040/00024370",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.655Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00011391",
+        "addedAt": "2026-06-03T07:44:55.655Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.655Z",
+        "status": "AVAILABLE",
+        "id": "60040/00072528"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00024989",
+        "addedAt": "2026-06-03T07:44:55.655Z"
+      },
+      {
+        "id": "60040/00054552",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.655Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.655Z",
+        "status": "AVAILABLE",
+        "id": "60043/00085886"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.655Z",
+        "id": "60043/00075522",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.655Z",
+        "id": "60040/00043336",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.655Z",
+        "id": "60043/00005773",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00083792",
+        "addedAt": "2026-06-03T07:44:55.655Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60043/00008673",
+        "addedAt": "2026-06-03T07:44:55.655Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.655Z",
+        "status": "AVAILABLE",
+        "id": "60040/00095197"
+      },
+      {
+        "id": "60040/00069629",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.655Z"
+      }
+    ],
+    "reserved": 0,
+    "purchasePrice": 6.3,
+    "cashbackExpectedDate": "",
+    "category": "Carregadores",
+    "quantitySold": 0,
+    "cashbackPlatform": "AliExpress Premium",
+    "cashbackAccount": "mcpoleca@gmail.com",
+    "targetSalePrice": 13.99,
+    "status": "IN_STOCK"
+  },
+  {
+    "id": "8_90W_HyperCharge_Combo",
+    "cashbackStatus": "RECEIVED",
+    "salePrice": 9.99,
+    "name": "Carregador Xiaomi Turbo Original (Kit)",
+    "purchaseDate": "2026-06-03",
+    "supplierName": "",
+    "promoEndsAt": null,
+    "description": "",
+    "weight": 0,
+    "cashbackExpectedDate": "",
+    "purchasePrice": 6.75,
+    "units": [
+      {
+        "addedAt": "2026-06-03T07:44:55.684Z",
+        "id": "60043/00000229",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60043/00084550",
+        "addedAt": "2026-06-03T07:44:55.684Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.684Z",
+        "status": "AVAILABLE",
+        "id": "60040/00024138"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60043/00065052",
+        "addedAt": "2026-06-03T07:44:55.684Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.684Z",
+        "id": "60043/00043456",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.684Z",
+        "id": "60040/00008410",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.684Z",
+        "id": "60043/00049699",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.684Z",
+        "status": "AVAILABLE",
+        "id": "60043/00013787"
+      },
+      {
+        "id": "60043/00006823",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.684Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.684Z",
+        "id": "60043/00067313",
+        "status": "AVAILABLE"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60040/00060237",
+        "addedAt": "2026-06-03T07:44:55.684Z"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "60043/00081199",
+        "addedAt": "2026-06-03T07:44:55.684Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.684Z",
+        "status": "AVAILABLE",
+        "id": "60040/00021066"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.684Z",
+        "status": "AVAILABLE",
+        "id": "60040/00034827"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.684Z",
+        "id": "60040/00088674",
+        "status": "AVAILABLE"
+      }
+    ],
+    "reserved": 0,
+    "comingSoon": false,
+    "specs": {},
+    "quantitySold": 0,
+    "images": [
+      "https://wsrv.nl/?url=https%3A%2F%2Fae01.alicdn.com%2Fkf%2FS39f8f02511234451b329c5c8860fb790m.jpg",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777124916704_H4561fb42434241e89d881909f2647ec5p%20(1).avif?alt=media&token=0a79e6a9-f615-4509-bb6e-0c6918a45e98",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777124931182_H350251fc635b4b49bc6ad950bc727eec0.avif?alt=media&token=fdd94a5b-67f3-4804-b6d2-aa04a73c3e7a",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777124944249_Hb97aedfbbc2a4782a1b6547e7c76458eO.avif?alt=media&token=6195514d-1c2d-4ad9-b7d1-4488cbf3e3cf",
+      "https://wsrv.nl/?url=https%3A%2F%2Fae-pic-a1.aliexpress-media.com%2Fkf%2FS555171f359404ae89c4d848cc2fe87d9k.jpg_960x960q75.jpg_.avif",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777122553459_Hc4cafb4c20fd4ce0a7ddda87dbff2284w.avif?alt=media&token=139d7334-151f-433c-ac14-a61b082d58f9",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777122561335_Hd6d19690157247e1a8e59544433b7b42x.avif?alt=media&token=aa7d6a03-e8cb-47a6-9c78-564a7e1a92f3",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777122565572_He34ee120cf1d49378b4faff79e1f88adK.avif?alt=media&token=108f6eb4-c703-41d0-be51-eda5179dd857",
+      "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777125053544_120(1).avif?alt=media&token=618d9cbf-f896-4f26-a927-d6590bdcee1f"
+    ],
+    "cashbackValue": 15,
+    "publicProductId": 8,
+    "variant": "90W HyperCharge Combo",
+    "badges": [],
+    "salesHistory": [],
+    "quantityBought": 15,
+    "features": [],
+    "supplierOrderId": "",
+    "originalPrice": null,
+    "category": "Carregadores",
+    "targetSalePrice": 14.99,
+    "status": "IN_STOCK",
+    "cashbackAccount": "mcpoleca@gmail.com",
+    "cashbackPlatform": "AliExpress Premium"
+  },
+  {
+    "id": "9",
+    "name": "Cabo Xiaomi Turbo USB-C para USB-C (120W)",
+    "variant": "",
+    "cashbackValue": 4.5,
+    "salePrice": 4.99,
+    "publicProductId": 9,
+    "cashbackStatus": "RECEIVED",
+    "_lastSync": 1780494501840,
+    "quantityBought": 15,
+    "purchaseDate": "2026-06-03T07:44:55.537Z",
+    "units": [
+      {
+        "status": "SOLD",
+        "id": "INT-4MGVYP",
+        "soldToOrder": "#AS-245391",
+        "addedAt": "2026-04-19T09:22:30.737Z",
+        "soldAt": "2026-04-19T09:22:30.737Z"
+      },
+      {
+        "id": "INT-S8FMSN",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.537Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.537Z",
+        "status": "AVAILABLE",
+        "id": "INT-I133B7"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-1ZK9IB",
+        "addedAt": "2026-06-03T07:44:55.537Z"
+      },
+      {
+        "id": "INT-80B6C0",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.537Z"
+      },
+      {
+        "id": "INT-TRBACW",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.537Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.537Z",
+        "id": "INT-0VZOQ4",
+        "status": "AVAILABLE"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.537Z",
+        "status": "AVAILABLE",
+        "id": "INT-QSXM9F"
+      },
+      {
+        "status": "AVAILABLE",
+        "id": "INT-B296Z2",
+        "addedAt": "2026-06-03T07:44:55.537Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.537Z",
+        "id": "INT-I24I65",
+        "status": "AVAILABLE"
+      },
+      {
+        "id": "INT-SNNNYJ",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.537Z"
+      },
+      {
+        "id": "INT-F80VSG",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.537Z"
+      },
+      {
+        "id": "INT-EZBUY5",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.537Z"
+      },
+      {
+        "addedAt": "2026-06-03T07:44:55.537Z",
+        "status": "AVAILABLE",
+        "id": "INT-4HHU2Z"
+      },
+      {
+        "id": "INT-VMU8U1",
+        "status": "AVAILABLE",
+        "addedAt": "2026-06-03T07:44:55.537Z"
+      }
+    ],
+    "reserved": 0,
+    "purchasePrice": 2.25,
+    "cashbackExpectedDate": "",
+    "cashbackPlatform": "AliExpress Cashback",
+    "cashbackAccount": "filipe_coval_90@hotmail.com",
+    "quantitySold": 1,
+    "targetSalePrice": 4.99,
+    "status": "IN_STOCK",
+    "category": "Cabos"
+  }
+]

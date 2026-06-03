@@ -12,7 +12,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app, "ai-studio-eb96f82b-d857-4490-a008-e26d5f5acdb9");
+const db = getFirestore(app);
 
 async function checkCollection() {
     try {

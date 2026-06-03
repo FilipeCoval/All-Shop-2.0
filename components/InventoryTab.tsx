@@ -298,36 +298,37 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                 ? (catalogProd.stock || 0) 
                                 : items.reduce((acc, i) => acc + Math.max(0, (i.quantityBought || 0) - (i.quantitySold || 0)), 0);
                             
-                            // Calcular stock pendente em encomendas para este grupo
+                            // Calcular stock pendente em encomendas para este grupo (apenas se não houver catalogProd, ou se pendentes não estiverem contabilizados)
                             let pendingInOrders = 0;
-                            pendingOrders.forEach(order => {
-                                if (order.items && Array.isArray(order.items)) {
-                                    order.items.forEach(item => {
-                                        if (typeof item === 'object' && item !== null) {
-                                            const orderItem = item as any;
-                                            if (orderItem.productId === mainItem.publicProductId) {
-                                                // Se o lote tem variante, só descontamos se a encomenda for para essa variante
-                                                // Se o lote não tem variante (genérico), descontamos tudo
-                                                const itemVariant = (orderItem.selectedVariant || '').trim().toLowerCase();
-                                                const batchVariant = (mainItem.variant || '').trim().toLowerCase();
-                                                if (batchVariant === '' || itemVariant === batchVariant) {
-                                                    pendingInOrders += (orderItem.quantity || 1);
+                            if (catalogProd === undefined) {
+                                pendingOrders.forEach(order => {
+                                    if (order.items && Array.isArray(order.items)) {
+                                        order.items.forEach(item => {
+                                            if (typeof item === 'object' && item !== null) {
+                                                const orderItem = item as any;
+                                                if (orderItem.productId === mainItem.publicProductId) {
+                                                    const itemVariant = (orderItem.selectedVariant || '').trim().toLowerCase();
+                                                    const batchVariant = (mainItem.variant || '').trim().toLowerCase();
+                                                    if (batchVariant === '' || itemVariant === batchVariant) {
+                                                        pendingInOrders += (orderItem.quantity || 1);
+                                                    }
                                                 }
                                             }
-                                        }
-                                    });
-                                }
-                            });
+                                        });
+                                    }
+                                });
+                            }
 
-                            // Calcular stock reservado no carrinho para este grupo
-                            const reservedInCart = reservations
-                                .filter(r => r.productId === mainItem.publicProductId)
-                                .reduce((sum, r) => sum + r.quantity, 0);
+                            // Calcular stock reservado no carrinho para este grupo (apenas se não houver catalogProd)
+                            let reservedInCart = 0;
+                            if (catalogProd === undefined) {
+                                reservedInCart = reservations
+                                    .filter(r => r.productId === mainItem.publicProductId)
+                                    .reduce((sum, r) => sum + r.quantity, 0);
+                            }
 
-                            // Available stock matches database reality as requested, ignoring reservation subtractions
-                            const availableStock = catalogProd !== undefined 
-                                ? (catalogProd.stock || 0) 
-                                : Math.max(0, totalPhysicalStock - pendingInOrders - reservedInCart);
+                            // Available stock matches database reality as requested
+                            const availableStock = Math.max(0, totalPhysicalStock - pendingInOrders - reservedInCart);
                             
                             const alertsCount = mainItem.publicProductId 
                                 ? stockAlerts.filter(a => a.productId === mainItem.publicProductId).length
