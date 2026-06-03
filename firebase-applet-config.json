@@ -1,10 +1,10 @@
 {
-  "projectId": "ai-studio-eb96f82b",
-  "appId": "1:9488462331:web:5d24f72d4c062024",
-  "apiKey": "AIzaSyDr9w2j86w7w0sM0y7g",
-  "authDomain": "ai-studio-eb96f82b.firebaseapp.com",
+  "projectId": "allshop-store-70851",
+  "appId": "1:1066114053908:web:919915ef00ad3627f0f401",
+  "apiKey": "AIZaSyBqO_Lp3RgeyUypcjECUzUFZ-wGQ9g5vA",
+  "authDomain": "allshop-store-70851.firebaseapp.com",
   "firestoreDatabaseId": "(default)",
-  "storageBucket": "ai-studio-eb96f82b.appspot.com",
-  "messagingSenderId": "9488462331",
+  "storageBucket": "allshop-store-70851.firebasestorage.app",
+  "messagingSenderId": "1066114053908",
   "measurementId": ""
 }
