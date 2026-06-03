@@ -289,7 +289,12 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                         {groupedInventory.map(([groupId, items]) => {
                             const mainItem = items[0]; 
                             const isExpanded = expandedGroups.includes(groupId);
-                            const totalPhysicalStock = items.reduce((acc, i) => acc + Math.max(0, (i.quantityBought || 0) - (i.quantitySold || 0)), 0);
+                            
+                            // Use catalog product as source of truth for stock if linked
+                            const catalogProd = catalogProducts?.find(p => String(p.id) === String(mainItem.publicProductId));
+                            const totalPhysicalStock = catalogProd !== undefined 
+                                ? (catalogProd.stock || 0) 
+                                : items.reduce((acc, i) => acc + Math.max(0, (i.quantityBought || 0) - (i.quantitySold || 0)), 0);
                             
                             // Calcular stock pendente em encomendas para este grupo
                             let pendingInOrders = 0;
@@ -317,7 +322,9 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                 .filter(r => r.productId === mainItem.publicProductId)
                                 .reduce((sum, r) => sum + r.quantity, 0);
 
-                            const availableStock = Math.max(0, totalPhysicalStock - pendingInOrders - reservedInCart);
+                            const availableStock = catalogProd !== undefined 
+                                ? (catalogProd.stock || 0)
+                                : Math.max(0, totalPhysicalStock - pendingInOrders - reservedInCart);
                             
                             const alertsCount = mainItem.publicProductId 
                                 ? stockAlerts.filter(a => a.productId === mainItem.publicProductId).length
@@ -447,7 +454,17 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                         </thead>
                                                         <tbody className="divide-y divide-gray-100 dark:divide-slate-800 transition-colors">
                                                             {items.map(p => { 
-                                                                const batchStock = (p.quantityBought || 0) - (p.quantitySold || 0); 
+                                                                let batchStock = (p.quantityBought || 0) - (p.quantitySold || 0); 
+                                                                if (catalogProd) {
+                                                                    if (p.variant && catalogProd.variants) {
+                                                                        const matchedVar = catalogProd.variants.find((v: any) => v.name.trim().toLowerCase() === p.variant!.trim().toLowerCase());
+                                                                        if (matchedVar !== undefined) {
+                                                                            batchStock = matchedVar.stock || 0;
+                                                                        }
+                                                                    } else if (!p.variant) {
+                                                                        batchStock = catalogProd.stock || 0;
+                                                                    }
+                                                                }
                                                                 const salePrice = p.salePrice || p.targetSalePrice || 0; 
                                                                 const purchasePrice = p.purchasePrice || 0; 
                                                                 const cashbackValue = (p.cashbackValue || 0) / (p.quantityBought || 1); 

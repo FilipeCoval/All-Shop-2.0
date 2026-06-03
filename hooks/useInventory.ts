@@ -1,8 +1,8 @@
 
 import { useState, useEffect } from 'react';
 import { modularDb } from '../services/firebaseConfig';
-import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, setDoc, onSnapshot } from 'firebase/firestore';
-import { InventoryProduct, Product, ProductVariant, Order } from '../types';
+import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, setDoc, onSnapshot, writeBatch } from 'firebase/firestore';
+import { InventoryProduct, Product, ProductVariant, Order, CashbackStatus } from '../types';
 import { calculateAvailableStock } from '../services/stockService';
 import { supabaseSync } from '../services/supabaseSync';
 
@@ -83,163 +83,123 @@ export const useInventory = (isAdmin: boolean = false) => {
           const publicId = Number(publicIdRaw);
           if (isNaN(publicId)) return;
 
-          // 1. Fetch public product 
           const publicRef = doc(modularDb, 'products_public', publicId.toString());
           const publicSnap = await getDoc(publicRef);
-          
-          let publicData = publicSnap.exists() ? publicSnap.data() as Product : null;
-          
-          if (!publicData) {
-              console.log("No public product found, attempting to recreate from inventory...", publicId);
-              // Fallback to recreate skeleton from inventory if it somehow got deleted
-              const fallbackInvQ = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId));
-              const fallbackInvSnap = await getDocs(fallbackInvQ);
-              if (fallbackInvSnap.empty) return;
-              
-              const baseInv = fallbackInvSnap.docs[0].data() as InventoryProduct;
-              publicData = mapToPublicProduct(baseInv, publicId);
-              publicData.id = publicId;
+          if (!publicSnap.exists()) {
+              console.log("No public product found during automatic stock refresh:", publicId);
+              return;
           }
+          const pub = publicSnap.data() as Product;
 
-          // 2. Calculate physical stock & variants from inventory
-          const invQ = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId));
-          const inventorySnap = await getDocs(invQ);
-          let physicalStock = 0;
-          let variantStock: Record<string, number> = {};
-          let variantPrice: Record<string, number> = {};
-          let variantImage: Record<string, string> = {};
+          // Align inventory lots to match this public product's stock (reverse sync)
+          const inventoryQuery = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId));
+          const inventorySnap = await getDocs(inventoryQuery);
+          const lots = inventorySnap.docs.map(d => ({ id: d.id, ref: d.ref, data: d.data() as InventoryProduct }));
 
+          const batch = writeBatch(modularDb);
+          let totalUpdated = 0;
           const normalizeVName = (n: string) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-          inventorySnap.forEach(d => {
-              const data = d.data() as InventoryProduct;
-              const qty = Math.max(0, (data.quantityBought || 0) - (data.quantitySold || 0));
-              physicalStock += qty;
-              
-              const variant = (data.variant || '').trim();
-              if (variant) {
-                  const norm = normalizeVName(variant);
-                  if (!variantStock[norm]) variantStock[norm] = 0;
-                  variantStock[norm] += qty;
+          if (pub.variants && pub.variants.length > 0) {
+              for (const variant of pub.variants) {
+                  const vName = variant.name;
+                  const targetStock = Number(variant.stock) || 0;
+                  const matchingLots = lots.filter(l => normalizeVName(l.data.variant || '') === normalizeVName(vName));
 
-                  const lotPrice = data.salePrice || data.targetSalePrice || 0;
-                  if (lotPrice > 0) {
-                      variantPrice[norm] = lotPrice;
-                  }
-                  if (data.images && data.images.length > 0 && data.images[0]) {
-                      variantImage[norm] = data.images[0];
-                  }
-              }
-          });
-
-          // 3. Subtract pending orders
-          const ordQ = query(collection(modularDb, 'orders'), where('status', 'in', ['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue']));
-          const ordersSnap = await getDocs(ordQ);
-          let pending = 0;
-          let variantPending: Record<string, number> = {};
-          
-          const now = new Date();
-          const thirtyDaysAgo = new Date();
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-          ordersSnap.forEach(d => {
-              const order = d.data() as Order;
-              const orderDate = new Date(order.date || new Date());
-              const isExplicitlyPending = order.stockDeducted === false;
-              const isOldButStuck = order.stockDeducted === undefined && 
-                                   ['Pendente', 'Processamento', 'Pago'].includes(order.status) && 
-                                   orderDate > thirtyDaysAgo;
-
-              if (isExplicitlyPending || isOldButStuck) {
-                  order.items.forEach((item: any) => {
-                      if (typeof item === 'object' && Number(item.productId) === Number(publicId)) {
-                          const qty = Math.max(0, (item.quantity || 1) - (item.fulfilledQuantity || 0));
-                          pending += qty;
-                          const variant = (item.selectedVariant || '').trim();
-                          if (variant) {
-                              const norm = normalizeVName(variant);
-                              if (!variantPending[norm]) variantPending[norm] = 0;
-                              variantPending[norm] += qty;
+                  if (matchingLots.length > 0) {
+                      const firstLot = matchingLots[0];
+                      const sold = Number(firstLot.data.quantitySold) || 0;
+                      const newBought = targetStock + sold;
+                      if (firstLot.data.quantityBought !== newBought) {
+                          batch.update(firstLot.ref, { quantityBought: newBought });
+                          totalUpdated++;
+                      }
+                      for (let i = 1; i < matchingLots.length; i++) {
+                          const otherLot = matchingLots[i];
+                          const otherSold = Number(otherLot.data.quantitySold) || 0;
+                          if (otherLot.data.quantityBought !== otherSold) {
+                              batch.update(otherLot.ref, { quantityBought: otherSold });
+                              totalUpdated++;
                           }
                       }
-                  });
-              }
-          });
-
-          const available = Math.max(0, physicalStock - pending);
-
-          // 4. Update Document
-          const updatedVariants: any[] = [];
-          const allVariantNames = new Map<string, string>(); // normalizedKey -> originalCaseDisplayName
-          
-          Object.keys(variantStock).forEach(v => {
-              if (v) {
-                  const norm = normalizeVName(v);
-                  if (!allVariantNames.has(norm)) {
-                      allVariantNames.set(norm, v.trim());
-                  }
-              }
-          });
-          
-          (publicData.variants || []).forEach(v => {
-              if (v && v.name) {
-                  const norm = normalizeVName(v.name);
-                  if (!allVariantNames.has(norm)) {
-                      allVariantNames.set(norm, v.name.trim());
                   } else {
-                      allVariantNames.set(norm, v.name.trim()); // Prefer public catalog casing
+                      const newDocRef = doc(collection(modularDb, 'products_inventory'));
+                      const newLot: Omit<InventoryProduct, 'id'> = {
+                          publicProductId: pub.id,
+                          variant: vName,
+                          quantityBought: targetStock,
+                          quantitySold: 0,
+                          name: pub.name,
+                          category: pub.category || '',
+                          purchasePrice: 0,
+                          salePrice: variant.price || pub.price || 0,
+                          purchaseDate: new Date().toISOString().split('T')[0],
+                          description: `Lote automático sincronizado para variante ${vName}`,
+                          status: targetStock > 0 ? 'IN_STOCK' : 'SOLD',
+                          cashbackValue: 0,
+                          cashbackStatus: 'NONE' as CashbackStatus,
+                      };
+                      batch.set(newDocRef, newLot);
+                      totalUpdated++;
                   }
               }
-          });
-
-          const currentVariantsMap = new Map();
-          (publicData.variants || []).forEach(v => {
-              if (v && v.name) {
-                  currentVariantsMap.set(normalizeVName(v.name), v);
+              const publicVariantNames = pub.variants.map((v: any) => normalizeVName(v.name));
+              const obsoleteLots = lots.filter(l => l.data.variant && !publicVariantNames.includes(normalizeVName(l.data.variant)));
+              for (const obs of obsoleteLots) {
+                  const sold = Number(obs.data.quantitySold) || 0;
+                  if (obs.data.quantityBought !== sold) {
+                      batch.update(obs.ref, { quantityBought: sold });
+                      totalUpdated++;
+                  }
               }
-          });
-
-          allVariantNames.forEach((prefDisplayName, norm) => {
-              const physical = variantStock[norm] || 0;
-              const pend = variantPending[norm] || 0;
-              const variantAvailable = Math.max(0, physical - pend);
-              
-              const existing = currentVariantsMap.get(norm) || {};
-              
-              let cleanImage = variantImage[norm] || existing.image;
-              if (!cleanImage && publicData && publicData.images && publicData.images.length > 0) {
-                  cleanImage = publicData.images[0];
+          } else {
+              const targetStock = Number(pub.stock) || 0;
+              if (lots.length > 0) {
+                  const firstLot = lots[0];
+                  const sold = Number(firstLot.data.quantitySold) || 0;
+                  const newBought = targetStock + sold;
+                  if (firstLot.data.quantityBought !== newBought) {
+                      batch.update(firstLot.ref, { quantityBought: newBought });
+                      totalUpdated++;
+                  }
+                  for (let i = 1; i < lots.length; i++) {
+                      const otherLot = lots[i];
+                      const otherSold = Number(otherLot.data.quantitySold) || 0;
+                      if (otherLot.data.quantityBought !== otherSold) {
+                          batch.update(otherLot.ref, { quantityBought: otherSold });
+                          totalUpdated++;
+                      }
+                  }
+              } else {
+                  const newDocRef = doc(collection(modularDb, 'products_inventory'));
+                  const newLot: Omit<InventoryProduct, 'id'> = {
+                      publicProductId: pub.id,
+                      variant: '',
+                      quantityBought: targetStock,
+                      quantitySold: 0,
+                      name: pub.name,
+                      category: pub.category || '',
+                      purchasePrice: 0,
+                      salePrice: pub.price || 0,
+                      purchaseDate: new Date().toISOString().split('T')[0],
+                      description: `Lote automático sincronizado para ${pub.name}`,
+                      status: targetStock > 0 ? 'IN_STOCK' : 'SOLD',
+                      cashbackValue: 0,
+                      cashbackStatus: 'NONE' as CashbackStatus,
+                  };
+                  batch.set(newDocRef, newLot);
+                  totalUpdated++;
               }
-              if (cleanImage === null || cleanImage === undefined) cleanImage = undefined;
-              
-              const priceToUse = variantPrice[norm] || Number(existing.price) || (publicData ? publicData.price : 0) || 0;
-              
-              const varData: any = {
-                  name: prefDisplayName,
-                  price: priceToUse,
-                  stock: variantAvailable
-              };
-              if (cleanImage) varData.image = cleanImage;
-              
-              updatedVariants.push(varData);
-          });
+          }
+          if (totalUpdated > 0) {
+              await batch.commit();
+              console.log(`[useInventory - AutoSync] Sincronizados ${totalUpdated} lotes no inventário.`);
+          }
           
-          const updateData: any = { stock: available };
-          if (updatedVariants.length > 0) {
-              updateData.variants = updatedVariants;
-          }
-
-          await setDoc(publicRef, updateData, { merge: true });
-          console.log(`Stock sincronizado para Produto ${publicId}.`);
-
-          // Supabase Backup Sync
-          const finalPublicSnap = await getDoc(publicRef);
-          if (finalPublicSnap.exists()) {
-            supabaseSync.saveProduct({ id: publicId, ...finalPublicSnap.data() } as Product);
-          }
-
+          // Sync with Supabase
+          supabaseSync.saveProduct(pub);
       } catch (err) {
-          console.error("Erro ao sincronizar stock público automaticamente:", err);
+          console.error("Erro na sincronização auto-sync de inventário:", err);
       }
   };
 
