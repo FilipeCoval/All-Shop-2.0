@@ -91,23 +91,18 @@ export const useInventory = (isAdmin: boolean = false) => {
           }
           const pub = publicSnap.data() as Product;
 
-          // Align inventory lots to match this public product's stock (reverse sync)
+          // Align public product stock to match inventory batches (Forward Sync)
           const inventoryQuery = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId));
           const inventorySnap = await getDocs(inventoryQuery);
           const lots = inventorySnap.docs.map(d => ({ id: d.id, ref: d.ref, data: d.data() as InventoryProduct }));
-
-          const batch = writeBatch(modularDb);
-          let totalUpdated = 0;
-          const normalizeVName = (n: string) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
-
-          if (pub.variants && pub.variants.length > 0) {
-              for (const variant of pub.variants) {
-                  const vName = variant.name;
-                  const targetStock = Number(variant.stock) || 0;
-                  const matchingLots = lots.filter(l => normalizeVName(l.data.variant || '') === normalizeVName(vName));
-
-                  if (matchingLots.length > 0) {
-                      const firstLot = matchingLots[0];
+          
+          const totalPhysical = lots.reduce((acc, l) => acc + (Math.max(0, (l.data.quantityBought || 0) - (l.data.quantitySold || 0))), 0);
+          if (pub.stock !== totalPhysical) {
+              await updateDoc(publicRef, { stock: totalPhysical });
+              console.log(`[Sync] Produto ${pub.id} atualizado: Stock mudou de ${pub.stock} para ${totalPhysical}`);
+          }
+          return;
+          /*
                       const sold = Number(firstLot.data.quantitySold) || 0;
                       const newBought = targetStock + sold;
                       if (firstLot.data.quantityBought !== newBought) {
@@ -198,6 +193,7 @@ export const useInventory = (isAdmin: boolean = false) => {
           
           // Sync with Supabase
           supabaseSync.saveProduct(pub);
+          */
       } catch (err) {
           console.error("Erro na sincronização auto-sync de inventário:", err);
       }
