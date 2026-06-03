@@ -290,11 +290,10 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                             const mainItem = items[0]; 
                             const isExpanded = expandedGroups.includes(groupId);
                             
-                            // Use catalog product as source of truth for stock if linked
+                            // Fetch catalog product as source of truth for stock
                             const catalogProd = catalogProducts?.find(p => String(p.id) === String(mainItem.publicProductId));
-                            if (catalogProd) console.log(`[INV-DEBUG] Prod ${mainItem.publicProductId} in Catalog -> Stock: ${catalogProd.stock}`);
                             
-                            const totalPhysicalStock = catalogProd !== undefined 
+                            const totalPhysicalStock = catalogProd?.stock !== undefined 
                                 ? (catalogProd.stock || 0) 
                                 : items.reduce((acc, i) => acc + Math.max(0, (i.quantityBought || 0) - (i.quantitySold || 0)), 0);
                             
@@ -324,9 +323,8 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                 .filter(r => r.productId === mainItem.publicProductId)
                                 .reduce((sum, r) => sum + r.quantity, 0);
 
-                            const availableStock = catalogProd !== undefined 
-                                ? (catalogProd.stock || 0)
-                                : Math.max(0, totalPhysicalStock - pendingInOrders - reservedInCart);
+                            // Available stock based on DB stock, ignoring reservations as requested
+                            const availableStock = (catalogProd?.stock || 0);
                             
                             const alertsCount = mainItem.publicProductId 
                                 ? stockAlerts.filter(a => a.productId === mainItem.publicProductId).length
