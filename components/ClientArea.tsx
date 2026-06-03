@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { STORE_NAME, LOGO_URL, LOYALTY_TIERS, LOYALTY_REWARDS, sanitizeNote } from '../constants';
 import {   db, storage, requestPushPermission, messaging , modularDb } from '../services/firebaseConfig';
-import { collection, doc, updateDoc, addDoc, arrayUnion, arrayRemove, deleteField, onSnapshot, query, where, getDoc, runTransaction, getFirestore, writeBatch } from 'firebase/firestore';
+import { collection, doc, updateDoc, addDoc, arrayUnion, arrayRemove, deleteField, onSnapshot, query, where, getDoc, runTransaction, getFirestore, writeBatch, getDocs } from 'firebase/firestore';
 import { ref, deleteObject, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 
 import { cancelOrderItem } from '../services/returnService';
@@ -299,11 +299,81 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
         const orderRef = doc(modularDb, 'orders', modalState.order.id);
         const now = new Date().toISOString();
         if (modalState.type === 'cancel') {
+            // Prepare Matching Inventory Lots to restore stock on cancellation
+            const inventoryDocsToRead: any[] = [];
+            if (modalState.order && Array.isArray(modalState.order.items)) {
+                for (const item of modalState.order.items) {
+                    if (typeof item === 'object' && item !== null && item.productId) {
+                        const q = query(
+                            collection(modularDb, 'products_inventory'),
+                            where('publicProductId', '==', Number(item.productId))
+                        );
+                        const qSnap = await getDocs(q);
+                        qSnap.forEach(d => {
+                            const invData = d.data();
+                            const orderVariant = String(item.selectedVariant || '').trim().toLowerCase();
+                            const batchVariant = String(invData.variant || '').trim().toLowerCase();
+                            if (orderVariant === batchVariant) {
+                                inventoryDocsToRead.push({ ref: d.ref, id: d.id, itemQty: item.quantity, productId: item.productId });
+                            }
+                        });
+                    }
+                }
+            }
+
             await runTransaction(modularDb, async (transaction) => {
                 // 1. First, perform all reads
                 const updates: any[] = [];
+                const invSnaps: Record<string, any> = {};
+                for (const docToRead of inventoryDocsToRead) {
+                    const snap = await transaction.get(docToRead.ref);
+                    invSnaps[docToRead.id] = snap;
+                }
                 
                 if (modalState.order && modalState.order.items) {
+                    // Repor o stock no lote de inventário correspondente (products_inventory)
+                    for (const docToRead of inventoryDocsToRead) {
+                        const invSnap = invSnaps[docToRead.id];
+                        if (invSnap && invSnap.exists()) {
+                            const invData = invSnap.data() as any;
+                            let currentQtySold = Number(invData.quantitySold || 0);
+                            let newQtySold = currentQtySold;
+
+                            if (modalState.order?.stockDeducted) {
+                                newQtySold = Math.max(0, currentQtySold - docToRead.itemQty);
+                            }
+
+                            let updatedUnits = invData.units ? [...invData.units] : null;
+                            if (updatedUnits) {
+                                updatedUnits = updatedUnits.map((unit: any) => {
+                                    if (unit.soldToOrder === modalState.order?.id) {
+                                        return {
+                                            ...unit,
+                                            status: 'AVAILABLE',
+                                            soldAt: undefined,
+                                            soldToOrder: undefined
+                                        };
+                                    }
+                                    return unit;
+                                });
+                            }
+
+                            const invUpdateData: any = {
+                                quantitySold: newQtySold,
+                                status: newQtySold >= (invData.quantityBought || 0) ? 'SOLD' : (newQtySold > 0 ? 'PARTIAL' : 'AVAILABLE')
+                            };
+                            if (updatedUnits) {
+                                invUpdateData.units = updatedUnits;
+                            }
+
+                            updates.push({
+                                ref: docToRead.ref,
+                                data: invUpdateData
+                            });
+                        }
+                    }
+
+                    // Depois, repor stock na coleção principal (products_public)
                     for (const item of modalState.order.items) {
                         if (typeof item !== 'object' || item === null) continue;
                         const productDocRef = doc(modularDb, 'products_public', item.productId.toString());

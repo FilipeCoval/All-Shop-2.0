@@ -257,6 +257,24 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
                     batchDocs[batchId] = docSnap;
                 }
 
+                // Carregar documentos públicos também, se por acaso não tiverem o stock deduzido ainda
+                const publicDocs: Record<string, DocumentSnapshot> = {};
+                if (!currentOrder.stockDeducted) {
+                    const publicIds = Array.from(new Set(scannedItems.map(i => {
+                        const bDoc = batchDocs[i.inventoryProductId];
+                        const bData = bDoc?.data() as InventoryProduct;
+                        return bData?.publicProductId ? String(bData.publicProductId) : '';
+                    }).filter(id => id !== '')));
+
+                    for (const pubId of publicIds) {
+                        const ref = doc(modularDb, 'products_public', pubId);
+                        const docSnap = await transaction.get(ref);
+                        if (docSnap.exists()) {
+                            publicDocs[pubId] = docSnap;
+                        }
+                    }
+                }
+
                 // 2. Processamento e Validações em Memória
                 const updatesByBatch: Record<string, { newSold: number, newStatus: ProductStatus, updatedUnits: any[] }> = {};
                 const stockMovementItems: any[] = [];
@@ -295,7 +313,13 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
                         };
                     }
 
-                    const newSold = (batchData.quantitySold || 0) + serials.length;
+                    // Se a encomenda já deduziu o stock público aquando do checkout (stockDeducted === true),
+                    // o quantitySold no lote inventário já foi devidamente incrementado na altura da compra.
+                    // Portanto, não o incrementamos novamente durante a expedição para evitar "double-dipping".
+                    const newSold = currentOrder.stockDeducted 
+                        ? (batchData.quantitySold || 0) 
+                        : (batchData.quantitySold || 0) + serials.length;
+
                     const newStatus: ProductStatus = newSold >= batchData.quantityBought ? 'SOLD' : 'PARTIAL';
 
                     updatesByBatch[batchId] = {
@@ -315,6 +339,43 @@ const OrderFulfillmentModal: React.FC<OrderFulfillmentModalProps> = ({ order, in
                         status: update.newStatus,
                         units: update.updatedUnits
                     });
+                }
+
+                // A2. Atualizar Catálogo Público se não tiver sido deduzido ao fazer o Checkout (ex: encomendas offline ou draft)
+                if (!currentOrder.stockDeducted) {
+                    for (const [pubId, pubDoc] of Object.entries(publicDocs)) {
+                        const productData = pubDoc.data();
+                        if (!productData) continue;
+
+                        const totalScannedForThisProduct = scannedItems.filter(s => {
+                            const bDoc = batchDocs[s.inventoryProductId];
+                            const bData = bDoc?.data() as InventoryProduct;
+                            return bData && Number(bData.publicProductId) === Number(pubId);
+                        }).length;
+
+                        const currentStock = Number(productData.stock || 0);
+                        const newStock = Math.max(0, currentStock - totalScannedForThisProduct);
+
+                        const updatesToPublic: any = { stock: newStock };
+
+                        if (productData.variants && Array.isArray(productData.variants)) {
+                            const updatedVariants = productData.variants.map((v: any) => {
+                                const scannedForThisVariant = scannedItems.filter(s => {
+                                    const bDoc = batchDocs[s.inventoryProductId];
+                                    const bData = bDoc?.data() as InventoryProduct;
+                                    return bData && Number(bData.publicProductId) === Number(pubId) && bData.variant === v.name;
+                                }).length;
+
+                                return {
+                                    ...v,
+                                    stock: Math.max(0, Number(v.stock || 0) - scannedForThisVariant)
+                                };
+                            });
+                            updatesToPublic.variants = updatedVariants;
+                        }
+
+                        transaction.update(pubDoc.ref, updatesToPublic);
+                    }
                 }
 
                 // B. Criar Stock Movement

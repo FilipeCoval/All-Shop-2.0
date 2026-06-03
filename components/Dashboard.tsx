@@ -1177,13 +1177,41 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
           }; 
 
           // Safe parsing of total to avoid NaN database writes on old orders
-          const orderTotal = typeof currentOrder.total === 'number' 
-              ? currentOrder.total 
+          const orderTotal = typeof currentOrder.total === 'number'
+              ? currentOrder.total
               : parseFloat(currentOrder.total as any) || 0;
+
+          // Prepare Matching Inventory Lots to restore stock on cancellation
+          const inventoryDocsToRead: any[] = [];
+          if (newStatus === 'Cancelado' && currentOrder.status !== 'Cancelado' && Array.isArray(currentOrder.items)) {
+              for (const item of currentOrder.items) {
+                  if (typeof item === 'object' && item !== null && item.productId) {
+                      const q = query(
+                          collection(modularDb, 'products_inventory'),
+                          where('publicProductId', '==', Number(item.productId))
+                      );
+                      const qSnap = await getDocs(q);
+                      qSnap.forEach(d => {
+                          const invData = d.data();
+                          const orderVariant = String(item.selectedVariant || '').trim().toLowerCase();
+                          const batchVariant = String(invData.variant || '').trim().toLowerCase();
+                          if (orderVariant === batchVariant) {
+                              inventoryDocsToRead.push({ ref: d.ref, id: d.id, itemQty: item.quantity, productId: item.productId });
+                          }
+                      });
+                  }
+              }
+          }
 
           await runTransaction(modularDb, async (transaction) => {
               // 1. Gather all reads
               const reads: any = { updates: [], userUpdate: null };
+
+              const invSnaps: Record<string, any> = {};
+              for (const docToRead of inventoryDocsToRead) {
+                  const snap = await transaction.get(docToRead.ref);
+                  invSnaps[docToRead.id] = snap;
+              }
               
               const isUserValid = typeof currentOrder.userId === 'string' && currentOrder.userId.trim() !== '';
               if (newStatus === 'Entregue' && !currentOrder.pointsAwarded && isUserValid) { 
@@ -1217,6 +1245,49 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               }
 
               if (newStatus === 'Cancelado' && currentOrder.status !== 'Cancelado' && Array.isArray(currentOrder.items)) {
+                  // A. Repor o stock no lote de inventário correspondente (products_inventory)
+                  for (const docToRead of inventoryDocsToRead) {
+                      const invSnap = invSnaps[docToRead.id];
+                      if (invSnap && invSnap.exists()) {
+                          const invData = invSnap.data() as InventoryProduct;
+                          let currentQtySold = Number(invData.quantitySold || 0);
+                          let newQtySold = currentQtySold;
+
+                          if (currentOrder.stockDeducted) {
+                              newQtySold = Math.max(0, currentQtySold - docToRead.itemQty);
+                          }
+
+                          let updatedUnits = invData.units ? [...invData.units] : null;
+                          if (updatedUnits) {
+                              updatedUnits = updatedUnits.map(unit => {
+                                  if (unit.soldToOrder === orderId) {
+                                      return {
+                                          ...unit,
+                                          status: 'AVAILABLE',
+                                          soldAt: undefined,
+                                          soldToOrder: undefined
+                                      };
+                                  }
+                                  return unit;
+                              });
+                          }
+
+                          const invUpdateData: any = {
+                              quantitySold: newQtySold,
+                              status: newQtySold >= (invData.quantityBought || 0) ? 'SOLD' : (newQtySold > 0 ? 'PARTIAL' : 'AVAILABLE')
+                          };
+                          if (updatedUnits) {
+                              invUpdateData.units = updatedUnits;
+                          }
+
+                          reads.updates.push({
+                              ref: docToRead.ref,
+                              data: invUpdateData
+                          });
+                      }
+                  }
+
+                  // B. Depois, repor stock na coleção principal (products_public)
                   for (const item of currentOrder.items) {
                       if (typeof item !== 'object' || item === null || !item.productId) continue;
                       const productDocRef = doc(modularDb, 'products_public', item.productId.toString());

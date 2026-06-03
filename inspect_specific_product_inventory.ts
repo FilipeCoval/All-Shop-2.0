@@ -21,7 +21,7 @@ async function main() {
     console.log(`Checking products_inventory...`);
     snap.forEach(docSnap => {
         const d = docSnap.data();
-        if (d.name && d.name.toLowerCase().includes('stick')) {
+        if (Number(d.publicProductId) === 2) {
             console.log(`\nDoc ID: ${docSnap.id}`);
             console.log(`Name: ${d.name}`);
             console.log(`Variant: ${d.variant}`);
@@ -34,6 +34,18 @@ async function main() {
             if (d.units) {
                 console.log(`Units Statuses:`, d.units.map((u: any) => `${u.id}: ${u.status}`).join(', '));
             }
+        }
+    });
+
+    const publicRef = await getDocs(collection(db, 'products_public'));
+    console.log(`\nChecking products_public...`);
+    publicRef.forEach(docSnap => {
+        const d = docSnap.data();
+        if (Number(d.id) === 2) {
+            console.log(`Public Product ID: ${d.id}`);
+            console.log(`Name: ${d.name}`);
+            console.log(`Stock: ${d.stock}`);
+            console.log(`Variants:`, JSON.stringify(d.variants || null));
         }
     });
     process.exit(0);
