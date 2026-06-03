@@ -96,7 +96,15 @@ export const useInventory = (isAdmin: boolean = false) => {
           const inventorySnap = await getDocs(inventoryQuery);
           const lots = inventorySnap.docs.map(d => ({ id: d.id, ref: d.ref, data: d.data() as InventoryProduct }));
           
+          console.log(`[DEBUG Sync] Lots fetched for product ${publicId}: ${inventorySnap.size}`);
+          
+          lots.forEach(l => {
+              console.log(`[DEBUG Sync] Lot ${l.id} has publicProductId: ${l.data.publicProductId} (type: ${typeof l.data.publicProductId})`);
+          });
+
           const totalPhysical = lots.reduce((acc, l) => acc + (Math.max(0, (l.data.quantityBought || 0) - (l.data.quantitySold || 0))), 0);
+          console.log(`[DEBUG Sync] Total physical for product ${publicId}: ${totalPhysical}. Old stock in pub: ${pub.stock}`);
+
           if (pub.stock !== totalPhysical) {
               await updateDoc(publicRef, { stock: totalPhysical });
               console.log(`[Sync] Produto ${pub.id} atualizado: Stock mudou de ${pub.stock} para ${totalPhysical}`);
