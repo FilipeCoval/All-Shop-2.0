@@ -666,5 +666,160 @@
     },
     "created_at": "2026-05-26T09:45:00.235134+00:00",
     "updated_at": "2026-05-26T09:45:00.235134+00:00"
+  },
+  {
+    "id": 1769876342618,
+    "name": "Xiaomi Redmi Buds 8 Lite",
+    "price": 19.99,
+    "stock": 25,
+    "variants": null,
+    "is_freebie": false,
+    "raw_data": {
+      "id": 1769876342618,
+      "name": "Xiaomi Redmi Buds 8 Lite",
+      "image": "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products%2F1769876312939_07yy5.webp?alt=media&token=85c28476-d746-48dc-bdd3-2f8e3750fa7b",
+      "price": 19.99,
+      "specs": {},
+      "stock": 25,
+      "badges": [],
+      "images": [
+        "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products%2F1769876312939_07yy5.webp?alt=media&token=85c28476-d746-48dc-bdd3-2f8e3750fa7b"
+      ],
+      "weight": 0,
+      "category": "Audio",
+      "features": [
+        "Qualidade sonora premium com graves profundos",
+        "Conexão ultra estável via Bluetooth 5.3",
+        "Cancelamento inteligente de ruído para chamadas",
+        "Autonomia excecional para todo o dia"
+      ],
+      "description": "Desfruta da tua música favorita sem limites com o novo Xiaomi Redmi Buds 8 Lite. Conforto ergonómico, som imersivo e bateria de longa duração para as tuas sessões mais longas.",
+      "isPremium": false,
+      "comingSoon": false
+    }
+  },
+  {
+    "id": 1776451648679,
+    "name": "REDMI Buds 8 Active",
+    "price": 17.99,
+    "stock": 25,
+    "variants": null,
+    "is_freebie": false,
+    "raw_data": {
+      "id": 1776451648679,
+      "name": "REDMI Buds 8 Active",
+      "image": "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1776451822237_93de3fa53bfd1543fac78fff8526c259.webp?alt=media&token=e2833d91-d7e3-4a4f-b615-e0180a9de678",
+      "price": 17.99,
+      "specs": {},
+      "stock": 25,
+      "badges": [],
+      "images": [
+        "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1776451822237_93de3fa53bfd1543fac78fff8526c259.webp?alt=media&token=e2833d91-d7e3-4a4f-b615-e0180a9de678"
+      ],
+      "weight": 0,
+      "category": "Audio",
+      "features": [
+        "Qualidade sonora premium com graves profundos",
+        "Conexão ultra estável via Bluetooth 5.3",
+        "Cancelamento inteligente de ruído para chamadas",
+        "Autonomia excecional para todo o dia"
+      ],
+      "description": "Desfruta da tua música favorita sem limites com o novo REDMI Buds 8 Active. Conforto ergonómico, som imersivo e bateria de longa duração para as tuas sessões mais longas.",
+      "isPremium": false,
+      "comingSoon": false
+    }
+  },
+  {
+    "id": 1777141219448,
+    "name": "Power bank portátil ultrafino",
+    "price": 19.99,
+    "stock": 25,
+    "variants": null,
+    "is_freebie": false,
+    "raw_data": {
+      "id": 1777141219448,
+      "name": "Power bank portátil ultrafino",
+      "image": "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777144132736_ChatGPT%20Image%2025_04_2026%2C%2021_08_16.png?alt=media&token=35a1a081-849d-4ec2-af50-e034fc90b453",
+      "price": 19.99,
+      "specs": {},
+      "stock": 25,
+      "badges": [],
+      "images": [
+        "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777144132736_ChatGPT%20Image%2025_04_2026%2C%2021_08_16.png?alt=media&token=35a1a081-849d-4ec2-af50-e034fc90b453"
+      ],
+      "weight": 0,
+      "category": "Acessórios",
+      "features": [
+        "Alta capacidade de carga",
+        "Design ultrafino e ultraportátil",
+        "Carregamento inteligente de dispositivos múltiplos",
+        "Múltiplas proteções inteligentes"
+      ],
+      "description": "Nunca fiques sem bateria fora de casa com este Power bank portátil ultrafino. Carregamento seguro e eficiente para todos os teus aparelhos eletrónicos.",
+      "isPremium": false,
+      "comingSoon": false
+    }
+  },
+  {
+    "id": 1777119702513,
+    "name": "Cabo Nylon Braided Premium",
+    "price": 1.7,
+    "stock": 25,
+    "variants": null,
+    "is_freebie": false,
+    "raw_data": {
+      "id": 1777119702513,
+      "name": "Cabo Nylon Braided Premium",
+      "image": "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777119983809_H7e0a7dc7e705483bb994eea4d2a966c4f.avif?alt=media&token=8cacf01d-4824-472b-b8db-66cd08e5dc73",
+      "price": 1.7,
+      "specs": {},
+      "stock": 25,
+      "badges": [],
+      "images": [
+        "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1777119983809_H7e0a7dc7e705483bb994eea4d2a966c4f.avif?alt=media&token=8cacf01d-4824-472b-b8db-66cd08e5dc73"
+      ],
+      "weight": 0,
+      "category": "Cabos",
+      "features": [
+        "Revestimento reforçado anti-quebra",
+        "Suporte a carregamento ultra-rápido",
+        "Transferência de dados em alta velocidade",
+        "Conector ergonómico e seguro"
+      ],
+      "description": "O Cabo Nylon Braided Premium é a solução ideal se procuras fiabilidade e velocidade. Blindagem reforçada para máxima proteção e materiais condutores de primeira qualidade.",
+      "isPremium": false,
+      "comingSoon": false
+    }
+  },
+  {
+    "id": 1779111942975,
+    "name": "Xiaomi TV Stick 4K (2nd Gen)",
+    "price": 45,
+    "stock": 25,
+    "variants": null,
+    "is_freebie": false,
+    "raw_data": {
+      "id": 1779111942975,
+      "name": "Xiaomi TV Stick 4K (2nd Gen)",
+      "image": "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1779112531620_pp6lbz0c.png?alt=media&token=a9eb0cfb-7bf4-4a23-8fd8-2ecc1183ae66",
+      "price": 45,
+      "specs": {},
+      "stock": 25,
+      "badges": [],
+      "images": [
+        "https://firebasestorage.googleapis.com/v0/b/allshop-store-70851.firebasestorage.app/o/products_public%2F1779112531620_pp6lbz0c.png?alt=media&token=a9eb0cfb-7bf4-4a23-8fd8-2ecc1183ae66"
+      ],
+      "weight": 0,
+      "category": "TV & Streaming",
+      "features": [
+        "Resolução 4K de alta definição real",
+        "Google TV integrado para recomendação inteligente",
+        "Comando avançado com pesquisa por voz do Google",
+        "Instalação fácil Plug and Play"
+      ],
+      "description": "Transforma qualquer ecrã num Smart de última geração com o Xiaomi TV Stick 4K (2nd Gen). Acesso direto a todas as tuas plataformas favoritas de streaming com a melhor fluidez do mercado.",
+      "isPremium": false,
+      "comingSoon": false
+    }
   }
 ]

@@ -1,8 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Search, Edit2, Trash2, RefreshCw, Camera, BrainCircuit, UploadCloud, Plus, 
-  ChevronDown, ChevronRight, Globe, FileText, Copy, DollarSign, Package, TrendingUp, AlertCircle, Users, Loader2, Layers, BellRing, Info, X
+  ChevronDown, ChevronRight, Globe, FileText, Copy, DollarSign, Package, TrendingUp, AlertCircle, Users, Loader2, Layers, BellRing, Info, X, Check, Wallet
 } from 'lucide-react';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { modularDb } from '../services/firebaseConfig';
 import { InventoryProduct, Order, Product, StockReservation } from '../types';
 import KpiCard from './KpiCard';
 
@@ -58,6 +60,51 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
   copyToClipboard,
   searchTerm, onSearchChange
 }) => {
+  const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
+  const [editingUnitValue, setEditingUnitValue] = useState<string>('');
+  const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
+
+  const handleSaveUnitSN = async (productId: string, oldSn: string, newSnTrimmed: string) => {
+    const newSn = newSnTrimmed.trim();
+    if (!newSn) return;
+    if (newSn === oldSn) {
+      setEditingUnitId(null);
+      return;
+    }
+    
+    setSavingUnitId(oldSn);
+    try {
+      const productRef = doc(modularDb, 'products_inventory', productId);
+      const productSnap = await getDoc(productRef);
+      if (productSnap.exists()) {
+        const data = productSnap.data() as InventoryProduct;
+        if (data.units) {
+          const alreadyExists = data.units.some(u => u.id === newSn);
+          if (alreadyExists) {
+            alert(`O número de série "${newSn}" já existe neste produto.`);
+            setSavingUnitId(null);
+            return;
+          }
+          
+          const updatedUnits = data.units.map(u => {
+            if (u.id === oldSn) {
+              return { ...u, id: newSn };
+            }
+            return u;
+          });
+          
+          await updateDoc(productRef, { units: updatedUnits });
+          console.log(`Unidade de S/N ${oldSn} atualizada para ${newSn}`);
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao atualizar S/N:", e);
+    } finally {
+      setSavingUnitId(null);
+      setEditingUnitId(null);
+    }
+  };
+
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'SOLD'>('ALL');
   const [cashbackFilter, setCashbackFilter] = useState<'ALL' | 'PENDING' | 'RECEIVED' | 'NONE'>('ALL');
   const [supplierFilter, setSupplierFilter] = useState<string>('ALL');
@@ -295,7 +342,22 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                 })()}
                                                 <div>
                                                     <div className="font-bold text-gray-900 dark:text-white">{mainItem.name}</div>
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400">{mainItem.category} • {items.length} Lote(s)</div>
+                                                    <div className="text-xs text-gray-500 dark:text-gray-400 flex flex-wrap items-center gap-1.5 mt-0.5">
+                                                        <span>{mainItem.category} • {items.length} Lote(s)</span>
+                                                        {(() => {
+                                                            const totalCashback = items.reduce((acc, current) => acc + (current.cashbackValue || 0), 0);
+                                                            const hasPending = items.some(current => current.cashbackStatus === 'PENDING' && (current.cashbackValue || 0) > 0);
+                                                            if (totalCashback > 0) {
+                                                                return (
+                                                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${hasPending ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'}`} title={`Total Cashback: ${formatCurrency(totalCashback)}`}>
+                                                                        <Wallet size={10} />
+                                                                        {formatCurrency(totalCashback)} {hasPending ? 'Pendente' : 'Recebido'}
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </td>
@@ -397,8 +459,23 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                                     <tr key={p.id} className="hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors">
                                                                         <td className="px-4 py-3">
                                                                             <div className="font-bold whitespace-normal text-gray-900 dark:text-white">{new Date(p.purchaseDate).toLocaleDateString()}</div>
-                                                                            {p.variant && <span className="text-[10px] text-blue-500 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/30 px-1 rounded mr-1">{p.variant}</span>}
-                                                                            <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">{p.description?.substring(0, 30)}...</div>
+                                                                            <div className="flex flex-wrap gap-1 mt-1 items-center">
+                                                                                {p.variant && <span className="text-[10px] text-blue-500 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded mr-1">{p.variant}</span>}
+                                                                                {p.cashbackValue > 0 && (
+                                                                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${p.cashbackStatus === 'PENDING' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'}`}>
+                                                                                        <Wallet size={10} />
+                                                                                        {formatCurrency(p.cashbackValue)} ({p.cashbackStatus === 'PENDING' ? 'Pendente' : 'Recebido'})
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            {(p.cashbackPlatform || p.cashbackAccount || p.cashbackExpectedDate) && p.cashbackValue > 0 && (
+                                                                                <div className="text-[9px] text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-slate-800/40 p-1.5 rounded border border-gray-100 dark:border-slate-800/60 mt-1.5 space-y-0.5 max-w-[240px]">
+                                                                                    {p.cashbackPlatform && <div><span className="font-bold">Plataforma:</span> {p.cashbackPlatform}</div>}
+                                                                                    {p.cashbackAccount && <div><span className="font-bold">Conta:</span> {p.cashbackAccount}</div>}
+                                                                                    {p.cashbackExpectedDate && <div><span className="font-bold">Previsão:</span> {new Date(p.cashbackExpectedDate).toLocaleDateString()}</div>}
+                                                                                </div>
+                                                                            )}
+                                                                            <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{p.description?.substring(0, 30)}...</div>
                                                                         </td>
                                                                         <td className="px-4 py-3">
                                                                             {p.supplierName ? (
@@ -427,7 +504,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                                                 ></div>
                                                                             </div>
                                                                             {p.units && p.units.length > 0 && (
-                                                                                <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800 space-y-1 max-w-[200px] mx-auto">
+                                                                                <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800 space-y-1.5 max-w-[200px] mx-auto">
                                                                                     {p.units.sort((a,b) => a.status.localeCompare(b.status)).map(unit => {
                                                                                         const statusColor = unit.status === 'AVAILABLE' 
                                                                                             ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' 
@@ -436,15 +513,73 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                                                             : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300';
                                                                                         const statusText = unit.status === 'AVAILABLE' ? 'Disponível' : unit.status === 'SOLD' ? 'Vendido' : 'Reservado';
                                                                                         
-                                                                                        return (
-                                                                                            <div key={unit.id} className="flex justify-between items-center text-[10px] group">
-                                                                                                <div className="flex items-center gap-2">
-                                                                                                    <span className={`font-mono ${unit.status !== 'AVAILABLE' ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-700 dark:text-gray-300'}`}>{unit.id}</span>
-                                                                                                    <span className={`px-1.5 py-0.5 rounded-full font-medium ${statusColor}`}>{statusText}</span>
+                                                                                        const isEditing = editingUnitId === unit.id;
+                                                                                        const isSaving = savingUnitId === unit.id;
+
+                                                                                        if (isEditing) {
+                                                                                            return (
+                                                                                                <div key={unit.id} className="flex justify-between items-center text-[10px] gap-1 py-0.5">
+                                                                                                    <div className="flex items-center gap-1 w-full">
+                                                                                                        <input 
+                                                                                                            type="text" 
+                                                                                                            value={editingUnitValue} 
+                                                                                                            onChange={(e) => setEditingUnitValue(e.target.value)}
+                                                                                                            disabled={isSaving}
+                                                                                                            className="w-full bg-white dark:bg-slate-800 border border-indigo-400 rounded px-1.5 py-0.5 font-mono text-[10px] text-gray-800 dark:text-gray-200 focus:outline-none"
+                                                                                                            autoFocus
+                                                                                                            onKeyDown={(e) => {
+                                                                                                                if (e.key === 'Enter') handleSaveUnitSN(p.id, unit.id, editingUnitValue);
+                                                                                                                if (e.key === 'Escape') setEditingUnitId(null);
+                                                                                                            }}
+                                                                                                        />
+                                                                                                    </div>
+                                                                                                    <div className="flex items-center gap-1 shrink-0">
+                                                                                                        {isSaving ? (
+                                                                                                            <Loader2 size={10} className="animate-spin text-indigo-500" />
+                                                                                                        ) : (
+                                                                                                            <>
+                                                                                                                <button 
+                                                                                                                    onClick={() => handleSaveUnitSN(p.id, unit.id, editingUnitValue)} 
+                                                                                                                    className="text-green-600 hover:text-green-800 p-0.5" 
+                                                                                                                    title="Guardar"
+                                                                                                                >
+                                                                                                                    <Check size={10} />
+                                                                                                                </button>
+                                                                                                                <button 
+                                                                                                                    onClick={() => setEditingUnitId(null)} 
+                                                                                                                    className="text-red-500 hover:text-red-700 p-0.5" 
+                                                                                                                    title="Cancelar"
+                                                                                                                >
+                                                                                                                    <X size={10} />
+                                                                                                                </button>
+                                                                                                            </>
+                                                                                                        )}
+                                                                                                    </div>
                                                                                                 </div>
-                                                                                                <div className="flex items-center gap-1">
-                                                                                                    <span className="text-gray-400 dark:text-gray-500">{new Date(unit.addedAt).toLocaleDateString('pt-PT')}</span>
-                                                                                                    <button onClick={() => handleCopy(unit.id)} title="Copiar S/N" className="text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                            );
+                                                                                        }
+
+                                                                                        return (
+                                                                                            <div key={unit.id} className="flex justify-between items-center text-[10px] group py-0.5">
+                                                                                                <div className="flex items-center gap-1 overflow-hidden w-full">
+                                                                                                    <span className={`font-mono truncate max-w-[85px] ${unit.status !== 'AVAILABLE' ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-700 dark:text-gray-300'}`} title={unit.id}>{unit.id}</span>
+                                                                                                    <span className={`px-1 py-0.2 rounded-full font-medium ${statusColor} shrink-0`}>{statusText}</span>
+                                                                                                    {unit.status === 'AVAILABLE' && (
+                                                                                                        <button 
+                                                                                                            onClick={() => {
+                                                                                                                setEditingUnitId(unit.id);
+                                                                                                                setEditingUnitValue(unit.id);
+                                                                                                            }} 
+                                                                                                            title="Editar S/N" 
+                                                                                                            className="text-indigo-500 hover:text-indigo-700 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 shrink-0"
+                                                                                                        >
+                                                                                                            <Edit2 size={10} />
+                                                                                                        </button>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                                <div className="flex items-center gap-1 shrink-0 ml-1">
+                                                                                                    <span className="text-gray-400 dark:text-gray-500 text-[9px]">{unit.addedAt ? new Date(unit.addedAt).toLocaleDateString('pt-PT') : '-'}</span>
+                                                                                                    <button onClick={() => handleCopy(unit.id)} title="Copiar S/N" className="text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity p-0.5">
                                                                                                         <Copy size={10} />
                                                                                                     </button>
                                                                                                 </div>

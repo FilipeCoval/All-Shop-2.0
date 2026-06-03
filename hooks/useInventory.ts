@@ -106,6 +106,10 @@ export const useInventory = (isAdmin: boolean = false) => {
           const inventorySnap = await getDocs(invQ);
           let physicalStock = 0;
           let variantStock: Record<string, number> = {};
+          let variantPrice: Record<string, number> = {};
+          let variantImage: Record<string, string> = {};
+
+          const normalizeVName = (n: string) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
           inventorySnap.forEach(d => {
               const data = d.data() as InventoryProduct;
@@ -113,8 +117,19 @@ export const useInventory = (isAdmin: boolean = false) => {
               physicalStock += qty;
               
               const variant = (data.variant || '').trim();
-              if (!variantStock[variant]) variantStock[variant] = 0;
-              variantStock[variant] += qty;
+              if (variant) {
+                  const norm = normalizeVName(variant);
+                  if (!variantStock[norm]) variantStock[norm] = 0;
+                  variantStock[norm] += qty;
+
+                  const lotPrice = data.salePrice || data.targetSalePrice || 0;
+                  if (lotPrice > 0) {
+                      variantPrice[norm] = lotPrice;
+                  }
+                  if (data.images && data.images.length > 0 && data.images[0]) {
+                      variantImage[norm] = data.images[0];
+                  }
+              }
           });
 
           // 3. Subtract pending orders
@@ -137,12 +152,15 @@ export const useInventory = (isAdmin: boolean = false) => {
 
               if (isExplicitlyPending || isOldButStuck) {
                   order.items.forEach((item: any) => {
-                      if (typeof item === 'object' && item.productId === publicId) {
-                          const qty = item.quantity || 1;
+                      if (typeof item === 'object' && Number(item.productId) === Number(publicId)) {
+                          const qty = Math.max(0, (item.quantity || 1) - (item.fulfilledQuantity || 0));
                           pending += qty;
                           const variant = (item.selectedVariant || '').trim();
-                          if (!variantPending[variant]) variantPending[variant] = 0;
-                          variantPending[variant] += qty;
+                          if (variant) {
+                              const norm = normalizeVName(variant);
+                              if (!variantPending[norm]) variantPending[norm] = 0;
+                              variantPending[norm] += qty;
+                          }
                       }
                   });
               }
@@ -152,25 +170,53 @@ export const useInventory = (isAdmin: boolean = false) => {
 
           // 4. Update Document
           const updatedVariants: any[] = [];
-          const allVariantNames = new Set<string>();
-          Object.keys(variantStock).forEach(v => { if (v) allVariantNames.add(v); });
-          (publicData.variants || []).forEach(v => { if (v && v.name) allVariantNames.add(v.name.trim()); });
+          const allVariantNames = new Map<string, string>(); // normalizedKey -> originalCaseDisplayName
+          
+          Object.keys(variantStock).forEach(v => {
+              if (v) {
+                  const norm = normalizeVName(v);
+                  if (!allVariantNames.has(norm)) {
+                      allVariantNames.set(norm, v.trim());
+                  }
+              }
+          });
+          
+          (publicData.variants || []).forEach(v => {
+              if (v && v.name) {
+                  const norm = normalizeVName(v.name);
+                  if (!allVariantNames.has(norm)) {
+                      allVariantNames.set(norm, v.name.trim());
+                  } else {
+                      allVariantNames.set(norm, v.name.trim()); // Prefer public catalog casing
+                  }
+              }
+          });
 
           const currentVariantsMap = new Map();
-          (publicData.variants || []).forEach(v => { if (v && v.name) currentVariantsMap.set(v.name.trim(), v); });
+          (publicData.variants || []).forEach(v => {
+              if (v && v.name) {
+                  currentVariantsMap.set(normalizeVName(v.name), v);
+              }
+          });
 
-          allVariantNames.forEach(vName => {
-              const physical = variantStock[vName] || 0;
-              const pend = variantPending[vName] || 0;
+          allVariantNames.forEach((prefDisplayName, norm) => {
+              const physical = variantStock[norm] || 0;
+              const pend = variantPending[norm] || 0;
               const variantAvailable = Math.max(0, physical - pend);
               
-              const existing = currentVariantsMap.get(vName) || {};
-              let cleanImage = existing.image;
+              const existing = currentVariantsMap.get(norm) || {};
+              
+              let cleanImage = variantImage[norm] || existing.image;
+              if (!cleanImage && publicData && publicData.images && publicData.images.length > 0) {
+                  cleanImage = publicData.images[0];
+              }
               if (cleanImage === null || cleanImage === undefined) cleanImage = undefined;
               
+              const priceToUse = variantPrice[norm] || Number(existing.price) || (publicData ? publicData.price : 0) || 0;
+              
               const varData: any = {
-                  name: vName,
-                  price: Number(existing.price) || 0,
+                  name: prefDisplayName,
+                  price: priceToUse,
                   stock: variantAvailable
               };
               if (cleanImage) varData.image = cleanImage;

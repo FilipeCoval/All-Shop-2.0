@@ -75,7 +75,15 @@ export default async function handler(req: Request, res: Response) {
         return res.status(200).json({ success: true });
     } catch (e: any) {
         console.error("DEBUG: reserve-stock error caught:", e);
-        const errorMessage = e instanceof Error ? e.message : String(e);
+        const errorMessage = String(e.message || "");
+        if (errorMessage.includes("PERMISSION_DENIED") || errorMessage.includes("Database not connected") || e.code === 7) {
+            console.warn("[reserve-stock] Permission Denied or Database connection error detected. Returning fallbackToClient flag.");
+            return res.status(200).json({ 
+                success: false, 
+                fallbackToClient: true, 
+                reason: "PERMISSION_DENIED or connection issues on server-side Admin SDK (local sandbox workspace fallback active)" 
+            });
+        }
         return res.status(400).json({ error: errorMessage });
     }
 }

@@ -39,6 +39,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         let physicalStock = 0;
         let variantStock: Record<string, number> = {};
+        let variantPrice: Record<string, number> = {};
+        let variantImage: Record<string, string> = {};
+
+        const normalizeVName = (n: string) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
         inventorySnap.forEach(doc => {
             const data = doc.data();
@@ -46,8 +50,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             physicalStock += qty;
             
             const variant = (data.variant || '').trim();
-            if (!variantStock[variant]) variantStock[variant] = 0;
-            variantStock[variant] += qty;
+            if (variant) {
+                const norm = normalizeVName(variant);
+                if (!variantStock[norm]) variantStock[norm] = 0;
+                variantStock[norm] += qty;
+
+                const lotPrice = data.salePrice || data.targetSalePrice || 0;
+                if (lotPrice > 0) {
+                    variantPrice[norm] = lotPrice;
+                }
+                if (data.images && Array.isArray(data.images) && data.images.length > 0 && data.images[0]) {
+                    variantImage[norm] = data.images[0];
+                }
+            }
         });
 
         // 2. Get Cart Reservations
@@ -68,7 +83,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         let variantPending: Record<string, number> = {};
         
         const now = new Date();
-        const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
         ordersSnap.forEach(doc => {
             const order = doc.data();
@@ -82,12 +98,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (isExplicitlyPending || isOldButStuck) {
                 if (order.items && Array.isArray(order.items)) {
                     order.items.forEach((item: any) => {
-                        if (typeof item === 'object' && item.productId === Number(publicProductId)) {
-                            const qty = item.quantity || 1;
+                        if (typeof item === 'object' && Number(item.productId) === Number(publicProductId)) {
+                            const qty = Math.max(0, (item.quantity || 1) - (item.fulfilledQuantity || 0));
                             pendingInOrders += qty;
                             const variant = (item.selectedVariant || '').trim();
-                            if (!variantPending[variant]) variantPending[variant] = 0;
-                            variantPending[variant] += qty;
+                            if (variant) {
+                                const norm = normalizeVName(variant);
+                                if (!variantPending[norm]) variantPending[norm] = 0;
+                                variantPending[norm] += qty;
+                            }
                         }
                     });
                 }
@@ -104,23 +123,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const publicData = publicDoc.data() || {};
             const updatedVariants: any[] = [];
             
-            const allVariantNames = new Set<string>();
-            Object.keys(variantStock).forEach(v => { if (v) allVariantNames.add(v); });
-            (publicData.variants || []).forEach((v: any) => { if (v && v.name) allVariantNames.add(v.name.trim()); });
+            const allVariantNames = new Map<string, string>(); // normalizedKey -> originalCaseDisplayName
+            
+            Object.keys(variantStock).forEach(v => {
+                if (v) {
+                    const norm = normalizeVName(v);
+                    if (!allVariantNames.has(norm)) {
+                        allVariantNames.set(norm, v.trim());
+                    }
+                }
+            });
+            
+            (publicData.variants || []).forEach((v: any) => {
+                if (v && v.name) {
+                    const norm = normalizeVName(v.name);
+                    if (!allVariantNames.has(norm)) {
+                        allVariantNames.set(norm, v.name.trim());
+                    } else {
+                        allVariantNames.set(norm, v.name.trim()); // Prefer public catalog casing
+                    }
+                }
+            });
 
             const currentVariantsMap = new Map();
-            (publicData.variants || []).forEach((v: any) => { if (v && v.name) currentVariantsMap.set(v.name.trim(), v); });
+            (publicData.variants || []).forEach((v: any) => {
+                if (v && v.name) {
+                    currentVariantsMap.set(normalizeVName(v.name), v);
+                }
+            });
 
-            allVariantNames.forEach(vName => {
-                const physical = variantStock[vName] || 0;
-                const reserved = (variantReserved[vName] || 0) + (variantPending[vName] || 0);
+            allVariantNames.forEach((prefDisplayName, norm) => {
+                const physical = variantStock[norm] || 0;
+                const reserved = (variantReserved[norm] || 0) + (variantPending[norm] || 0);
                 const variantAvailable = Math.max(0, physical - reserved);
                 
-                const existing = currentVariantsMap.get(vName) || {};
+                const existing = currentVariantsMap.get(norm) || {};
+
+                let cleanImage = variantImage[norm] || existing.image || null;
+                if (!cleanImage && publicData.images && Array.isArray(publicData.images) && publicData.images.length > 0) {
+                    cleanImage = publicData.images[0];
+                }
+
+                const priceToUse = variantPrice[norm] || Number(existing.price) || publicData.price || publicData.salePrice || publicData.targetSalePrice || 0;
+
                 updatedVariants.push({
-                    name: vName,
-                    price: Number(existing.price) || 0,
-                    image: existing.image || null, // Firebase não aceita undefined
+                    name: prefDisplayName,
+                    price: priceToUse,
+                    image: cleanImage || null, // Firebase não aceita undefined
                     stock: variantAvailable
                 });
             });

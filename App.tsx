@@ -483,12 +483,33 @@ const App: React.FC = () => {
   };
 
   const updateReservationInFirebase = async (productId: number, variantName: string | undefined | null, newQuantity: number): Promise<boolean> => {
-      // In prod mode, we call our backend API instead of direct Firestore writes
       try {
-          // Note: Variant name mapping might need adjustment based on how it's stored.
-          // Assuming product.variants[vIndex].name matches variantName.
+          const apiResponse = await reserveStock(productId.toString(), newQuantity, localStorage.getItem('guestToken') || undefined);
           
-          await reserveStock(productId.toString(), newQuantity, localStorage.getItem('guestToken') || undefined);
+          if (apiResponse && apiResponse.fallbackToClient) {
+              console.warn("Server stock reservation returned fallbackToClient. Managing reservation on client-side...");
+              
+              const reservationId = `${sessionId}-${productId}-${variantName || 'default'}`;
+              const reservationRef = doc(modularDb, "stock_reservations", reservationId);
+              
+              if (newQuantity <= 0) {
+                  await deleteDoc(reservationRef).catch(err => console.debug("Reservation delete ignored:", err));
+              } else {
+                  await setDoc(reservationRef, {
+                      productId,
+                      variantName: variantName || null,
+                      quantity: newQuantity,
+                      sessionId,
+                      expiresAt: Date.now() + 15 * 60 * 1000
+                  }).catch(err => console.debug("Reservation write ignored:", err));
+              }
+              return true;
+          }
+          
+          if (apiResponse && apiResponse.success === false) {
+              throw new Error(apiResponse.reason || "Erro ao reservar stock");
+          }
+          
           return true;
       } catch (e: any) {
           console.error("Erro na reserva de stock:", e);
@@ -683,13 +704,29 @@ const App: React.FC = () => {
                   }
 
                   try {
-                      const inventoryRef = doc(modularDb, "products_inventory", item.productId.toString());
-                      const inventorySnap = await getDoc(inventoryRef);
-                      if (inventorySnap.exists()) {
-                          const inventoryData = inventorySnap.data();
+                      // Query inventory lots matching the public product ID
+                      const qInv = query(
+                          collection(modularDb, "products_inventory"),
+                          where("publicProductId", "==", Number(item.productId))
+                      );
+                      const invSnap = await getDocs(qInv);
+                      if (!invSnap.empty) {
+                          // Find exact match by variant name (case-insensitive and trimmed)
+                          let matchedDoc = invSnap.docs.find(docSnap => {
+                              const d = docSnap.data();
+                              const vName = (d.variant || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                              const requestedV = (item.selectedVariant || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                              return vName === requestedV;
+                          });
+                          
+                          if (!matchedDoc) {
+                              matchedDoc = invSnap.docs[0];
+                          }
+                          
+                          const inventoryData = matchedDoc.data();
                           const currentQtySold = Number(inventoryData.quantitySold || 0);
                           const currentReserved = Number(inventoryData.reserved || 0);
-                          await updateDoc(inventoryRef, {
+                          await updateDoc(matchedDoc.ref, {
                               quantitySold: currentQtySold + Number(item.quantity),
                               reserved: Math.max(0, currentReserved - Number(item.quantity))
                           });

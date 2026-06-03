@@ -24,22 +24,27 @@ export default async function handler(req: Request, res: Response) {
             for (const item of items) {
                 if (!item.productId) continue;
                 
-                const productIdStr = String(item.productId);
-                let productRef = db.collection('products_inventory').doc(productIdStr);
-                let productDoc = await t.get(productRef);
-                
-                // Fallback query if document by string identifier does not exist under that exact ID
-                if (!productDoc.exists) {
-                    const fallbackQuery = await db.collection('products_inventory').where('publicProductId', '==', Number(item.productId)).get();
-                    if (!fallbackQuery.empty) {
-                        productDoc = fallbackQuery.docs[0];
-                        productRef = productDoc.ref;
-                    } else {
-                        throw new Error(`O produto com ID ${item.productId} não foi encontrado no inventário.`);
-                    }
+                const fallbackQuery = await db.collection('products_inventory').where('publicProductId', '==', Number(item.productId)).get();
+                if (fallbackQuery.empty) {
+                    throw new Error(`O produto com ID ${item.productId} não foi encontrado no inventário.`);
                 }
-
-                const data = productDoc.data()!;
+                
+                const productIdStr = String(item.productId);
+                
+                // Find exact match by variant name (case-insensitive and trimmed)
+                let matchedDoc = fallbackQuery.docs.find(docSnap => {
+                    const data = docSnap.data();
+                    const vName = String(data.variant || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    const requestedV = String(item.selectedVariant || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                    return vName === requestedV;
+                });
+                
+                if (!matchedDoc) {
+                    matchedDoc = fallbackQuery.docs[0];
+                }
+                
+                const productRef = matchedDoc.ref;
+                const data = matchedDoc.data()!;
                 const currentQuantitySold = Number(data.quantitySold || 0);
                 const currentReserved = Number(data.reserved || 0);
                 const itemQty = Number(item.quantity || 1);

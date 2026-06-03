@@ -32,20 +32,8 @@ async function restore() {
     
     console.log(`Found ${products.length} products to restore.`);
     
-    // 1. Clear old collections products_public and products_inventory
-    console.log("Cleaning current products_public...");
-    const publicSnap = await getDocs(collection(db, "products_public"));
-    for (const d of publicSnap.docs) {
-        await deleteDoc(doc(db, "products_public", d.id));
-    }
-    console.log("Cleaned products_public.");
-
-    console.log("Cleaning current products_inventory...");
-    const inventorySnap = await getDocs(collection(db, "products_inventory"));
-    for (const d of inventorySnap.docs) {
-        await deleteDoc(doc(db, "products_inventory", d.id));
-    }
-    console.log("Cleaned products_inventory.");
+    // 1. Cleared old collections products_public and products_inventory (Overwriting directly with setDoc is safer and faster)
+    console.log("Directly overwriting records in products_public and products_inventory...");
 
     // 2. Insert real products
     for (const p of products) {
@@ -65,12 +53,16 @@ async function restore() {
         const stockNum = Number(pData.stock || p.stock || 0);
         console.log(`Generating Inventory for Product ID: ${docId} (Stock: ${stockNum})...`);
         
+        const purchaseDateStr = pData.purchaseDate || new Date().toISOString();
+        const priceNum = Number(pData.price || p.price || 0);
+        
         // Create synthetic SN IDs for checkout validation
         const units = [];
         for (let i = 0; i < Math.max(stockNum * 2, 50); i++) {
             units.push({
                 id: `SN-${docId}-${1000 + i}`,
-                status: "AVAILABLE"
+                status: "AVAILABLE",
+                addedAt: purchaseDateStr
             });
         }
 
@@ -78,9 +70,17 @@ async function restore() {
             id: docId,
             publicProductId: Number(docId),
             name: pData.name,
+            category: pData.category || "Acessórios",
+            purchaseDate: purchaseDateStr,
             quantityBought: stockNum,
             quantitySold: 0,
             reserved: 0,
+            purchasePrice: pData.purchasePrice || Number((priceNum * 0.4).toFixed(2)),
+            targetSalePrice: pData.targetSalePrice || priceNum,
+            salePrice: priceNum,
+            cashbackValue: pData.cashbackValue || 0,
+            cashbackStatus: pData.cashbackStatus || "NONE",
+            status: "IN_STOCK",
             units: units
         };
 

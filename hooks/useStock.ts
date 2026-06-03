@@ -56,14 +56,15 @@ export const useStock = (isAdmin: boolean) => {
     // 3. Escutar Encomendas Pendentes (Apenas Admin)
     const orderQ = query(
       collection(modularDb, 'orders'),
-      where('status', 'in', ['Processamento', 'Pago', 'Enviado', 'Entregue'])
+      where('status', 'in', ['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue'])
     );
     const unsubOrders = onSnapshot(
       orderQ,
       (snapshot) => {
           const ordersList: Order[] = [];
           const now = new Date();
-          const thirtyDaysAgo = new Date(now.setDate(now.getDate() - 30));
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
           snapshot.forEach(doc => {
               const data = doc.data() as Order;
@@ -74,7 +75,7 @@ export const useStock = (isAdmin: boolean) => {
               // 2. Encomendas sem o campo (antigas) mas que ainda estão em estados iniciais e são recentes (< 30 dias)
               const isExplicitlyPending = data.stockDeducted === false;
               const isOldButStuck = data.stockDeducted === undefined && 
-                                   ['Processamento', 'Pago'].includes(data.status) && 
+                                   ['Pendente', 'Processamento', 'Pago'].includes(data.status) && 
                                    orderDate > thirtyDaysAgo;
               
               if (isExplicitlyPending || isOldButStuck) {
@@ -104,7 +105,7 @@ export const useStock = (isAdmin: boolean) => {
     // Para admin, continua a usar a lógica de tempo real
     if (loading) return 999; // Retorna 999 durante o carregamento para evitar bloquear vendas no admin
 
-    const allBatchesForProduct = inventory.filter(p => p.publicProductId === publicId);
+    const allBatchesForProduct = inventory.filter(p => Number(p.publicProductId) === Number(publicId));
     if (allBatchesForProduct.length === 0) return 0;
     
     const hasOnlyGenericStockBatch = allBatchesForProduct.length === 1 && (!allBatchesForProduct[0].variant || allBatchesForProduct[0].variant.trim() === '');
@@ -121,7 +122,7 @@ export const useStock = (isAdmin: boolean) => {
 
     // B. Subtrair Reservas Temporárias (Carrinhos)
     const totalReservedInCarts = reservations
-        .filter(r => r.productId === publicId)
+        .filter(r => Number(r.productId) === Number(publicId))
         .filter(r => {
             if (!variantName) return true;
             const itemVariant = (r.variantName || '').trim().toLowerCase();
@@ -137,14 +138,15 @@ export const useStock = (isAdmin: boolean) => {
         items.forEach(item => {
             if (typeof item === 'object' && item !== null) {
                 const orderItem = item as OrderItem;
-                if (orderItem.productId === publicId) {
+                if (Number(orderItem.productId) === Number(publicId)) {
+                    const qty = Math.max(0, (orderItem.quantity || 1) - (orderItem.fulfilledQuantity || 0));
                     if (!variantName) {
-                        totalPendingInOrders += (orderItem.quantity || 1);
+                        totalPendingInOrders += qty;
                     } else {
                         const itemVariant = (orderItem.selectedVariant || '').trim().toLowerCase();
                         const requestedVariant = variantName.trim().toLowerCase();
                         if (itemVariant === requestedVariant || (hasOnlyGenericStockBatch && itemVariant === '')) {
-                            totalPendingInOrders += (orderItem.quantity || 1);
+                            totalPendingInOrders += qty;
                         }
                     }
                 }
