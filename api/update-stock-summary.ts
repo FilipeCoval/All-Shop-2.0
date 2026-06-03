@@ -1,6 +1,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import { db as sharedDb } from '../services/firebase-admin';
 
 // INICIALIZAÇÃO DO SDK ADMIN (SINGLETON)
 if (!admin.apps.length) {
@@ -25,7 +26,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const db = admin.firestore();
+        const db = sharedDb;
+        if (!db) {
+            throw new Error("Database connection not defined in firebase-admin");
+        }
         const { publicProductId } = req.body;
 
         if (!publicProductId) {

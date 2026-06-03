@@ -10,10 +10,20 @@ export default async function handler(req: Request, res: Response) {
     
     if (!items || !idempotencyKey) return res.status(400).json({ error: 'Dados em falta (Missing data)' });
 
+    const firestore = db;
+    if (!firestore) {
+        console.error("[finalize-order] db is not defined!");
+        return res.status(200).json({ 
+            success: false, 
+            fallbackToClient: true, 
+            reason: "Database not connected on server-side Admin SDK (local sandbox workspace fallback active)" 
+        });
+    }
+
     try {
-        await db.runTransaction(async (t) => {
+        await firestore.runTransaction(async (t) => {
             // Check idempotency using a direct document look up with the idempotencyKey as Document ID!
-            const orderRef = db.collection('orders').doc(idempotencyKey);
+            const orderRef = firestore.collection('orders').doc(idempotencyKey);
             const orderDoc = await t.get(orderRef);
             if (orderDoc.exists) {
                 console.info(`[finalize-order] Order ${idempotencyKey} already exists. Returning success.`);
@@ -24,7 +34,7 @@ export default async function handler(req: Request, res: Response) {
             for (const item of items) {
                 if (!item.productId) continue;
                 
-                const fallbackQuery = await db.collection('products_inventory').where('publicProductId', '==', Number(item.productId)).get();
+                const fallbackQuery = await firestore.collection('products_inventory').where('publicProductId', '==', Number(item.productId)).get();
                 if (fallbackQuery.empty) {
                     throw new Error(`O produto com ID ${item.productId} não foi encontrado no inventário.`);
                 }
@@ -56,7 +66,7 @@ export default async function handler(req: Request, res: Response) {
                 });
 
                 // ALSO update the public catalog document ('products_public') stock!
-                const publicRef = db.collection('products_public').doc(productIdStr);
+                const publicRef = firestore.collection('products_public').doc(productIdStr);
                 const publicDoc = await t.get(publicRef);
                 if (publicDoc.exists) {
                     const publicData = publicDoc.data()!;

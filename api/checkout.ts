@@ -1,31 +1,15 @@
 import { Request, Response } from 'express';
-import admin from 'firebase-admin';
-import firebaseConfig from '../firebase-applet-config.json';
-
-// Initialize Admin SDK
-let db: admin.firestore.Firestore;
-
-async function getDb() {
-    if (!admin.apps.length) {
-        console.log("DEBUG: Initializing Admin SDK with project ID:", firebaseConfig.projectId);
-        admin.initializeApp({
-            credential: admin.credential.applicationDefault(),
-            projectId: firebaseConfig.projectId
-        });
-        console.log("DEBUG: Admin SDK initialized.");
-    }
-    if (!db) {
-        db = admin.firestore();
-    }
-    return db;
-}
+import { db } from '../services/firebase-admin';
 
 export default async function handler(req: Request, res: Response) {
     if (req.method !== 'POST') return res.status(405).end();
     
     console.log("DEBUG: Checkout handler called.");
     try {
-        const theDb = await getDb();
+        const theDb = db;
+        if (!theDb) {
+            throw new Error("Database connection not defined in firebase-admin");
+        }
         const { order } = req.body;
         console.log("DEBUG: Order received:", order?.id);
         const orderRef = theDb.collection('orders').doc(order.id);

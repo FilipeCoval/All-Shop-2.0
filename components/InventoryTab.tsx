@@ -293,8 +293,10 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                             // Fetch catalog product as source of truth for stock
                             const catalogProd = catalogProducts?.find(p => String(p.id) === String(mainItem.publicProductId));
                             
-                            // Calculate total physical stock based on inventory batches (Source of Truth)
-                            const totalPhysicalStock = items.reduce((acc, i) => acc + Math.max(0, (i.quantityBought || 0) - (i.quantitySold || 0)), 0);
+                            // Base stock values strictly on catalog product (database of reality) if linked, else fallback to batch sums
+                            const totalPhysicalStock = catalogProd !== undefined 
+                                ? (catalogProd.stock || 0) 
+                                : items.reduce((acc, i) => acc + Math.max(0, (i.quantityBought || 0) - (i.quantitySold || 0)), 0);
                             
                             // Calcular stock pendente em encomendas para este grupo
                             let pendingInOrders = 0;
@@ -322,8 +324,10 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                 .filter(r => r.productId === mainItem.publicProductId)
                                 .reduce((sum, r) => sum + r.quantity, 0);
 
-                            // Calculate available stock dynamically based on physical stock and reservations
-                            const availableStock = Math.max(0, totalPhysicalStock - pendingInOrders - reservedInCart);
+                            // Available stock matches database reality as requested, ignoring reservation subtractions
+                            const availableStock = catalogProd !== undefined 
+                                ? (catalogProd.stock || 0) 
+                                : Math.max(0, totalPhysicalStock - pendingInOrders - reservedInCart);
                             
                             const alertsCount = mainItem.publicProductId 
                                 ? stockAlerts.filter(a => a.productId === mainItem.publicProductId).length

@@ -4,6 +4,17 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 
+// Static imports of all API endpoints to bundle them into server.cjs cleanly
+import sendPushHandler from './api/send-push.ts';
+import updateStockSummaryHandler from './api/update-stock-summary.ts';
+import ogHandler from './api/og.ts';
+import checkoutHandler from './api/checkout.ts';
+import reserveStockHandler from './api/reserve-stock.ts';
+import finalizeOrderHandler from './api/finalize-order.ts';
+import diagnoseHandler from './api/diagnose.ts';
+import cleanupReservationsHandler from './api/cleanup-reservations.ts';
+import updateOrderHandler from './api/update-order.ts';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function startServer() {
@@ -19,11 +30,10 @@ async function startServer() {
     next();
   });
 
-  // Simulated Vercel API routes
+  // Simulated Vercel API routes using static imports (bundled correctly)
   app.all('/api/send-push', async (req, res) => {
     try {
-        const handler = await import('./api/send-push.ts');
-        await handler.default(req as any, res as any);
+        await sendPushHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -31,8 +41,7 @@ async function startServer() {
 
   app.all('/api/update-stock-summary', async (req, res) => {
     try {
-        const handler = await import('./api/update-stock-summary.ts');
-        await handler.default(req as any, res as any);
+        await updateStockSummaryHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -40,8 +49,7 @@ async function startServer() {
 
   app.all('/api/og', async (req, res) => {
     try {
-        const handler = await import('./api/og.ts');
-        await handler.default(req as any, res as any);
+        await ogHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -49,8 +57,7 @@ async function startServer() {
 
   app.all('/api/checkout', async (req, res) => {
     try {
-        const handler = await import('./api/checkout.ts');
-        await handler.default(req as any, res as any);
+        await checkoutHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -58,8 +65,7 @@ async function startServer() {
 
   app.all('/api/reserve-stock', async (req, res) => {
     try {
-        const handler = await import('./api/reserve-stock.ts');
-        await handler.default(req as any, res as any);
+        await reserveStockHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -67,8 +73,7 @@ async function startServer() {
 
   app.all('/api/finalize-order', async (req, res) => {
     try {
-        const handler = await import('./api/finalize-order.ts');
-        await handler.default(req as any, res as any);
+        await finalizeOrderHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -76,8 +81,7 @@ async function startServer() {
 
   app.all('/api/diagnose', async (req, res) => {
     try {
-        const handler = await import('./api/diagnose.ts');
-        await handler.default(req as any, res as any);
+        await diagnoseHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -85,8 +89,7 @@ async function startServer() {
 
   app.all('/api/cleanup-reservations', async (req, res) => {
     try {
-        const handler = await import('./api/cleanup-reservations.ts');
-        await handler.default(req as any, res as any);
+        await cleanupReservationsHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -94,8 +97,7 @@ async function startServer() {
 
   app.all('/api/update-order', async (req, res) => {
     try {
-        const handler = await import('./api/update-order.ts');
-        await handler.default(req as any, res as any);
+        await updateOrderHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -105,8 +107,7 @@ async function startServer() {
   app.get(["/product/:id", "/p/:id"], async (req, res) => {
     req.query.id = req.params.id;
     try {
-        const handler = await import('./api/og.ts');
-        await handler.default(req as any, res as any);
+        await ogHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -115,8 +116,7 @@ async function startServer() {
   app.get("/home", async (req, res) => {
     req.query.id = 'home';
     try {
-        const handler = await import('./api/og.ts');
-        await handler.default(req as any, res as any);
+        await ogHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -153,7 +153,6 @@ async function startServer() {
     console.error("Global Express Error:", err);
     res.status(err.status || 500).json({ error: err.message || "Internal Server Error" });
   });
-
 }
 
 startServer();

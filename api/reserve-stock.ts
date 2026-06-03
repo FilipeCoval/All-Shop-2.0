@@ -11,20 +11,25 @@ export default async function handler(req: Request, res: Response) {
     
     if (!productId || !quantity) return res.status(400).json({ error: 'Missing data' });
 
+    const firestore = db;
+    if (!firestore) {
+        console.warn("[reserve-stock] Permission Denied or Database connection error detected at startup. Returning fallbackToClient flag.");
+        return res.status(200).json({ 
+            success: false, 
+            fallbackToClient: true, 
+            reason: "PERMISSION_DENIED or connection issues on server-side Admin SDK (local sandbox workspace fallback active)" 
+        });
+    }
+
     try {
         console.log("DEBUG: reserve-stock transaction start, productId:", productId, "quantity:", quantity);
         
-        if (!db) {
-            console.error("DEBUG: db is not defined!");
-            throw new Error("Internal Server Error: Database not connected");
-        }
-        
-        await db.runTransaction(async (t) => {
+        await firestore.runTransaction(async (t) => {
             console.log("DEBUG: transaction attempt");
             
             // Query for the product by publicProductId
             console.log("DEBUG: Looking for products_inventory with publicProductId:", Number(productId));
-            const productQuery = db.collection('products_inventory').where('publicProductId', '==', Number(productId));
+            const productQuery = firestore.collection('products_inventory').where('publicProductId', '==', Number(productId));
             const snapshot = await t.get(productQuery);
             
             console.log("DEBUG: snapshot empty:", snapshot.empty);
@@ -33,7 +38,7 @@ export default async function handler(req: Request, res: Response) {
             if (snapshot.empty) {
                 // Try looking up by ID as fallback if Number(productId) fails
                 console.log("DEBUG: Trying fallback lookup by doc ID:", productId);
-                productRef = db.collection('products_inventory').doc(productId);
+                productRef = firestore.collection('products_inventory').doc(productId);
                 productDoc = await t.get(productRef);
                 if (!productDoc.exists) {
                     throw new Error(`Product not found in inventory with productId: ${productId}`);
@@ -59,7 +64,7 @@ export default async function handler(req: Request, res: Response) {
             t.update(productRef, { reserved: reserved + quantity });
             
             // Create reservation
-            const reservationRef = db.collection('stock_reservations').doc();
+            const reservationRef = firestore.collection('stock_reservations').doc();
             console.log("DEBUG: creating reservation");
             t.set(reservationRef, {
                 productId: Number(productId),

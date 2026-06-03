@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
+import rawConfig from '../firebase-applet-config.json' with { type: 'json' };
+import { db as sharedDb } from '../services/firebase-admin';
 
 // INICIALIZAÇÃO DO SDK ADMIN (SINGLETON)
 if (!admin.apps.length) {
@@ -12,6 +14,11 @@ if (!admin.apps.length) {
                     privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
                 }),
             });
+        } else if (rawConfig && rawConfig.projectId) {
+            admin.initializeApp({
+                projectId: rawConfig.projectId
+            });
+            console.log("Firebase admin initialized fallback for send-push with projectId:", rawConfig.projectId);
         } else {
             console.warn("Aviso: Chaves do Firebase Admin não encontradas no ambiente.");
         }
@@ -39,7 +46,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(400).json({ error: 'Título e mensagem são obrigatórios.' });
         }
 
-        const db = admin.firestore();
+        const db = sharedDb;
+        if (!db) {
+            throw new Error("Database connection not defined in firebase-admin");
+        }
         let tokens: string[] = [];
 
         // 2. Recolher Tokens (Lógica Robusta Multi-Device & Segmentação)

@@ -158,7 +158,9 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onCodeSubmit, onClose, 
             }
         } catch (error: any) { 
             console.error("AI Scan Error:", error); 
-            const msg = error.message || JSON.stringify(error); 
+            const msg = error instanceof Error 
+                ? error.message 
+                : (error && typeof error === 'object' && 'message' in error ? String((error as any).message) : String(error));
             setAiStatus('offline'); 
             if (msg.includes("API key not valid")) { setError("API_KEY_INVALID"); } 
             else if (msg.includes("referer") || msg.includes("PERMISSION_DENIED") || msg.includes("403")) { setError("API_KEY_RESTRICTED"); } 
