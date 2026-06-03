@@ -77,7 +77,7 @@ export const useInventory = (isAdmin: boolean = false) => {
     return () => unsubscribe();
   }, [isAdmin]);
 
-  // --- FUNÇÃO DE SINCRONIZAÇÃO AUTOMÁTICA ---
+  // --- FUNÇÃO DE SINCRONIZAÇÃO AUTOMÁTICA (Forward Sync: Inventory Lotes -> Public Catalog) ---
   const refreshPublicProductStock = async (publicIdRaw: number | string) => {
       try {
           const publicId = Number(publicIdRaw);
@@ -91,117 +91,53 @@ export const useInventory = (isAdmin: boolean = false) => {
           }
           const pub = publicSnap.data() as Product;
 
-          // Align public product stock to match inventory batches (Forward Sync)
+          // Align public product stock & variants to match inventory batches (Forward Sync)
           const inventoryQuery = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId));
           const inventorySnap = await getDocs(inventoryQuery);
           const lots = inventorySnap.docs.map(d => ({ id: d.id, ref: d.ref, data: d.data() as InventoryProduct }));
           
-          console.log(`[DEBUG Sync] Lots fetched for product ${publicId}: ${inventorySnap.size}`);
+          let totalPhysical = 0;
+          const variantStocks: Record<string, number> = {};
           
+          const normalizeVName = (n: string) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
+
           lots.forEach(l => {
-              console.log(`[DEBUG Sync] Lot ${l.id} has publicProductId: ${l.data.publicProductId} (type: ${typeof l.data.publicProductId})`);
+              const qty = Math.max(0, (l.data.quantityBought || 0) - (l.data.quantitySold || 0));
+              totalPhysical += qty;
+              
+              const vNameRaw = l.data.variant || '';
+              if (vNameRaw) {
+                  const vKey = normalizeVName(vNameRaw);
+                  variantStocks[vKey] = (variantStocks[vKey] || 0) + qty;
+              }
           });
 
-          const totalPhysical = lots.reduce((acc, l) => acc + (Math.max(0, (l.data.quantityBought || 0) - (l.data.quantitySold || 0))), 0);
-          console.log(`[DEBUG Sync] Total physical for product ${publicId}: ${totalPhysical}. Old stock in pub: ${pub.stock}`);
-
-          if (pub.stock !== totalPhysical) {
-              await updateDoc(publicRef, { stock: totalPhysical });
-              console.log(`[Sync] Produto ${pub.id} atualizado: Stock mudou de ${pub.stock} para ${totalPhysical}`);
-          }
-          return;
-          /*
-                      const sold = Number(firstLot.data.quantitySold) || 0;
-                      const newBought = targetStock + sold;
-                      if (firstLot.data.quantityBought !== newBought) {
-                          batch.update(firstLot.ref, { quantityBought: newBought });
-                          totalUpdated++;
-                      }
-                      for (let i = 1; i < matchingLots.length; i++) {
-                          const otherLot = matchingLots[i];
-                          const otherSold = Number(otherLot.data.quantitySold) || 0;
-                          if (otherLot.data.quantityBought !== otherSold) {
-                              batch.update(otherLot.ref, { quantityBought: otherSold });
-                              totalUpdated++;
-                          }
-                      }
-                  } else {
-                      const newDocRef = doc(collection(modularDb, 'products_inventory'));
-                      const newLot: Omit<InventoryProduct, 'id'> = {
-                          publicProductId: pub.id,
-                          variant: vName,
-                          quantityBought: targetStock,
-                          quantitySold: 0,
-                          name: pub.name,
-                          category: pub.category || '',
-                          purchasePrice: 0,
-                          salePrice: variant.price || pub.price || 0,
-                          purchaseDate: new Date().toISOString().split('T')[0],
-                          description: `Lote automático sincronizado para variante ${vName}`,
-                          status: targetStock > 0 ? 'IN_STOCK' : 'SOLD',
-                          cashbackValue: 0,
-                          cashbackStatus: 'NONE' as CashbackStatus,
-                      };
-                      batch.set(newDocRef, newLot);
-                      totalUpdated++;
-                  }
-              }
-              const publicVariantNames = pub.variants.map((v: any) => normalizeVName(v.name));
-              const obsoleteLots = lots.filter(l => l.data.variant && !publicVariantNames.includes(normalizeVName(l.data.variant)));
-              for (const obs of obsoleteLots) {
-                  const sold = Number(obs.data.quantitySold) || 0;
-                  if (obs.data.quantityBought !== sold) {
-                      batch.update(obs.ref, { quantityBought: sold });
-                      totalUpdated++;
-                  }
-              }
-          } else {
-              const targetStock = Number(pub.stock) || 0;
-              if (lots.length > 0) {
-                  const firstLot = lots[0];
-                  const sold = Number(firstLot.data.quantitySold) || 0;
-                  const newBought = targetStock + sold;
-                  if (firstLot.data.quantityBought !== newBought) {
-                      batch.update(firstLot.ref, { quantityBought: newBought });
-                      totalUpdated++;
-                  }
-                  for (let i = 1; i < lots.length; i++) {
-                      const otherLot = lots[i];
-                      const otherSold = Number(otherLot.data.quantitySold) || 0;
-                      if (otherLot.data.quantityBought !== otherSold) {
-                          batch.update(otherLot.ref, { quantityBought: otherSold });
-                          totalUpdated++;
-                      }
-                  }
-              } else {
-                  const newDocRef = doc(collection(modularDb, 'products_inventory'));
-                  const newLot: Omit<InventoryProduct, 'id'> = {
-                      publicProductId: pub.id,
-                      variant: '',
-                      quantityBought: targetStock,
-                      quantitySold: 0,
-                      name: pub.name,
-                      category: pub.category || '',
-                      purchasePrice: 0,
-                      salePrice: pub.price || 0,
-                      purchaseDate: new Date().toISOString().split('T')[0],
-                      description: `Lote automático sincronizado para ${pub.name}`,
-                      status: targetStock > 0 ? 'IN_STOCK' : 'SOLD',
-                      cashbackValue: 0,
-                      cashbackStatus: 'NONE' as CashbackStatus,
-                  };
-                  batch.set(newDocRef, newLot);
-                  totalUpdated++;
-              }
-          }
-          if (totalUpdated > 0) {
-              await batch.commit();
-              console.log(`[useInventory - AutoSync] Sincronizados ${totalUpdated} lotes no inventário.`);
-          }
+          let variantsUpdated = false;
+          const updatedVariants = pub.variants ? [...pub.variants] : [];
           
-          // Sync with Supabase
-          supabaseSync.saveProduct(pub);
-          */
+          for (let i = 0; i < updatedVariants.length; i++) {
+              const v = updatedVariants[i];
+              const vKey = normalizeVName(v.name);
+              const realVariantStock = variantStocks[vKey] || 0;
+              if (v.stock !== realVariantStock) {
+                  updatedVariants[i] = { ...v, stock: realVariantStock };
+                  variantsUpdated = true;
+              }
+          }
+
+          if (pub.stock !== totalPhysical || variantsUpdated) {
+              const updatePayload: any = { stock: totalPhysical };
+              if (variantsUpdated) {
+                  updatePayload.variants = updatedVariants;
+              }
+              await updateDoc(publicRef, updatePayload);
+              console.log(`[Sync] Produto ${pub.id} atualizado: Stock mudou para ${totalPhysical}, Variantes atualizadas: ${variantsUpdated}`);
+              
+              // Ensure we optionally update supabase if a sync function is defined
+              if (typeof supabaseSync !== 'undefined' && supabaseSync.saveProduct) {
+                  supabaseSync.saveProduct({ ...pub, ...updatePayload });
+              }
+          }
       } catch (err) {
           console.error("Erro na sincronização auto-sync de inventário:", err);
       }

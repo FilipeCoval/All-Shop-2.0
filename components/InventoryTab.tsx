@@ -454,17 +454,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                         </thead>
                                                         <tbody className="divide-y divide-gray-100 dark:divide-slate-800 transition-colors">
                                                             {items.map(p => { 
-                                                                let batchStock = (p.quantityBought || 0) - (p.quantitySold || 0); 
-                                                                if (catalogProd) {
-                                                                    if (p.variant && catalogProd.variants) {
-                                                                        const matchedVar = catalogProd.variants.find((v: any) => v.name.trim().toLowerCase() === p.variant!.trim().toLowerCase());
-                                                                        if (matchedVar !== undefined) {
-                                                                            batchStock = matchedVar.stock || 0;
-                                                                        }
-                                                                    } else if (!p.variant) {
-                                                                        batchStock = catalogProd.stock || 0;
-                                                                    }
-                                                                }
+                                                                const batchStock = (p.quantityBought || 0) - (p.quantitySold || 0); 
                                                                 const salePrice = p.salePrice || p.targetSalePrice || 0; 
                                                                 const purchasePrice = p.purchasePrice || 0; 
                                                                 const cashbackValue = (p.cashbackValue || 0) / (p.quantityBought || 1); 

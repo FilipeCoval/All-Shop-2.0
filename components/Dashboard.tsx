@@ -771,8 +771,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
             } 
         } 
         setIsSaleModalOpen(false); 
-        // Sincronização automática silenciosa
-        setTimeout(() => handleSyncPublicStock(true), 1000);
     } catch(e) { 
         console.error(e); 
         alert("Erro ao registar venda."); 
@@ -995,16 +993,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
     }
   };
 
-  const handleSyncPublicStock = async (silentParam: any = false) => {
-    // Garantir que sabemos se é realmente silencioso (vindo do timeout/background)
-    // ou se é um clique/chamada manual (vindo de um evento ou boolean)
-    const silent = silentParam === true;
-
+  const handleSyncPublicStock = async () => {
     if (publicProductsList.length === 0) {
-      if (!silent) alert("A lista de produtos públicos está vazia ou ainda a carregar.");
+      alert("A lista de produtos públicos está vazia ou ainda a carregar.");
       return;
     }
-    if (!silent && !window.confirm("Isto irá recalculado o stock do inventário (Lotes) para coincidir com os valores reais da loja pública (que é a sua fonte de verdade).\n\nContinuar?")) return;
+    if (!window.confirm("Isto irá recalculado o stock do inventário (Lotes) para coincidir com os valores reais da loja pública (que é a sua fonte de verdade).\n\nContinuar?")) return;
     
     console.log(`[Sync] Iniciando sincronização reversa: Loja Pública -> Inventário para ${publicProductsList.length} produtos...`);
     setIsSyncingStock(true);
@@ -1159,14 +1153,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
 
       await Promise.all(batches.map(b => b.commit()));
       console.log(`[Sync] Sincronização pública -> inventário concluída. total de updates realizados: ${totalUpdated}`);
-      if (!silent) {
-        alert(`Sincronização concluída com sucesso! Os stocks dos lotes foram todos ajustados para bater certo com a loja pública (${totalUpdated} correções efetuadas).`);
-      }
+      alert(`Sincronização concluída com sucesso! Os stocks dos lotes foram todos ajustados para bater certo com a loja pública (${totalUpdated} correções efetuadas).`);
     } catch (err) {
       console.error("Erro na sincronização reversa:", err);
-      if (!silent) {
-        alert("Erro ao realizar sincronização: " + (err instanceof Error ? err.message : String(err)));
-      }
+      alert("Erro ao realizar sincronização: " + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSyncingStock(false);
     }
@@ -2200,7 +2190,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               } 
               setIsManualOrderModalOpen(false); 
               alert("Encomenda manual registada com sucesso!"); 
-              setTimeout(() => handleSyncPublicStock(true), 1000); 
           } catch (error) { 
               console.error("Erro ao criar encomenda manual:", error); 
               alert("Erro ao processar a encomenda."); 
