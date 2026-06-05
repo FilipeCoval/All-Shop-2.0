@@ -2,12 +2,11 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    // Helpers
+
     function isAuthenticated() {
       return request.auth != null;
     }
-    
+
     function isAdmin() {
       return isAuthenticated() && (
         request.auth.token.email == "filipe_coval_90@hotmail.com" ||
@@ -17,72 +16,181 @@ service cloud.firestore {
       );
     }
 
-    // Default deny
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isOwnerByEmail(email) {
+      return isAuthenticated()
+        && request.auth.token.email != null
+        && email == request.auth.token.email;
+    }
+
+    // Bloqueia tudo por defeito
     match /{document=**} {
       allow read, write: if isAdmin();
     }
 
-    // Public collections (Products, Categories, etc.)
-    match /products_public/{product} {
+    // Produtos públicos
+    match /products_public/{productId} {
       allow read: if true;
-      allow write: if isAdmin();
-    }
-    
-    match /store_categories/{category} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-    
-    match /reviews/{review} {
-      allow read: if true;
-      allow write: if isAuthenticated();
-    }
-
-    match /coupons/{coupon} {
-      allow read: if true; // Some logic checks codes client-side
       allow write: if isAdmin();
     }
 
-    // Users
+    match /store_categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin()
+        || (
+          isAuthenticated()
+          && resource.data.userId == request.auth.uid
+        );
+    }
+
+    // Perfil do cliente
     match /users/{userId} {
-      allow read, write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
-    }
-    match /online_users/{userId} {
-      allow read, write: if true; // Needs to track online presence
-    }
+      allow read: if isAdmin() || isOwner(userId);
 
-    // Orders
-    match /orders/{orderId} {
-      // Allows creating orders, reading if owner/admin
-      allow create: if true;
-      allow read, update: if isAdmin() || (isAuthenticated() && request.resource.data.userId == request.auth.uid) || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAdmin() || isOwner(userId);
+
+      allow update: if isAdmin()
+        || (
+          isOwner(userId)
+
+          // impede user de se tornar admin
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.isAdmin == resource.data.isAdmin
+
+          // impede alterar pontos manualmente
+          && request.resource.data.points == resource.data.points
+          && request.resource.data.loyaltyPoints == resource.data.loyaltyPoints
+          && request.resource.data.rewardPoints == resource.data.rewardPoints
+          && request.resource.data.totalSpent == resource.data.totalSpent
+        );
+
       allow delete: if isAdmin();
     }
 
-    // Restricted backend collections
-    match /products_inventory/{item} {
-      allow read, write: if isAdmin();
+    // Presença online
+    match /online_users/{userId} {
+      allow read: if isAdmin() || isOwner(userId);
+      allow create, update: if isOwner(userId);
+      allow delete: if isAdmin() || isOwner(userId);
     }
-    match /import_shipments/{item} {
-      allow read, write: if isAdmin();
-    }
-    match /stock_alerts/{item} {
-      allow read, write: if isAdmin();
-    }
-    match /stock_reservations/{item} {
-      allow read, write: if true; // Guest visitors create reservations
-    }
-    match /newsletter_subscriptions/{item} {
+
+    // Encomendas
+    match /orders/{orderId} {
       allow create: if true;
+
+      allow read: if isAdmin()
+        || (
+          isAuthenticated()
+          && resource.data.userId == request.auth.uid
+        )
+        || (
+          isAuthenticated()
+          && resource.data.shippingInfo.email == request.auth.token.email
+        )
+        || (
+          isAuthenticated()
+          && resource.data.customerEmail == request.auth.token.email
+        )
+        || (
+          isAuthenticated()
+          && resource.data.email == request.auth.token.email
+        );
+
+      // Cliente lê a encomenda, mas só admin altera estados/pagamentos/etc.
+      allow update, delete: if isAdmin();
+    }
+
+    // Tickets de suporte
+    match /support_tickets/{ticketId} {
+      allow create: if true;
+
+      allow read: if isAdmin()
+        || (
+          isAuthenticated()
+          && resource.data.userId == request.auth.uid
+        )
+        || (
+          isAuthenticated()
+          && resource.data.email == request.auth.token.email
+        );
+
+      allow update: if isAdmin()
+        || (
+          isAuthenticated()
+          && resource.data.userId == request.auth.uid
+        )
+        || (
+          isAuthenticated()
+          && resource.data.email == request.auth.token.email
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Pedidos de produtos
+    match /product_requests/{requestId} {
+      allow create: if true;
+
+      allow read: if isAdmin()
+        || (
+          isAuthenticated()
+          && resource.data.userId == request.auth.uid
+        )
+        || (
+          isAuthenticated()
+          && resource.data.email == request.auth.token.email
+        );
+
+      allow update: if isAdmin()
+        || (
+          isAuthenticated()
+          && resource.data.userId == request.auth.uid
+        )
+        || (
+          isAuthenticated()
+          && resource.data.email == request.auth.token.email
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Newsletter
+    match /newsletter_subscriptions/{itemId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Reservas de stock/carrinho
+    match /stock_reservations/{reservationId} {
+      allow read, create, update: if true;
+      allow delete: if isAdmin();
+    }
+
+    // Área privada/admin
+    match /products_inventory/{itemId} {
       allow read, write: if isAdmin();
     }
-    match /support_tickets/{item} {
-      allow create: if true;
-      allow read, write: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+
+    match /import_shipments/{itemId} {
+      allow read, write: if isAdmin();
     }
-    match /product_requests/{item} {
-      allow create: if true;
-      allow read, write: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+
+    match /stock_alerts/{itemId} {
+      allow read, write: if isAdmin();
     }
   }
 }

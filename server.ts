@@ -11,7 +11,6 @@ import ogHandler from './api/og.ts';
 import checkoutHandler from './api/checkout.ts';
 import reserveStockHandler from './api/reserve-stock.ts';
 import finalizeOrderHandler from './api/finalize-order.ts';
-import diagnoseHandler from './api/diagnose.ts';
 import cleanupReservationsHandler from './api/cleanup-reservations.ts';
 import updateOrderHandler from './api/update-order.ts';
 
@@ -74,14 +73,6 @@ async function startServer() {
   app.all('/api/finalize-order', async (req, res) => {
     try {
         await finalizeOrderHandler(req as any, res as any);
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.all('/api/diagnose', async (req, res) => {
-    try {
-        await diagnoseHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
