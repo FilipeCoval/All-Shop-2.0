@@ -13,6 +13,7 @@ import reserveStockHandler from './api/reserve-stock.ts';
 import finalizeOrderHandler from './api/finalize-order.ts';
 import cleanupReservationsHandler from './api/cleanup-reservations.ts';
 import updateOrderHandler from './api/update-order.ts';
+import syncUserHandler from './api/sync-user.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -89,6 +90,14 @@ async function startServer() {
   app.all('/api/update-order', async (req, res) => {
     try {
         await updateOrderHandler(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.all('/api/sync-user', async (req, res) => {
+    try {
+        await syncUserHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

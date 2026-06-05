@@ -331,58 +331,16 @@ const App: React.FC = () => {
                     const basicUser: User = { uid: firebaseUser.uid, name: firebaseUser.displayName || 'Cliente', email: firebaseUser.email, addresses: [], wishlist: [], totalSpent: 0, tier: 'Bronze', loyaltyPoints: 0, pointsHistory: [] };
                     await setDoc(userDocRef, basicUser);
                 }
-                const [userOrdersSnap, guestOrdersSnap] = await Promise.all([
-                    getDocs(query(collection(modularDb, "orders"), where("userId", "==", firebaseUser.uid))),
-                    getDocs(query(collection(modularDb, 'orders'), where('shippingInfo.email', '==', firebaseUser.email.toLowerCase()), where('userId', '==', null)))
-                ]);
-                const allUserOrders: Order[] = [];
-                const orderIds = new Set<string>();
-                userOrdersSnap.forEach(doc => { if (!orderIds.has(doc.id)) { allUserOrders.push({ id: doc.id, ...doc.data() } as Order); orderIds.add(doc.id); }});
-                guestOrdersSnap.forEach(doc => { if (!orderIds.has(doc.id)) { allUserOrders.push({ id: doc.id, ...doc.data() } as Order); orderIds.add(doc.id); }});
-                const freshUserDoc = await getDoc(userDocRef);
-                if (freshUserDoc.exists()) {
-                    const userData = freshUserDoc.data() as User;
-                    const historicalTotalSpent = allUserOrders.filter(o => o.status !== 'Cancelado').reduce((sum, order) => sum + (order.total || 0), 0);
-                    let correctTier: UserTier = 'Bronze';
-                    if (historicalTotalSpent >= LOYALTY_TIERS.GOLD.threshold) correctTier = 'Ouro';
-                    else if (historicalTotalSpent >= LOYALTY_TIERS.SILVER.threshold) correctTier = 'Prata';
-                    
-                    const tierMap: Record<UserTier, keyof typeof LOYALTY_TIERS> = { 'Bronze': 'BRONZE', 'Prata': 'SILVER', 'Ouro': 'GOLD' };
-                    const ordersToAwardPoints = allUserOrders.filter(o => o.status === 'Entregue' && !o.pointsAwarded);
-                    let missingPoints = 0;
-                    const newHistoryItems: PointHistory[] = [];
-                    if (ordersToAwardPoints.length > 0) {
-                        const multiplier = LOYALTY_TIERS[tierMap[correctTier]].multiplier;
-                        ordersToAwardPoints.forEach(o => {
-                            const pointsForThisOrder = Math.floor((o.total || 0) * multiplier);
-                            if (pointsForThisOrder > 0) {
-                                missingPoints += pointsForThisOrder;
-                                newHistoryItems.push({ id: `sync-${o.id}`, date: new Date().toISOString(), amount: pointsForThisOrder, reason: `Compra #${o.id.slice(-6)} (Sinc. Nível ${correctTier})`, orderId: o.id });
-                            }
-                        });
-                    }
-                    const ordersToMigrate = guestOrdersSnap.docs;
-                    const needsUpdate = ( (userData.totalSpent || 0).toFixed(2) !== historicalTotalSpent.toFixed(2) || (userData.tier || 'Bronze') !== correctTier || missingPoints > 0 || ordersToMigrate.length > 0 );
-                    if (needsUpdate) {
-                        const batch = writeBatch(modularDb);
-                        const userUpdateData: any = {};
-                        if ((userData.totalSpent || 0).toFixed(2) !== historicalTotalSpent.toFixed(2)) userUpdateData.totalSpent = historicalTotalSpent;
-                        if ((userData.tier || 'Bronze') !== correctTier) userUpdateData.tier = correctTier;
-                        if (missingPoints > 0) {
-                            userUpdateData.loyaltyPoints = (userData.loyaltyPoints || 0) + missingPoints;
-                            userUpdateData.pointsHistory = [...newHistoryItems, ...(userData.pointsHistory || [])];
-                        }
-                        if (Object.keys(userUpdateData).length > 0) batch.update(userDocRef, userUpdateData);
-                        
-                        // FIX: Marcar encomendas como processadas para não atribuir pontos infinitamente
-                        ordersToAwardPoints.forEach(o => {
-                            const orderRef = doc(modularDb, 'orders', o.id);
-                            batch.update(orderRef, { pointsAwarded: true });
-                        });
 
-                        ordersToMigrate.forEach(docSnap => batch.update(docSnap.ref, { userId: firebaseUser.uid }));
-                        await batch.commit();
-                    }
+                // Sincronizar o histórico e pontos via backend para respeitar as firestore.rules
+                try {
+                    await fetch('/api/sync-user', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ uid: firebaseUser.uid, email: firebaseUser.email })
+                    });
+                } catch (e) {
+                    console.error("Failed to sync user data in backend", e);
                 }
                 
                 userUnsubscribe = onSnapshot(userDocRef, (docSnap) => {
