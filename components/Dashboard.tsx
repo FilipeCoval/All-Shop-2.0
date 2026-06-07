@@ -2680,15 +2680,41 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                   const relevantItems = order.items.filter((item) => {
                       if (typeof item === 'string') return false;
                       const orderItem = item as OrderItem;
-                      return orderItem.productId?.toString() === p.publicProductId?.toString() && 
+                      
+                      const isSameProduct = orderItem.productId?.toString() === p.publicProductId?.toString() && 
                              (!p.variant || orderItem.selectedVariant === p.variant);
+
+                      if (!isSameProduct) return false;
+
+                      // Strict batch checking using Serial Numbers IF the batch has units
+                      if (p.units && p.units.length > 0) {
+                          if (!orderItem.serialNumbers || orderItem.serialNumbers.length === 0) return false;
+                          const batchUnitIds = p.units.map((u: any) => u.id);
+                          const intersect = orderItem.serialNumbers.filter((sn: string) => batchUnitIds.includes(sn));
+                          return intersect.length > 0;
+                      }
+
+                      return true;
                   });
                   if (relevantItems.length > 0) {
-                      const quantity = relevantItems.reduce((sum: number, item: any) => sum + ((item as OrderItem).quantity || 1), 0);
+                      // If SNs match, the quantity is the number of matched SNs!
+                      let quantity = 0;
+                      if (p.units && p.units.length > 0) {
+                          const batchUnitIds = p.units.map((u: any) => u.id);
+                          relevantItems.forEach((item: any) => {
+                              if (item.serialNumbers) {
+                                  quantity += item.serialNumbers.filter((sn: string) => batchUnitIds.includes(sn)).length;
+                              }
+                          });
+                      } else {
+                          quantity = relevantItems.reduce((sum: number, item: any) => sum + ((item as OrderItem).quantity || 1), 0);
+                      }
+                      
                       const unitPrice = (relevantItems[0] as OrderItem).price || 0;
                       history.push({
                           id: order.id,
                           date: order.date.split('T')[0],
+                          customerName: order.shippingInfo?.name || order.shippingInfo?.email?.split('@')[0] || 'Cliente',
                           quantity,
                           unitPrice,
                           isOnline: true,
@@ -2709,8 +2735,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                               <thead className="bg-gray-100 dark:bg-slate-700 text-xs text-gray-500 dark:text-gray-400 uppercase">
                                   <tr>
                                       <th className="px-4 py-2">Data</th>
-                                      <th className="px-4 py-2">Origem</th>
-                                      <th className="px-4 py-2">Qtd</th>
+                                      <th className="px-4 py-2">Origem/Cliente</th>
+                                      <th className="px-4 py-2 text-center">Qtd</th>
                                       <th className="px-4 py-2">Valor</th>
                                       <th className="px-4 py-2 text-right">Ação</th>
                                   </tr>
@@ -2718,16 +2744,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                               <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
                                   {history.map((sale, idx) => (
                                       <tr key={`${sale.id}-${idx}`} className="text-gray-700 dark:text-gray-300">
-                                          <td className="px-4 py-2">{sale.date}</td>
-                                          <td className="px-4 py-2 text-xs font-medium">{sale.source}</td>
-                                          <td className="px-4 py-2 font-bold">{sale.quantity}</td>
-                                          <td className="px-4 py-2">{formatCurrency(sale.unitPrice * sale.quantity)}</td>
+                                          <td className="px-4 py-2 whitespace-nowrap">{sale.date}</td>
+                                          <td className="px-4 py-2">
+                                              <div className="text-xs font-medium">{sale.source}</div>
+                                              {sale.customerName && <div className="text-[10px] text-gray-500 line-clamp-1">{sale.customerName}</div>}
+                                          </td>
+                                          <td className="px-4 py-2 font-bold text-center">{sale.quantity}</td>
+                                          <td className="px-4 py-2 whitespace-nowrap">{formatCurrency(sale.unitPrice * sale.quantity)}</td>
                                           <td className="px-4 py-2 text-right">
-                                              <button type="button" onClick={() => handleDeleteSale(sale.id, sale.isOnline)} className="text-red-500 hover:text-red-700 text-xs font-bold border border-red-200 dark:border-red-900/30 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20">
-                                                  {sale.isOnline ? 'Anular Envio' : 'Anular'}
-                                              </button>
+                                              <div className="flex items-center justify-end gap-2 mb-1">
+                                                  {sale.isOnline && (
+                                                      <button type="button" onClick={(e) => {
+                                                          e.preventDefault();
+                                                          const ord = allOrders.find(o => o.id === sale.id);
+                                                          if (ord) setSelectedOrderDetails(ord);
+                                                      }} className="text-blue-600 hover:text-blue-800 text-xs font-bold px-2 py-1 bg-blue-50 text-center hover:bg-blue-100 rounded transition-colors">
+                                                          Ver
+                                                      </button>
+                                                  )}
+                                                  <button type="button" onClick={() => handleDeleteSale(sale.id, sale.isOnline)} className="text-red-500 hover:text-red-700 text-xs font-bold border border-red-200 dark:border-red-900/30 px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20">
+                                                      {sale.isOnline ? 'Anular Envio' : 'Anular'}
+                                                  </button>
+                                              </div>
                                               {sale.isOnline && (
-                                                  <div className="text-[10px] text-gray-400 mt-0.5">{sale.orderStatus}</div>
+                                                  <div className="text-[10px] text-gray-400 font-medium">{sale.orderStatus}</div>
                                               )}
                                           </td>
                                       </tr>

@@ -123,7 +123,10 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
     const matchesSearch = (p.name || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     // Calcular stock real para o filtro ser mais preciso que o campo status
-    const physicalQty = (p.quantityBought || 0) - (p.quantitySold || 0);
+    let physicalQty = (p.quantityBought || 0) - (p.quantitySold || 0);
+    if (p.units && Array.isArray(p.units)) {
+        physicalQty = p.units.filter(u => u.status === 'AVAILABLE').length;
+    }
     
     // Calcular stock pendente especificamente para esta variante/produto
     let pendingForThis = 0;
@@ -209,7 +212,8 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                 <span className="w-px h-4 bg-gray-300 dark:bg-slate-500"></span>
                 <span className="text-green-600 dark:text-green-400">
                     Disponíveis: {products.filter(p => {
-                        const phys = Math.max(0, (p.quantityBought || 0) - (p.quantitySold || 0));
+                        let phys = Math.max(0, (p.quantityBought || 0) - (p.quantitySold || 0));
+                        if (p.units && Array.isArray(p.units)) phys = p.units.filter(u => u.status === 'AVAILABLE').length;
                         const pend = pendingOrders.filter(o => o.items.some((i: any) => i.productId === p.publicProductId)).reduce((sum, o) => {
                             return sum + o.items.filter((i: any) => i.productId === p.publicProductId).reduce((s: number, i: any) => s + (i.quantity || 1), 0);
                         }, 0);
@@ -219,7 +223,8 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                 <span className="w-px h-4 bg-gray-300 dark:bg-slate-500"></span>
                 <span className="text-red-600 dark:text-red-400">
                     Esgotados: {products.filter(p => {
-                        const phys = Math.max(0, (p.quantityBought || 0) - (p.quantitySold || 0));
+                        let phys = Math.max(0, (p.quantityBought || 0) - (p.quantitySold || 0));
+                        if (p.units && Array.isArray(p.units)) phys = p.units.filter(u => u.status === 'AVAILABLE').length;
                         const pend = pendingOrders.filter(o => o.items.some((i: any) => i.productId === p.publicProductId)).reduce((sum, o) => {
                             return sum + o.items.filter((i: any) => i.productId === p.publicProductId).reduce((s: number, i: any) => s + (i.quantity || 1), 0);
                         }, 0);
@@ -296,7 +301,15 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                             // Base stock values strictly on catalog product (database of reality) if linked, else fallback to batch sums
                             const totalPhysicalStock = catalogProd !== undefined 
                                 ? (catalogProd.stock || 0) 
-                                : items.reduce((acc, i) => acc + Math.max(0, (i.quantityBought || 0) - (i.quantitySold || 0)), 0);
+                                : items.reduce((acc, i) => {
+                                    let b = i.quantityBought || 0;
+                                    let s = i.quantitySold || 0;
+                                    if (i.units && Array.isArray(i.units)) {
+                                        b = i.units.length;
+                                        s = i.units.filter(u => u.status === 'SOLD').length;
+                                    }
+                                    return acc + Math.max(0, b - s);
+                                }, 0);
                             
                             // Calcular stock pendente em encomendas para este grupo (apenas se não houver catalogProd, ou se pendentes não estiverem contabilizados)
                             let pendingInOrders = 0;
@@ -458,10 +471,19 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                         </thead>
                                                         <tbody className="divide-y divide-gray-100 dark:divide-slate-800 transition-colors">
                                                             {items.map(p => { 
-                                                                const batchStock = (p.quantityBought || 0) - (p.quantitySold || 0); 
+                                                                let qtyBought = p.quantityBought || 0;
+                                                                let qtySold = p.quantitySold || 0;
+                                                                let batchStock = Math.max(0, qtyBought - qtySold);
+
+                                                                if (p.units && Array.isArray(p.units)) {
+                                                                    qtyBought = p.units.length;
+                                                                    qtySold = p.units.filter(u => u.status === 'SOLD').length;
+                                                                    batchStock = p.units.filter(u => u.status === 'AVAILABLE').length;
+                                                                }
+
                                                                 const salePrice = p.salePrice || p.targetSalePrice || 0; 
                                                                 const purchasePrice = p.purchasePrice || 0; 
-                                                                const cashbackValue = (p.cashbackValue || 0) / (p.quantityBought || 1); 
+                                                                const cashbackValue = (p.cashbackValue || 0) / (qtyBought || 1); 
                                                                 const finalProfit = salePrice - purchasePrice + cashbackValue; 
                                                                 const hasLossBeforeCashback = salePrice < purchasePrice; 
                                                                 const profitColor = finalProfit > 0 ? 'text-green-600 dark:text-green-400' : finalProfit < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'; 
@@ -510,8 +532,8 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                                             <div className="flex justify-center text-[10px] mb-1 font-medium text-gray-600 dark:text-gray-300"><span>{batchStock} un.</span></div>
                                                                             <div className="w-20 bg-gray-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden mx-auto">
                                                                                 <div 
-                                                                                    className={`h-full rounded-full ${ (p.quantityBought || 0) > 0 && ((p.quantitySold || 0) / (p.quantityBought || 1)) >= 1 ? 'bg-gray-400 dark:bg-gray-600' : 'bg-blue-500 dark:bg-blue-400'}`} 
-                                                                                    style={{ width: `${(p.quantityBought || 0) > 0 ? (((p.quantitySold || 0) / (p.quantityBought || 1)) * 100) : 0}%` }}
+                                                                                    className={`h-full rounded-full ${ qtyBought > 0 && (qtySold / Math.max(qtyBought, 1)) >= 1 ? 'bg-gray-400 dark:bg-gray-600' : 'bg-blue-500 dark:bg-blue-400'}`} 
+                                                                                    style={{ width: `${qtyBought > 0 ? ((qtySold / Math.max(qtyBought, 1)) * 100) : 0}%` }}
                                                                                 ></div>
                                                                             </div>
                                                                             {p.units && p.units.length > 0 && (
