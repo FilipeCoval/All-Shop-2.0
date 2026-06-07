@@ -71,18 +71,7 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, o
         if (!window.confirm("Tem a certeza que quer anular os pontos desta encomenda? Isto irá permitir que sejam re-atribuídos.")) return; 
         setIsUpdatingPoints(true); 
         try { 
-            const response = await fetch('/api/update-order', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    orderId: order.id, 
-                    action: 'update', 
-                    data: { pointsAwarded: false } 
-                }),
-            });
-            
-            if (!response.ok) throw new Error("Erro ao anular pontos.");
-
+            await updateDoc(doc(modularDb, 'orders', order.id), { pointsAwarded: false });
             onUpdateOrder(order.id, { pointsAwarded: false }); 
             alert("Selo de pontos removido! Agora pode alterar o estado para 'Entregue' para re-atribuir os pontos corretamente."); 
         } catch (error) { 

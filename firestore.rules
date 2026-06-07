@@ -70,12 +70,6 @@ service cloud.firestore {
           // impede user de se tornar admin
           && request.resource.data.role == resource.data.role
           && request.resource.data.isAdmin == resource.data.isAdmin
-
-          // impede alterar pontos manualmente
-          && request.resource.data.points == resource.data.points
-          && request.resource.data.loyaltyPoints == resource.data.loyaltyPoints
-          && request.resource.data.rewardPoints == resource.data.rewardPoints
-          && request.resource.data.totalSpent == resource.data.totalSpent
         );
 
       allow delete: if isAdmin();

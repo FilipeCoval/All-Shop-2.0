@@ -332,15 +332,91 @@ const App: React.FC = () => {
                     await setDoc(userDocRef, basicUser);
                 }
 
-                // Sincronizar o histórico e pontos via backend para respeitar as firestore.rules
+                // Sincronizar o histórico e pontos no lado do cliente
                 try {
-                    await fetch('/api/sync-user', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ uid: firebaseUser.uid, email: firebaseUser.email })
+                    const LOYALTY_TIERS = {
+                        BRONZE: { threshold: 0, multiplier: 0, name: 'Bronze' },
+                        SILVER: { threshold: 50, multiplier: 0.05, name: 'Prata' },
+                        GOLD: { threshold: 200, multiplier: 0.10, name: 'Ouro' }
+                    };
+
+                    const uid = firebaseUser.uid;
+                    const email = firebaseUser.email;
+                    
+                    const q1 = query(collection(modularDb, 'orders'), where('userId', '==', uid));
+                    const ordersSnap1 = await getDocs(q1);
+                    const q2 = query(collection(modularDb, 'orders'), where('shippingInfo.email', '==', email.toLowerCase()), where('userId', '==', null));
+                    const ordersSnap2 = await getDocs(q2);
+
+                    const allOrdersLocal: any[] = [];
+                    ordersSnap1.forEach(d => allOrdersLocal.push({ id: d.id, ...d.data() }));
+                    ordersSnap2.forEach(d => allOrdersLocal.push({ id: d.id, ...d.data() }));
+
+                    const historicalTotalSpent = allOrdersLocal.filter(o => o.status !== 'Cancelado').reduce((sum, o) => sum + (o.total || 0), 0);
+                    
+                    let correctTier = 'Bronze';
+                    if (historicalTotalSpent >= LOYALTY_TIERS.GOLD.threshold) correctTier = 'Ouro';
+                    else if (historicalTotalSpent >= LOYALTY_TIERS.SILVER.threshold) correctTier = 'Prata';
+
+                    let missingPoints = 0;
+                    const newHistoryItems: any[] = [];
+                    const ordersToAwardPoints = allOrdersLocal.filter(o => o.status === 'Entregue' && !o.pointsAwarded);
+                    const tierMap = { 'Bronze': 'BRONZE', 'Prata': 'SILVER', 'Ouro': 'GOLD' } as const;
+
+                    const batch = writeBatch(modularDb);
+
+                    if (ordersToAwardPoints.length > 0) {
+                        const multiplier = LOYALTY_TIERS[tierMap[correctTier as keyof typeof tierMap]].multiplier;
+                        ordersToAwardPoints.forEach(o => {
+                            const pts = Math.floor((o.total || 0) * multiplier);
+                            if (pts > 0) {
+                                missingPoints += pts;
+                                newHistoryItems.push({
+                                    id: `sync-${o.id}`,
+                                    date: new Date().toISOString(),
+                                    amount: pts,
+                                    reason: `Compra #${o.id.slice(-6)} (Sinc. Nível ${correctTier})`,
+                                    orderId: o.id
+                                });
+                            }
+                            batch.update(doc(modularDb, 'orders', o.id), { pointsAwarded: true });
+                        });
+                    }
+
+                    // Adopt guest orders
+                    ordersSnap2.forEach(d => {
+                        batch.update(doc(modularDb, 'orders', d.id), { userId: uid });
                     });
+
+                    // Update user
+                    const uDocRef = doc(modularDb, 'users', uid);
+                    const uDoc = await getDoc(uDocRef);
+                    if (uDoc.exists()) {
+                        const uData = uDoc.data();
+                        const userUpdateData: any = {};
+                        let needsUpdate = false;
+
+                        if (Number((uData.totalSpent || 0).toFixed(2)) !== Number(historicalTotalSpent.toFixed(2))) {
+                            userUpdateData.totalSpent = historicalTotalSpent;
+                            needsUpdate = true;
+                        }
+                        if ((uData.tier || 'Bronze') !== correctTier) {
+                            userUpdateData.tier = correctTier;
+                            needsUpdate = true;
+                        }
+                        if (missingPoints > 0) {
+                            userUpdateData.loyaltyPoints = (uData.loyaltyPoints || 0) + missingPoints;
+                            userUpdateData.pointsHistory = [...newHistoryItems, ...(uData.pointsHistory || [])];
+                            needsUpdate = true;
+                        }
+
+                        if (needsUpdate || ordersSnap2.size > 0 || ordersToAwardPoints.length > 0) {
+                            if (needsUpdate) batch.update(uDocRef, userUpdateData);
+                            await batch.commit();
+                        }
+                    }
                 } catch (e) {
-                    console.error("Failed to sync user data in backend", e);
+                    console.error("Failed to sync user data locally", e);
                 }
                 
                 userUnsubscribe = onSnapshot(userDocRef, (docSnap) => {
