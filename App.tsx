@@ -943,7 +943,7 @@ const App: React.FC = () => {
         case '#returns': return <Returns />;
         case '#tracking': return <OrderTracker />; 
         case '#allpoints': return <LoyaltyPage user={user} onUpdateUser={handleUpdateUser} onOpenLogin={() => setIsLoginOpen(true)} />; // NOVA ROTA
-        default: return <Home products={dbProducts} onAddToCart={addToCart} getStock={getStockForProduct} wishlist={wishlist} onToggleWishlist={toggleWishlist} searchTerm={searchTerm} selectedCategory={selectedCategory} onCategoryChange={setSelectedCategory} processingProductIds={processingProductIds} compareList={compareList} onToggleCompare={toggleCompare} onOpenComparator={() => setIsComparatorOpen(true)} />;
+        default: return <Home products={dbProducts} reviews={reviews} onAddToCart={addToCart} getStock={getStockForProduct} wishlist={wishlist} onToggleWishlist={toggleWishlist} searchTerm={searchTerm} selectedCategory={selectedCategory} onCategoryChange={setSelectedCategory} processingProductIds={processingProductIds} compareList={compareList} onToggleCompare={toggleCompare} onOpenComparator={() => setIsComparatorOpen(true)} />;
     }
   };
 
