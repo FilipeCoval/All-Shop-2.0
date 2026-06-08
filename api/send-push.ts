@@ -14,13 +14,8 @@ if (!admin.apps.length) {
                     privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
                 }),
             });
-        } else if (rawConfig && rawConfig.projectId) {
-            admin.initializeApp({
-                projectId: rawConfig.projectId
-            });
-            console.log("Firebase admin initialized fallback for send-push with projectId:", rawConfig.projectId);
         } else {
-            console.warn("Aviso: Chaves do Firebase Admin não encontradas no ambiente.");
+            console.warn("Aviso crítico: FIREBASE_PRIVATE_KEY não configurada no ambiente. O envio de Push Notifications (FCM) irá falhar.");
         }
     } catch (e) {
         console.error("Erro ao inicializar Firebase Admin:", e);
