@@ -572,6 +572,13 @@ const App: React.FC = () => {
             return;
         }
 
+        const availableStock = getStockForProduct(product.id, variant?.name);
+        if (availableStock < 1) {
+            alert("Produto esgotado.");
+            setProcessingProductIds(prev => prev.filter(id => id !== product.id));
+            return;
+        }
+
         const success = await updateReservationInFirebase(product.id, variant?.name, newQty);
         if (!success) return;
 
@@ -627,6 +634,18 @@ const App: React.FC = () => {
     if (itemToUpdate.maxQuantityPerOrder && newQty > itemToUpdate.maxQuantityPerOrder) {
         alert(`Pode adicionar no máximo ${itemToUpdate.maxQuantityPerOrder} unidade(s) deste produto por encomenda.`);
         return;
+    }
+
+    if (delta > 0) {
+        const availableStock = getStockForProduct(itemToUpdate.id, itemToUpdate.selectedVariant);
+        if (availableStock < delta) {
+            if (availableStock <= 0) {
+                alert("Produto esgotado. Já não temos mais unidades disponíveis em stock.");
+            } else {
+                alert(`Desculpe, só temos mais ${availableStock} unidade(s) disponíveis em stock.`);
+            }
+            return;
+        }
     }
 
     if (newQty < itemToUpdate.quantity) {
