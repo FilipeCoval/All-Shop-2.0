@@ -33,7 +33,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         inventorySnap.forEach(doc => {
             const data = doc.data();
-            const qty = Math.max(0, (data.quantityBought || 0) - (data.quantitySold || 0));
+            let b = Number(data.quantityBought) || 0;
+            let s = Number(data.quantitySold) || 0;
+            if (data.units && Array.isArray(data.units) && data.units.length > 0) {
+                b = data.units.length;
+                s = data.units.filter((u: any) => u.status === 'SOLD').length;
+            }
+            const qty = Math.max(0, b - s);
             physicalStock += qty;
             
             const variant = (data.variant || '').trim();

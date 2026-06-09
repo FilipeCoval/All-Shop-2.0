@@ -124,7 +124,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
     
     // Calcular stock real para o filtro ser mais preciso que o campo status
     let physicalQty = (p.quantityBought || 0) - (p.quantitySold || 0);
-    if (p.units && Array.isArray(p.units)) {
+    if (p.units && Array.isArray(p.units) && p.units.length > 0) {
         physicalQty = p.units.filter(u => u.status === 'AVAILABLE').length;
     }
     
@@ -212,10 +212,10 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                 <span className="w-px h-4 bg-gray-300 dark:bg-slate-500"></span>
                 <span className="text-green-600 dark:text-green-400">
                     Disponíveis: {products.filter(p => {
-                        let phys = Math.max(0, (p.quantityBought || 0) - (p.quantitySold || 0));
-                        if (p.units && Array.isArray(p.units)) phys = p.units.filter(u => u.status === 'AVAILABLE').length;
-                        const pend = pendingOrders.filter(o => o.items.some((i: any) => i.productId === p.publicProductId)).reduce((sum, o) => {
-                            return sum + o.items.filter((i: any) => i.productId === p.publicProductId).reduce((s: number, i: any) => s + (i.quantity || 1), 0);
+                        let phys = Math.max(0, (Number(p.quantityBought) || 0) - (Number(p.quantitySold) || 0));
+                        if (p.units && Array.isArray(p.units) && p.units.length > 0) phys = p.units.filter(u => u.status === 'AVAILABLE').length;
+                        const pend = pendingOrders.filter(o => o.items && Array.isArray(o.items) && o.items.some((i: any) => String(i.productId) === String(p.publicProductId))).reduce((sum, o) => {
+                            return sum + o.items.filter((i: any) => String(i.productId) === String(p.publicProductId)).reduce((s: number, i: any) => s + (Number(i.quantity) || 1), 0);
                         }, 0);
                         return (phys - pend) > 0;
                     }).length}
@@ -223,10 +223,10 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                 <span className="w-px h-4 bg-gray-300 dark:bg-slate-500"></span>
                 <span className="text-red-600 dark:text-red-400">
                     Esgotados: {products.filter(p => {
-                        let phys = Math.max(0, (p.quantityBought || 0) - (p.quantitySold || 0));
-                        if (p.units && Array.isArray(p.units)) phys = p.units.filter(u => u.status === 'AVAILABLE').length;
-                        const pend = pendingOrders.filter(o => o.items.some((i: any) => i.productId === p.publicProductId)).reduce((sum, o) => {
-                            return sum + o.items.filter((i: any) => i.productId === p.publicProductId).reduce((s: number, i: any) => s + (i.quantity || 1), 0);
+                        let phys = Math.max(0, (Number(p.quantityBought) || 0) - (Number(p.quantitySold) || 0));
+                        if (p.units && Array.isArray(p.units) && p.units.length > 0) phys = p.units.filter(u => u.status === 'AVAILABLE').length;
+                        const pend = pendingOrders.filter(o => o.items && Array.isArray(o.items) && o.items.some((i: any) => String(i.productId) === String(p.publicProductId))).reduce((sum, o) => {
+                            return sum + o.items.filter((i: any) => String(i.productId) === String(p.publicProductId)).reduce((s: number, i: any) => s + (Number(i.quantity) || 1), 0);
                         }, 0);
                         return (phys - pend) <= 0;
                     }).length}
@@ -304,7 +304,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                             items.forEach(i => {
                                 let b = Number(i.quantityBought) || 0;
                                 let s = Number(i.quantitySold) || 0;
-                                if (i.units && Array.isArray(i.units)) {
+                                if (i.units && Array.isArray(i.units) && i.units.length > 0) {
                                     b = i.units.length;
                                     s = i.units.filter(u => u.status === 'SOLD').length;
                                 }
@@ -312,8 +312,27 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                 totalReservedInBatches += Number(i.reserved) || 0;
                             });
 
-                            // O stock disponível é o físico subtraído pelas reservas nos lotes (que incluem carrinhos abertos)
-                            const availableStock = Math.max(0, totalPhysicalStock - totalReservedInBatches);
+                            // Calcular stock pendente em encomendas por processar/enviar
+                            let pendingInOrders = 0;
+                            pendingOrders.forEach(order => {
+                                if (order.items && Array.isArray(order.items)) {
+                                    order.items.forEach(item => {
+                                        if (typeof item === 'object' && item !== null) {
+                                            const orderItem = item as any;
+                                            if (String(orderItem.productId) === String(mainItem.publicProductId)) {
+                                                const itemVariant = (orderItem.selectedVariant || '').trim().toLowerCase();
+                                                const batchVariant = (mainItem.variant || '').trim().toLowerCase();
+                                                if (batchVariant === '' || itemVariant === batchVariant) {
+                                                    pendingInOrders += (Number(orderItem.quantity) || 1);
+                                                }
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+
+                            // O stock disponível é o físico subtraído pelas reservas nos lotes (carrinhos) e ordens pendentes
+                            const availableStock = Math.max(0, totalPhysicalStock - totalReservedInBatches - pendingInOrders);
                             
                             const alertsCount = mainItem.publicProductId 
                                 ? stockAlerts.filter(a => a.productId === mainItem.publicProductId).length
@@ -362,13 +381,13 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                 <span className={`font-bold px-2 py-1 rounded text-sm ${availableStock > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
                                                     {availableStock} un.
                                                 </span>
-                                                {totalReservedInBatches > 0 && (
+                                                {pendingInOrders > 0 && (
                                                     <button 
                                                        onClick={(e) => {
                                                            e.stopPropagation();
                                                            const ordersReserving: any[] = [];
                                                            pendingOrders.forEach(o => {
-                                                               const item = o.items.find((i: any) => i.productId === mainItem.publicProductId);
+                                                               const item = o.items.find((i: any) => String(i.productId) === String(mainItem.publicProductId));
                                                                if (item && typeof item === 'object') {
                                                                    ordersReserving.push({
                                                                        id: o.id,
@@ -381,7 +400,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                        }}
                                                        className="text-[10px] text-orange-600 dark:text-orange-400 font-bold mt-1 hover:underline flex items-center gap-0.5"
                                                     >
-                                                        ({totalPhysicalStock} físico - {totalReservedInBatches} reserv.)
+                                                        ({totalPhysicalStock} físico - {pendingInOrders} pend.)
                                                         <Info size={10} />
                                                     </button>
                                                 )}
@@ -447,7 +466,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                                 let qtySold = p.quantitySold || 0;
                                                                 let batchStock = Math.max(0, qtyBought - qtySold);
 
-                                                                if (p.units && Array.isArray(p.units)) {
+                                                                if (p.units && Array.isArray(p.units) && p.units.length > 0) {
                                                                     qtyBought = p.units.length;
                                                                     qtySold = p.units.filter(u => u.status === 'SOLD').length;
                                                                     batchStock = p.units.filter(u => u.status === 'AVAILABLE').length;
