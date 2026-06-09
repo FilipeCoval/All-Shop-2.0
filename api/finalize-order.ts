@@ -128,6 +128,38 @@ export default async function handler(req: Request, res: Response) {
             t.set(orderRef, orderToSave);
         });
         
+        // --- DELETE CART RESERVATIONS NOW THAT THEY ARE CONFIRMED AS SOLD ---
+        try {
+            const promises = [];
+            for (const item of items) {
+                if (!item.productId) continue;
+                let resQuery;
+                if (userId) {
+                    resQuery = firestore.collection('stock_reservations')
+                        .where('productId', '==', Number(item.productId))
+                        .where('userId', '==', userId);
+                } else if (guestToken) {
+                    resQuery = firestore.collection('stock_reservations')
+                        .where('productId', '==', Number(item.productId))
+                        .where('guestToken', '==', guestToken);
+                }
+                
+                if (resQuery) {
+                    promises.push(
+                        resQuery.get().then(snap => {
+                            if (!snap.empty) {
+                                return firestore.collection('stock_reservations').doc(snap.docs[0].id).delete();
+                            }
+                        })
+                    );
+                }
+            }
+            await Promise.allSettled(promises);
+            console.log(`[finalize-order] Successfully cleaned up reservations for order ${idempotencyKey}`);
+        } catch (cleanupErr) {
+            console.error("[finalize-order] Failed to clean up stock_reservations:", cleanupErr);
+        }
+        
         return res.status(200).json({ success: true });
     } catch (e: any) {
         console.error("[finalize-order] Transaction error:", e);

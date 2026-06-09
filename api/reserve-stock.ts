@@ -22,6 +22,44 @@ export default async function handler(req: Request, res: Response) {
     }
 
     try {
+        // --- CLEANUP EXPIRED RESERVATIONS BACKGROUND TASK ---
+        // Runs asynchronously to not block the current request
+        (async () => {
+            try {
+                const now = Timestamp.now();
+                const expiredReservations = await firestore.collection('stock_reservations').where('expiresAt', '<=', now).get();
+                if (!expiredReservations.empty) {
+                    console.log(`[reserve-stock] Found ${expiredReservations.size} expired reservations to clean up...`);
+                    for (const doc of expiredReservations.docs) {
+                        const resData = doc.data();
+                        await firestore.runTransaction(async (t) => {
+                            const productQuery = firestore.collection('products_inventory').where('publicProductId', '==', Number(resData.productId));
+                            const snap = await t.get(productQuery);
+                            let productRef;
+                            if (!snap.empty) {
+                                productRef = snap.docs[0].ref;
+                            } else {
+                                productRef = firestore.collection('products_inventory').doc(String(resData.productId));
+                            }
+                            
+                            const pDoc = await t.get(productRef);
+                            if (pDoc.exists) {
+                                const pData = pDoc.data()!;
+                                t.update(productRef, {
+                                    reserved: Math.max(0, (pData.reserved || 0) - (resData.quantity || 0))
+                                });
+                            }
+                            t.delete(doc.ref);
+                        });
+                    }
+                    console.log("[reserve-stock] Cleanup of expired reservations completed successfully.");
+                }
+            } catch (e) {
+                console.error("[reserve-stock] Background cleanup failed:", e);
+            }
+        })();
+        // --- END CLEANUP ---
+
         console.log("DEBUG: reserve-stock transaction start, productId:", productId, "quantity:", quantity);
         
         await firestore.runTransaction(async (t) => {

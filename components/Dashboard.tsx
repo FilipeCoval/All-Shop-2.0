@@ -425,9 +425,30 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                       
                       // Tocar som se ativado
                       if (isSoundEnabled) {
-                          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
-                          audio.volume = 1.0;
-                          audio.play().catch(e => console.warn("Audio play blocked (user needs to interact first):", e));
+                          try {
+                              const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+                              if (AudioContextClass) {
+                                  const audioCtx = new AudioContextClass();
+                                  const oscillator = audioCtx.createOscillator();
+                                  const gainNode = audioCtx.createGain();
+                                  
+                                  oscillator.type = 'bell' as any || 'sine'; // Fallback to sine if not supported
+                                  oscillator.frequency.setValueAtTime(1046.50, audioCtx.currentTime); // C6 Note
+                                  oscillator.frequency.exponentialRampToValueAtTime(1318.51, audioCtx.currentTime + 0.1); // E6 Note
+                                  
+                                  gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+                                  gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.05);
+                                  gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+                                  
+                                  oscillator.connect(gainNode);
+                                  gainNode.connect(audioCtx.destination);
+                                  
+                                  oscillator.start(audioCtx.currentTime);
+                                  oscillator.stop(audioCtx.currentTime + 0.8);
+                              }
+                          } catch (e) {
+                              console.warn("Audio Context playback failed:", e);
+                          }
                       }
 
                       setTimeout(() => setShowToast(null), 8000); 
