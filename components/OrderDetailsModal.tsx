@@ -41,6 +41,28 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, o
     const [trackingSaved, setTrackingSaved] = useState(false);
     const [pointsAwardedSuccess, setPointsAwardedSuccess] = useState(false);
     const [isPackagingModalOpen, setIsPackagingModalOpen] = useState(false);
+    const [isEditingTotal, setIsEditingTotal] = useState(false);
+    const [newTotalValue, setNewTotalValue] = useState(order?.total?.toString() || '0');
+    const [isSavingTotal, setIsSavingTotal] = useState(false);
+
+    const handleSaveTotal = async () => {
+        const val = parseFloat(newTotalValue);
+        if (isNaN(val)) {
+            alert('Valor inválido!');
+            return;
+        }
+        setIsSavingTotal(true);
+        try {
+            await updateDoc(doc(modularDb, 'orders', order.id), { total: val });
+            onUpdateOrder(order.id, { total: val });
+            setIsEditingTotal(false);
+        } catch (error) {
+            console.error('Erro ao atualizar total:', error);
+            alert('Ocorreu um erro ao atualizar o total.');
+        } finally {
+            setIsSavingTotal(false);
+        }
+    };
 
     const handleSaveTracking = async () => {
         setIsSavingTracking(true);
@@ -307,7 +329,22 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, o
         printWindow.document.close();
     };
 
-    return (<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"><div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col transition-colors"><div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 sticky top-0 z-10 transition-colors"><h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2"><FileText size={20} className="text-indigo-600 dark:text-indigo-400"/> Detalhes da Encomenda</h3><button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-gray-500 dark:text-gray-400 transition-colors"><X size={24}/></button></div><div className="flex-1 overflow-y-auto p-6 space-y-6"><div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center"><div><p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">ID Encomenda</p><p className="font-bold text-indigo-700 dark:text-indigo-400 text-sm mt-1">{order.id}</p></div><div><p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Estado</p><p className="font-bold text-sm mt-1 text-gray-900 dark:text-white">{order.status}</p></div><div><p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Data</p><p className="font-bold text-sm mt-1 text-gray-900 dark:text-white">{new Date(order.date).toLocaleDateString()}</p></div><div><p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Total</p><p className="font-bold text-sm mt-1 text-gray-900 dark:text-white">{formatCurrency(order.total)}</p></div></div>
+    return (<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"><div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col transition-colors"><div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-white dark:bg-slate-900 sticky top-0 z-10 transition-colors"><h3 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2"><FileText size={20} className="text-indigo-600 dark:text-indigo-400"/> Detalhes da Encomenda</h3><button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-gray-500 dark:text-gray-400 transition-colors"><X size={24}/></button></div><div className="flex-1 overflow-y-auto p-6 space-y-6"><div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center"><div><p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">ID Encomenda</p><p className="font-bold text-indigo-700 dark:text-indigo-400 text-sm mt-1">{order.id}</p></div><div><p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Estado</p><p className="font-bold text-sm mt-1 text-gray-900 dark:text-white">{order.status}</p></div><div><p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Data</p><p className="font-bold text-sm mt-1 text-gray-900 dark:text-white">{new Date(order.date).toLocaleDateString()}</p></div><div className="relative"><p className="text-xs text-gray-500 dark:text-gray-400 font-bold uppercase">Total</p>
+{isEditingTotal ? (
+    <div className="flex flex-col items-center mt-1 gap-1">
+        <input type="number" step="0.01" value={newTotalValue} onChange={e => setNewTotalValue(e.target.value)} className="w-20 px-2 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-gray-900 dark:text-white text-center" />
+        <div className="flex gap-1 justify-center">
+            <button onClick={handleSaveTotal} disabled={isSavingTotal} className="text-xs px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded hover:bg-green-200 dark:hover:bg-green-900/50 font-bold transition-colors">{isSavingTotal ? '...' : 'Salvar'}</button>
+            <button onClick={() => {setIsEditingTotal(false); setNewTotalValue(order.total.toString());}} className="text-xs px-2 py-1 bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-slate-300 rounded hover:bg-gray-200 dark:hover:bg-slate-600 font-bold transition-colors">X</button>
+        </div>
+    </div>
+) : (
+    <p className="font-bold text-sm mt-1 text-gray-900 dark:text-white flex items-center justify-center gap-1 group">
+        {formatCurrency(order.total)}
+        {isAdmin && <button onClick={() => setIsEditingTotal(true)} className="opacity-0 group-hover:opacity-100 text-indigo-500 hover:text-indigo-700 transition-opacity p-1"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button>}
+    </p>
+)}
+</div></div>
     
     <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 transition-colors">
         <h4 className="font-bold text-blue-900 dark:text-blue-300 text-sm mb-3 flex items-center gap-2"><Truck size={16} /> Logística & Envio</h4>
