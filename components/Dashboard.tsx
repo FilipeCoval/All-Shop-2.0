@@ -394,6 +394,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                 // 2. Notificar se for uma encomenda que foi AGORA confirmada pelo cliente
                 const isNowConfirmed = change.type === 'modified' && order.status === 'Processamento' && isRecent;
 
+                console.log(`Order check: ${order.id}, type: ${change.type}, status: ${order.status}, isRecent: ${isRecent}, isNewReal: ${isNewReal}, isNowConfirmed: ${isNowConfirmed}, notified: ${notifiedOrders.current.has(order.id)}`);
+
                 if ((isNewReal || isNowConfirmed) && !notifiedOrders.current.has(order.id)) {
                       notifiedOrders.current.add(order.id);
                       
