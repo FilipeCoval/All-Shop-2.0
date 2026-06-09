@@ -208,7 +208,25 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
                         });
                     }
                     cost += orderCost;
-                    return acc + (o.total - cost);
+                    
+                    let orderCashback = 0;
+                    if (o.serialNumbersUsed && o.serialNumbersUsed.length > 0) {
+                        o.serialNumbersUsed.forEach((sn: string) => {
+                            const batch = inventoryProducts.find(p => p.units?.some(u => u.id === sn));
+                            if (batch && batch.cashbackStatus === 'RECEIVED') {
+                                orderCashback += (batch.cashbackValue || 0) / (batch.quantityBought || 1);
+                            }
+                        });
+                    } else {
+                        o.items.forEach((item: any) => {
+                            const p = inventoryProducts.find(prod => prod.publicProductId === item.productId);
+                            if (p && p.cashbackStatus === 'RECEIVED') {
+                                orderCashback += ((p.cashbackValue || 0) / (p.quantityBought || 1)) * (item.quantity || 1);
+                            }
+                        });
+                    }
+
+                    return acc + (o.total - cost + orderCashback);
                 }, 0);
 
                 data.push({
