@@ -714,7 +714,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
 
                 <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-100 dark:border-slate-700 w-full mb-8">
                     <p className="text-xs text-gray-400 uppercase font-bold mb-1">Referência do Pedido</p>
-                    <p className="text-xl font-mono font-bold text-primary">{currentOrderId.startsWith('#') ? currentOrderId : `#${currentOrderId}`}</p>
+                    <p className="text-xl font-mono font-bold text-primary">{pendingOrder?.id ? (pendingOrder.id.startsWith('#') ? pendingOrder.id : `#${pendingOrder.id}`) : (currentOrderId.startsWith('#') ? currentOrderId : `#${currentOrderId}`)}</p>
                 </div>
 
                 <button onClick={onClose} className="bg-gray-900 dark:bg-slate-700 text-white px-8 py-4 rounded-xl font-bold w-full shadow-xl hover:scale-[1.02] transition-transform">

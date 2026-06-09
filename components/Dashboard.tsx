@@ -124,7 +124,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   
   // Sound State
-  const [isSoundEnabled, setIsSoundEnabled] = useState(user?.notificationsEnabled || false);
+  const [isSoundEnabled, setIsSoundEnabled] = useState(user?.notificationsEnabled !== undefined ? user.notificationsEnabled : true);
 
   useEffect(() => {
       if (user && user.notificationsEnabled !== undefined) {
@@ -386,9 +386,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                 const order = change.doc.data() as Order;
                 
                 // 1. Notificar se for encomenda NOVA e já não for pendente (ex: manual)
-                // Não notificar se a encomenda tiver mais de 5 minutos, para evitar spam se a aba esteve suspensa
+                // Não notificar se a encomenda for muito antiga (mais de 2 horas), para evitar spam
                 const orderDate = new Date(order.date).getTime();
-                const isRecent = order.date ? (Date.now() - orderDate < 300000) : false;
+                const isRecent = order.date ? (Date.now() - orderDate < 7200000) : false; // 2 horas
                 
                 const isNewReal = change.type === 'added' && order.status !== 'Pendente' && isRecent;
                 // 2. Notificar se for uma encomenda que foi AGORA confirmada pelo cliente
