@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { db } from '../services/firebase-admin.js';
-import * as admin from 'firebase-admin';
+import { Timestamp } from 'firebase-admin/firestore';
 
 export default async function handler(req: Request, res: Response) {
     // This should ideally be protected by an API Key
@@ -10,7 +10,7 @@ export default async function handler(req: Request, res: Response) {
     }
     
     try {
-        const now = admin.firestore.Timestamp.now();
+        const now = Timestamp.now();
         const expiredReservations = await firestore.collection('stock_reservations')
             .where('expiresAt', '<=', now)
             .get();

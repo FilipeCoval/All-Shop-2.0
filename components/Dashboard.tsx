@@ -374,7 +374,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       
       const unsubscribe = onSnapshot(ordersQuery, snapshot => { 
           if (isInitialLoadRef.current) {
-              snapshot.forEach(doc => notifiedOrders.current.add(doc.id));
+              snapshot.forEach(doc => {
+                  const orderData = doc.data() as Order;
+                  if (orderData.status !== 'Pendente') {
+                      notifiedOrders.current.add(doc.id);
+                  }
+              });
               // Só marca como carregado se já veio do servidor, ou se formos forçados pela cache a achar que é "completo"
               if (!snapshot.metadata.fromCache) {
                   isInitialLoadRef.current = false;

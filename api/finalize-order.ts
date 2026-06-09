@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { db } from '../services/firebase-admin.js';
-import * as admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 export default async function handler(req: Request, res: Response) {
     if (req.method !== 'POST') return res.status(405).end();
@@ -122,7 +122,7 @@ export default async function handler(req: Request, res: Response) {
             }
 
             // Always add a server-side timestamp for Firestore sorting of recent orders
-            orderToSave.createdAt = admin.firestore.FieldValue.serverTimestamp();
+            orderToSave.createdAt = FieldValue.serverTimestamp();
             orderToSave.idempotencyKey = idempotencyKey;
 
             t.set(orderRef, orderToSave);

@@ -1,24 +1,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import admin from 'firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { db as sharedDb } from '../services/firebase-admin.js';
-
-// INICIALIZAÇÃO DO SDK ADMIN (SINGLETON)
-if (!admin.apps.length) {
-    try {
-        if (process.env.FIREBASE_PRIVATE_KEY) {
-            admin.initializeApp({
-                credential: admin.credential.cert({
-                    projectId: process.env.FIREBASE_PROJECT_ID,
-                    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-                }),
-            });
-        }
-    } catch (e) {
-        console.error("Erro ao inicializar Firebase Admin:", e);
-    }
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'POST') {
@@ -189,7 +172,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             if (cleanVariants.length > 0) {
                 updateData.variants = cleanVariants;
             } else if (publicData.variants) {
-                updateData.variants = admin.firestore.FieldValue.delete();
+                updateData.variants = FieldValue.delete();
             }
 
             await publicRef.set(updateData, { merge: true });
@@ -202,7 +185,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await db.collection('public_stock_summary').doc(String(publicProductId)).set({
             publicProductId: Number(publicProductId),
             availableStock: available,
-            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            updatedAt: FieldValue.serverTimestamp()
         });
 
         return res.status(200).json({ success: true, available });

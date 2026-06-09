@@ -8,10 +8,10 @@ try {
     if (!getApps().length) {
         const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
         const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-        const projectId = process.env.FIREBASE_PROJECT_ID;
+        const projectId = process.env.FIREBASE_PROJECT_ID || rawConfig.projectId;
 
         if (privateKey && clientEmail && projectId) {
-            console.log("Initializing Firebase Admin with service account credentials.");
+            console.log("Initializing Firebase Admin with service account credentials for project:", projectId);
             initializeApp({
                 credential: cert({
                     projectId,
@@ -20,7 +20,7 @@ try {
                 }),
             });
         } else {
-            console.log("Initializing Firebase Admin with default credentials.");
+            console.log("Initializing Firebase Admin with default credentials. Missing keys?", { hasKey: !!privateKey, hasEmail: !!clientEmail, hasProject: !!projectId });
             initializeApp({
                 projectId: rawConfig.projectId
             });

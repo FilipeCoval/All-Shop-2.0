@@ -1,37 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import admin from 'firebase-admin';
+import { getMessaging } from 'firebase-admin/messaging';
+import { FieldValue } from 'firebase-admin/firestore';
 import rawConfig from '../firebase-applet-config.json' with { type: 'json' };
 import { db as sharedDb } from '../services/firebase-admin.js';
-
-// INICIALIZAÇÃO DO SDK ADMIN (SINGLETON)
-if (!admin.apps.length) {
-    try {
-        if (process.env.FIREBASE_PRIVATE_KEY) {
-            admin.initializeApp({
-                credential: admin.credential.cert({
-                    projectId: process.env.FIREBASE_PROJECT_ID,
-                    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                    privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-                }),
-            });
-        } else {
-            console.warn("Aviso crítico: FIREBASE_PRIVATE_KEY não configurada no ambiente. O envio de Push Notifications (FCM) irá falhar.");
-        }
-    } catch (e) {
-        console.error("Erro ao inicializar Firebase Admin:", e);
-    }
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
-    }
-
-    if (!admin.apps.length) {
-        return res.status(500).json({ 
-            error: 'Configuração de Servidor Incompleta', 
-            details: 'Adicione FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL e FIREBASE_PROJECT_ID nas variáveis de ambiente da Vercel.' 
-        });
     }
 
     try {
@@ -143,7 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             (messagePayload.notification as any).image = image;
         }
 
-        const response = await admin.messaging().sendEachForMulticast(messagePayload);
+        const response = await getMessaging().sendEachForMulticast(messagePayload);
 
         // 4. Limpeza de Tokens Inválidos
         if (response.failureCount > 0) {
@@ -179,7 +154,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     }
                     
                     if (userData.fcmToken && tokensToRemove.includes(userData.fcmToken)) {
-                        batch.update(doc.ref, { fcmToken: admin.firestore.FieldValue.delete() });
+                        batch.update(doc.ref, { fcmToken: FieldValue.delete() });
                         hasChanges = true;
                     }
                 });

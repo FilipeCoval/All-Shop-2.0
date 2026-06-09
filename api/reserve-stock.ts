@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { db } from '../services/firebase-admin.js';
-import * as admin from 'firebase-admin';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 
 export default async function handler(req: Request, res: Response) {
     if (req.method !== 'POST') return res.status(405).end();
@@ -71,8 +71,8 @@ export default async function handler(req: Request, res: Response) {
                 quantity,
                 userId: userId || null,
                 guestToken: guestToken || null,
-                createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + 15 * 60 * 1000)
+                createdAt: FieldValue.serverTimestamp(),
+                expiresAt: Timestamp.fromMillis(Date.now() + 15 * 60 * 1000)
             });
         });
         
