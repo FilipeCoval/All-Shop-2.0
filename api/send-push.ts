@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import admin from 'firebase-admin';
 import rawConfig from '../firebase-applet-config.json' with { type: 'json' };
-import { db as sharedDb } from '../services/firebase-admin';
+import { db as sharedDb } from '../services/firebase-admin.js';
 
 // INICIALIZAÇÃO DO SDK ADMIN (SINGLETON)
 if (!admin.apps.length) {
