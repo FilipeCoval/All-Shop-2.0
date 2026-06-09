@@ -1,4 +1,4 @@
-import { getApps, initializeApp, getApp } from 'firebase-admin/app';
+import { getApps, initializeApp, getApp, cert } from 'firebase-admin/app';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import rawConfig from '../firebase-applet-config.json' with { type: 'json' };
 
@@ -6,9 +6,25 @@ let db: Firestore | null = null;
 
 try {
     if (!getApps().length) {
-        initializeApp({
-            projectId: rawConfig.projectId
-        });
+        const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+        const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+        const projectId = process.env.FIREBASE_PROJECT_ID;
+
+        if (privateKey && clientEmail && projectId) {
+            console.log("Initializing Firebase Admin with service account credentials.");
+            initializeApp({
+                credential: cert({
+                    projectId,
+                    clientEmail,
+                    privateKey,
+                }),
+            });
+        } else {
+            console.log("Initializing Firebase Admin with default credentials.");
+            initializeApp({
+                projectId: rawConfig.projectId
+            });
+        }
     }
     const dbId = process.env.VITE_FIREBASE_DATABASE_ID || rawConfig.firestoreDatabaseId;
     console.log("Firebase admin initialized for project:", rawConfig.projectId, "with database ID:", dbId || "(default)");
