@@ -362,7 +362,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                 <span className={`font-bold px-2 py-1 rounded text-sm ${availableStock > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
                                                     {availableStock} un.
                                                 </span>
-                                                {pendingInOrders > 0 && (
+                                                {totalReservedInBatches > 0 && (
                                                     <button 
                                                        onClick={(e) => {
                                                            e.stopPropagation();
@@ -381,7 +381,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                        }}
                                                        className="text-[10px] text-orange-600 dark:text-orange-400 font-bold mt-1 hover:underline flex items-center gap-0.5"
                                                     >
-                                                        ({totalPhysicalStock} físico - {pendingInOrders} reserv.)
+                                                        ({totalPhysicalStock} físico - {totalReservedInBatches} reserv.)
                                                         <Info size={10} />
                                                     </button>
                                                 )}
