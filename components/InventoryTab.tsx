@@ -298,50 +298,22 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                             // Fetch catalog product as source of truth for stock
                             const catalogProd = catalogProducts?.find(p => String(p.id) === String(mainItem.publicProductId));
                             
-                            // Base stock values strictly on catalog product (database of reality) if linked, else fallback to batch sums
-                            const totalPhysicalStock = catalogProd !== undefined 
-                                ? (catalogProd.stock || 0) 
-                                : items.reduce((acc, i) => {
-                                    let b = i.quantityBought || 0;
-                                    let s = i.quantitySold || 0;
-                                    if (i.units && Array.isArray(i.units)) {
-                                        b = i.units.length;
-                                        s = i.units.filter(u => u.status === 'SOLD').length;
-                                    }
-                                    return acc + Math.max(0, b - s);
-                                }, 0);
-                            
-                            // Calcular stock pendente em encomendas para este grupo (apenas se não houver catalogProd, ou se pendentes não estiverem contabilizados)
-                            let pendingInOrders = 0;
-                            if (catalogProd === undefined) {
-                                pendingOrders.forEach(order => {
-                                    if (order.items && Array.isArray(order.items)) {
-                                        order.items.forEach(item => {
-                                            if (typeof item === 'object' && item !== null) {
-                                                const orderItem = item as any;
-                                                if (orderItem.productId === mainItem.publicProductId) {
-                                                    const itemVariant = (orderItem.selectedVariant || '').trim().toLowerCase();
-                                                    const batchVariant = (mainItem.variant || '').trim().toLowerCase();
-                                                    if (batchVariant === '' || itemVariant === batchVariant) {
-                                                        pendingInOrders += (orderItem.quantity || 1);
-                                                    }
-                                                }
-                                            }
-                                        });
-                                    }
-                                });
-                            }
+                            // O stock exibido no topo (agregado) deve refletir SEMPRE a soma dos lotes (database of reality para o inventário físico)
+                            let totalPhysicalStock = 0;
+                            let totalReservedInBatches = 0;
+                            items.forEach(i => {
+                                let b = Number(i.quantityBought) || 0;
+                                let s = Number(i.quantitySold) || 0;
+                                if (i.units && Array.isArray(i.units)) {
+                                    b = i.units.length;
+                                    s = i.units.filter(u => u.status === 'SOLD').length;
+                                }
+                                totalPhysicalStock += Math.max(0, b - s);
+                                totalReservedInBatches += Number(i.reserved) || 0;
+                            });
 
-                            // Calcular stock reservado no carrinho para este grupo (apenas se não houver catalogProd)
-                            let reservedInCart = 0;
-                            if (catalogProd === undefined) {
-                                reservedInCart = reservations
-                                    .filter(r => r.productId === mainItem.publicProductId)
-                                    .reduce((sum, r) => sum + r.quantity, 0);
-                            }
-
-                            // Available stock matches database reality as requested
-                            const availableStock = Math.max(0, totalPhysicalStock - pendingInOrders - reservedInCart);
+                            // O stock disponível é o físico subtraído pelas reservas nos lotes (que incluem carrinhos abertos)
+                            const availableStock = Math.max(0, totalPhysicalStock - totalReservedInBatches);
                             
                             const alertsCount = mainItem.publicProductId 
                                 ? stockAlerts.filter(a => a.productId === mainItem.publicProductId).length
