@@ -177,6 +177,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                             hasChanges = true;
                         }
                     }
+                    
+                    if (userData.fcmToken && tokensToRemove.includes(userData.fcmToken)) {
+                        batch.update(doc.ref, { fcmToken: admin.firestore.FieldValue.delete() });
+                        hasChanges = true;
+                    }
                 });
                 if (hasChanges) {
                     await batch.commit();
