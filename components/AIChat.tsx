@@ -102,14 +102,14 @@ const AIChat: React.FC<AIChatProps> = ({ products, isOpen, onToggle, userOrders 
                 <div className="absolute -bottom-1.5 right-0 w-3 h-3 bg-white transform rotate-45 border-b border-r border-gray-100"></div>
             </div>
 
-            <div className="relative w-24 h-24 sm:w-32 sm:h-32 flex items-center justify-center -mr-2 sm:mr-0 mb-4 sm:mb-0">
+            <div className="relative w-16 h-16 sm:w-28 sm:h-28 flex items-center justify-center -mr-2 sm:mr-0 mb-4 sm:mb-0">
                 {/* Efeito de Aura/Glow atrás - Pointer Events None para não ser clicável */}
                 <div className="absolute inset-0 bg-blue-400/20 rounded-full blur-xl scale-75 group-hover:scale-100 transition-transform duration-500 animate-pulse pointer-events-none"></div>
                 
                 {/* Botão Invisível (Hitbox Reduzida) - Centralizado e menor que a imagem */}
                 <button
                   onClick={() => onToggle(true)}
-                  className="absolute w-16 h-16 sm:w-24 sm:h-24 rounded-full z-20 cursor-pointer outline-none focus:outline-none"
+                  className="absolute w-12 h-12 sm:w-20 sm:h-20 rounded-full z-20 cursor-pointer outline-none focus:outline-none"
                   aria-label="Abrir chat"
                 ></button>
 

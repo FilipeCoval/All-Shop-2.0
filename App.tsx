@@ -334,12 +334,6 @@ const App: React.FC = () => {
 
                 // Sincronizar o histórico e pontos no lado do cliente
                 try {
-                    const LOYALTY_TIERS = {
-                        BRONZE: { threshold: 0, multiplier: 0, name: 'Bronze' },
-                        SILVER: { threshold: 50, multiplier: 0.05, name: 'Prata' },
-                        GOLD: { threshold: 200, multiplier: 0.10, name: 'Ouro' }
-                    };
-
                     const uid = firebaseUser.uid;
                     const email = firebaseUser.email;
                     

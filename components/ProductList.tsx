@@ -294,8 +294,8 @@ const ProductList: React.FC<ProductListProps> = ({
                 if (viewMode === 'list') {
                     return (
                         <div key={product.id} className="bg-white dark:bg-[#0f172a] rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all border border-gray-100 dark:border-slate-800 flex items-stretch group animate-fade-in relative">
-                            <a href={`#product/${product.id}`} onClick={handleProductClick(product.id)} className="w-32 sm:w-56 self-stretch bg-gray-50 dark:bg-slate-900 relative shrink-0 p-4 flex items-center justify-center min-h-[8rem]">
-                                <img src={product.image} alt={product.name} className={`max-w-full max-h-full object-contain ${isOutOfStock ? 'grayscale opacity-70' : ''}`} />
+                            <a href={`#product/${product.id}`} onClick={handleProductClick(product.id)} className="w-32 sm:w-56 self-stretch bg-gray-50 dark:bg-slate-900 relative shrink-0 p-2 sm:p-4 flex items-center justify-center min-h-[8rem]">
+                                <img src={product.image} alt={product.name} className={`max-w-[110%] max-h-[110%] object-contain scale-110 transition-transform group-hover:scale-125 ${isOutOfStock ? 'grayscale opacity-70' : ''}`} />
                                 {isOutOfStock && <span className="absolute top-2 left-2 bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded">ESGOTADO</span>}
                                 {badge && <span className={`absolute top-2 left-2 ${badge.color} text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 shadow-sm`}>{badge.icon}{badge.text}</span>}
                             </a>

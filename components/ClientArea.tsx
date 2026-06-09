@@ -737,6 +737,35 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                     </div>
                 </div>
 
+                {/* PROGRESO DE NÍVEL */}
+                <div className="bg-white dark:bg-[#0f172a] p-6 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            <Award size={18} className="text-indigo-500" /> Progresso para Cliente {nextTierLabel || 'Máximo'}
+                        </h3>
+                        <span className="text-sm font-bold text-gray-500 dark:text-slate-400">
+                            {currentTotalSpent.toFixed(2)}€ / {tierLimit > 0 ? `${tierLimit.toFixed(2)}€` : 'Max'}
+                        </span>
+                    </div>
+                    {nextTierLabel ? (
+                        <>
+                            <div className="h-4 bg-gray-100 dark:bg-slate-700/50 rounded-full overflow-hidden mb-2 relative">
+                                <div className={`h-full rounded-full transition-all duration-1000 ${nextTierLabel === 'Ouro' ? 'bg-yellow-500' : 'bg-gray-400'}`} style={{ width: `${Math.min(100, Math.max(0, tierProgress))}%` }}></div>
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-slate-400">
+                                Faltam <span className="font-bold text-gray-900 dark:text-gray-100">{(tierLimit - currentTotalSpent).toFixed(2)}€</span> para alcançar o nível {nextTierLabel}. (Apenas encomendas não canceladas)
+                            </p>
+                        </>
+                    ) : (
+                        <>
+                            <div className="h-4 bg-gray-100 dark:bg-slate-700/50 rounded-full overflow-hidden mb-2">
+                                <div className="h-full bg-yellow-500 rounded-full w-full shadow-[0_0_10px_rgba(234,179,8,0.5)]"></div>
+                            </div>
+                            <p className="text-xs text-gray-500 dark:text-slate-400">Parabéns! Alcançou o nível máximo e usufrui do melhor multiplicador de pontos.</p>
+                        </>
+                    )}
+                </div>
+
                 {/* Área de Ofertas (Freebies) */}
                 { (user.freebieQuota || 0) > 0 && (
                     <div className="bg-purple-50 dark:bg-purple-900/20 p-6 rounded-2xl border border-purple-200 dark:border-purple-800">

@@ -1,12 +1,6 @@
 import { Request, Response } from 'express';
 import { db } from '../services/firebase-admin';
-
-// Definir os tiers se necessário para o cálculo
-const LOYALTY_TIERS = {
-  BRONZE: { threshold: 0, multiplier: 0, name: 'Bronze' },
-  SILVER: { threshold: 50, multiplier: 0.05, name: 'Prata' },
-  GOLD: { threshold: 200, multiplier: 0.10, name: 'Ouro' }
-};
+import { LOYALTY_TIERS } from '../constants';
 
 export default async function handler(req: Request, res: Response) {
     if (req.method !== 'POST') return res.status(405).end();

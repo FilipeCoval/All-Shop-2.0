@@ -1327,9 +1327,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                                   reason: `Cancelamento da Compra #${orderId}`,
                                   orderId: orderId
                               };
+                              const newTotalSpent = Math.max(0, (userData.totalSpent || 0) - orderTotal);
+                              let newTier: UserTier = 'Bronze';
+                              if (newTotalSpent >= LOYALTY_TIERS.GOLD.threshold) newTier = 'Ouro';
+                              else if (newTotalSpent >= LOYALTY_TIERS.SILVER.threshold) newTier = 'Prata';
+                              
                               reads.userUpdate = {
                                   ref: userRef,
                                   data: {
+                                      totalSpent: newTotalSpent,
+                                      tier: newTier,
                                       loyaltyPoints: Math.max(0, (userData.loyaltyPoints || 0) - pointsToRemove),
                                       pointsHistory: [newHistory, ...(Array.isArray(userData.pointsHistory) ? userData.pointsHistory : [])]
                                   }
@@ -1438,9 +1445,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                                       reason: `Remoção da Compra #${orderId}`,
                                       orderId: orderId
                                   };
+                                  
+                                  const newTotalSpent = Math.max(0, (userData.totalSpent || 0) - orderTotal);
+                                  let newTier: UserTier = 'Bronze';
+                                  if (newTotalSpent >= LOYALTY_TIERS.GOLD.threshold) newTier = 'Ouro';
+                                  else if (newTotalSpent >= LOYALTY_TIERS.SILVER.threshold) newTier = 'Prata';
+
                                   reads.userUpdate = {
                                       ref: userRef,
                                       data: {
+                                          totalSpent: newTotalSpent,
+                                          tier: newTier,
                                           loyaltyPoints: Math.max(0, (userData.loyaltyPoints || 0) - pointsToRemove),
                                           pointsHistory: [newHistory, ...(userData.pointsHistory || [])]
                                       }
