@@ -118,10 +118,15 @@ const AllPoints: React.FC<AllPointsProps> = ({ user, onUpdateUser, onOpenLogin, 
   const progress = !user || !nextTier ? 0 : Math.min(100, ((user.totalSpent || 0) / nextTier.threshold) * 100);
 
   const handleShare = async () => {
+    let url = `${SHARE_URL}/allpoints`;
+    if (user?.uid) {
+        url = `${SHARE_URL}/#/?ref=${user.uid}`;
+    }
+
     const shareData = {
-      title: 'AllPoints - Clube de Fidelidade',
-      text: 'Ganhe pontos em todas as compras e troque por descontos exclusivos!',
-      url: `${SHARE_URL}/allpoints`
+      title: 'Ganhe prémios na All-Shop',
+      text: 'Entra na All-Shop através do meu link e ganha logo 25 pontos de boas-vindas para gastares nas tuas compras!',
+      url: url
     };
 
     if (navigator.share) {
@@ -217,11 +222,11 @@ const AllPoints: React.FC<AllPointsProps> = ({ user, onUpdateUser, onOpenLogin, 
                     <p className="text-gray-500 dark:text-slate-400 text-sm italic">Receba um presente de <span className="font-bold text-pink-600">100 pontos</span> no dia do seu aniversário.</p>
                 </div>
                 <div className="bg-white dark:bg-[#0f172a] p-6 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow flex flex-col items-center text-center">
-                    <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center text-green-600 mb-4">
+                    <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center text-green-600 mb-4 cursor-pointer" onClick={handleShare}>
                         <Share2 size={24} />
                     </div>
-                    <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">Partilhar Produtos</h3>
-                    <p className="text-gray-500 dark:text-slate-400 text-sm italic">Ganhe <span className="font-bold text-green-600">5 pontos</span> por cada partilha diária de produtos nas redes sociais.</p>
+                    <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">Convide Amigos</h3>
+                    <p className="text-gray-500 dark:text-slate-400 text-sm italic">Convide amigos a registar-se! Você ganha <span className="font-bold text-green-600">50 pontos</span> e eles ganham <span className="font-bold text-green-600">25 pontos</span>.</p>
                 </div>
             </div>
         </div>

@@ -270,25 +270,15 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           product={product} 
           onBuyNow={() => {
             console.log("ProductDetails: onBuyNow triggered");
-            setIsPremiumLayout(prev => {
-              console.log("Changing isPremiumLayout from", prev, "to false");
-              return false;
-            });
-            
+            setIsPremiumLayout(false);
             setTimeout(() => {
-              console.log("Attempting scroll to variant-selector or buy-actions");
               const variantElement = document.getElementById('variant-selector');
               const buyElement = document.getElementById('buy-actions');
               const target = variantElement || buyElement;
-              
               if (target) {
-                console.log("Target found, scrolling...");
                 target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              } else {
-                console.log("Target not found, scrolling to top");
-                window.scrollTo({ top: 0, behavior: 'smooth' });
               }
-            }, 500); // Increased timeout to 500ms
+            }, 500); 
           }} 
           currentPrice={currentPrice} 
           isUnavailable={isUnavailable} 
@@ -297,8 +287,55 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
     );
   }
 
+  // --- JSON-LD STRUCTURED DATA FOR GOOGLE SEARCH ---
+  const currentReviews = (reviews || []).filter(r => r.productId === product.id);
+  const jsonLd = {
+    "@context": "https://schema.org/",
+    "@type": "Product",
+    "name": product.name,
+    "image": selectedImage,
+    "description": product.description || "Compre na All-Shop com stock nacional e garantia de entrega rápida.",
+    "brand": {
+      "@type": "Brand",
+      "name": "All-Shop"
+    },
+    ...((currentReviews && currentReviews.length > 0) ? {
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": String((currentReviews.reduce((acc, r) => acc + r.rating, 0) / currentReviews.length).toFixed(1)),
+        "reviewCount": String(currentReviews.length)
+      }
+    } : {}),
+    "offers": {
+      "@type": "Offer",
+      "url": `${PUBLIC_URL}/p/${product.id}`,
+      "priceCurrency": "EUR",
+      "price": String(currentPrice),
+      "itemCondition": "https://schema.org/NewCondition",
+      "availability": (isOutOfStock && !product.comingSoon) ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
+      "shippingDetails": {
+        "@type": "OfferShippingDetails",
+        "shippingRate": {
+          "@type": "MonetaryAmount",
+          "value": currentPrice > 50 ? "0.00" : "4.99",
+          "currency": "EUR"
+        },
+        "shippingDestination": {
+            "@type": "DefinedRegion",
+            "addressCountry": "PT"
+        },
+        "deliveryTime": {
+            "@type": "ShippingDeliveryTime",
+            "handlingTime": { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 1, "unitCode": "d" },
+            "transitTime": { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 2, "unitCode": "d" }
+        }
+      }
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8 animate-fade-in pb-32 md:pb-8 transition-colors duration-300">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
       <div className="flex items-center justify-between mb-8">
         <a 
           href="#/" 

@@ -14,6 +14,7 @@ import finalizeOrderHandler from './api/finalize-order.ts';
 import cleanupReservationsHandler from './api/cleanup-reservations.ts';
 import updateOrderHandler from './api/update-order.ts';
 import syncUserHandler from './api/sync-user.ts';
+import sitemapHandler from './api/sitemap.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -101,6 +102,20 @@ async function startServer() {
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
+  });
+
+  // Sitemap route
+  app.get('/sitemap.xml', async (req, res) => {
+    try {
+        await sitemapHandler(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/robots.txt', (req, res) => {
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(`User-agent: *\nAllow: /\nSitemap: https://www.all-shop.net/sitemap.xml`);
   });
 
   // Replicate Vercel rewrites

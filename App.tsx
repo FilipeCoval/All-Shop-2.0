@@ -111,6 +111,20 @@ const App: React.FC = () => {
   useEffect(() => {
     trackVisit();
     
+    // Referral Tracking (URL contains ?ref=uid)
+    try {
+        const params = new URLSearchParams(window.location.search);
+        let ref = params.get('ref');
+        if (!ref && window.location.hash.includes('?')) {
+            const hashParams = new URLSearchParams(window.location.hash.split('?')[1]);
+            ref = hashParams.get('ref');
+        }
+        if (ref) {
+            localStorage.setItem('allshop_referrer', ref);
+            console.log("Referrer saved:", ref);
+        }
+    } catch(e) {}
+    
     // Registrar o Service Worker para Push Notifications
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/firebase-messaging-sw.js')

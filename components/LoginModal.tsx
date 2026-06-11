@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Mail, Lock, Eye, EyeOff, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
 import { User as UserType } from '../types';
 import {  auth, db , modularDb } from '../services/firebaseConfig';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, increment, arrayUnion } from 'firebase/firestore';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, updateProfile } from 'firebase/auth';
 
 interface LoginModalProps {
@@ -135,11 +135,46 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLogin }) => 
             uid: firebaseUser.uid,
             name,
             email: safeEmail,
-            addresses: []
+            addresses: [],
+            loyaltyPoints: 0 // Will give points if referred
         };
 
         try {
             await setDoc(doc(modularDb, "users", firebaseUser.uid), newUser);
+            
+            // Check Referral System!
+            const referrerId = localStorage.getItem('allshop_referrer');
+            if (referrerId && referrerId !== firebaseUser.uid) {
+                // Give 50 points to inviter!
+                try {
+                    await updateDoc(doc(modularDb, "users", referrerId), {
+                        loyaltyPoints: increment(50),
+                        pointsHistory: arrayUnion({
+                            id: `ref-inv-${Date.now()}`,
+                            date: new Date().toISOString(),
+                            amount: 50,
+                            reason: 'Convidou um novo Amigo!'
+                        })
+                    });
+                    
+                    // Give 25 points to the new user!
+                    await updateDoc(doc(modularDb, "users", firebaseUser.uid), {
+                        loyaltyPoints: increment(25),
+                        pointsHistory: arrayUnion({
+                            id: `ref-new-${Date.now()}`,
+                            date: new Date().toISOString(),
+                            amount: 25,
+                            reason: 'Bónus de Boas-Vindas (Convite)'
+                        })
+                    });
+                    
+                    newUser.loyaltyPoints = 25;
+                    localStorage.removeItem('allshop_referrer'); // Clear it
+                } catch(refErr) {
+                    console.log("Failed to process referral", refErr);
+                }
+            }
+            
         } catch(dbErr) { console.debug("Database sync on register restricted."); }
 
         onLogin(newUser);
