@@ -29,18 +29,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         <changefreq>daily</changefreq>
         <priority>1.0</priority>
     </url>
-    <url>
-        <loc>${PUBLIC_URL}/#allpoints</loc>
-        <changefreq>weekly</changefreq>
-        <priority>0.8</priority>
-    </url>
     
     <!-- Dynamic Products -->
 `;
 
         products.forEach((p: any) => {
             xml += `    <url>
-        <loc>${PUBLIC_URL}/#product/${p.id}</loc>
+        <loc>${PUBLIC_URL}/p/${p.id}</loc>
         <lastmod>${p.updatedTime.split('T')[0]}</lastmod>
         <changefreq>daily</changefreq>
         <priority>0.9</priority>

@@ -560,9 +560,9 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                   .totals { width: 300px; margin-left: auto; margin-bottom: 40px; }
                   .totals-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 14px; }
                   .totals-row.bold { font-weight: bold; font-size: 16px; border-bottom: 2px solid #333; color: #000; }
-                  .warranty-box { border: 2px dashed #10b981; padding: 20px; border-radius: 8px; background: #ecfdf5; text-align: center; }
-                  .warranty-box h4 { margin: 0 0 10px 0; color: #047857; font-size: 16px; }
-                  .warranty-box p { margin: 0; color: #065f46; font-size: 13px; }
+                  .internal-note { border: 2px dashed #cbd5e1; padding: 20px; border-radius: 8px; background: #f8fafc; text-align: center; margin-top: 20px; }
+                  .internal-note h4 { margin: 0 0 10px 0; color: #475569; font-size: 16px; }
+                  .internal-note p { margin: 0; color: #64748b; font-size: 13px; }
                   @media print {
                       body { padding: 0; }
                       .no-print { display: none; }
@@ -575,12 +575,12 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
               </div>
               <div class="header">
                   <div class="store-info">
-                      <h1>All-Shop</h1>
+                      <img src="${LOGO_URL}" alt="All-Shop" style="height: 50px; margin-bottom: 10px;" />
                       <p>Loja de Tecnologia</p>
                       <p>Portugal</p>
                   </div>
                   <div class="doc-info">
-                      <h2>Fatura / Recibo</h2>
+                      <h2>Comprovativo de Compra</h2>
                       <p><strong>Nº:</strong> ${order.id.slice(-6).toUpperCase()}</p>
                       <p><strong>Data:</strong> ${new Date(order.date).toLocaleDateString('pt-PT')}</p>
                   </div>
@@ -623,9 +623,9 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                   </div>
               </div>
 
-              <div class="warranty-box">
-                  <h4>🛡️ Certificado de Garantia - 3 Anos</h4>
-                  <p>Este documento serve como comprovativo de compra e certificado de garantia.<br>Todos os equipamentos novos estão cobertos por 3 anos de garantia contra defeitos de fabrico, conforme a lei portuguesa.</p>
+              <div class="internal-note">
+                  <h4>📝 Nota Interna</h4>
+                  <p>Este documento é apenas um comprovativo de compra para uso interno e acompanhamento da sua encomenda.<br>Não se trata de uma fatura oficial com validade fiscal (os valores apresentados não incluem IVA).</p>
               </div>
               
               <div style="margin-top: 40px; text-align: center; font-size: 12px; color: #999;">

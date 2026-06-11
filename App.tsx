@@ -52,7 +52,6 @@ import LoginModal from './components/LoginModal';
 import ResetPasswordModal from './components/ResetPasswordModal'; 
 import ClientArea from './components/ClientArea';
 import InstallPrompt from './components/InstallPrompt';
-import LuckyWheel from './components/LuckyWheel';
 import ProductComparator from './components/ProductComparator';
 import { ADMIN_EMAILS, STORE_NAME, LOYALTY_TIERS, LOGO_URL, INITIAL_PRODUCTS } from './constants';
 import { Product, CartItem, User, Order, Review, ProductVariant, UserTier, PointHistory, OrderItem } from './types';
@@ -79,7 +78,6 @@ const App: React.FC = () => {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false); 
-  const [showLuckyWheel, setShowLuckyWheel] = useState(false);
   
   // Comparator State
   const [compareList, setCompareList] = useState<number[]>([]);
@@ -140,8 +138,7 @@ const App: React.FC = () => {
     /* 
     const hasSpun = localStorage.getItem('lucky_wheel_spun');
     if (!hasSpun) {
-        const timer = setTimeout(() => setShowLuckyWheel(true), 3000); // Show after 3s
-        return () => clearTimeout(timer);
+        // Disabled lucky wheel
     }
     */
   }, []);
@@ -1054,7 +1051,6 @@ const App: React.FC = () => {
       </footer>
       <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemoveItem={removeFromCart} onUpdateQuantity={updateQuantity} total={cartTotal} onCheckout={handleCheckout} user={user} onOpenLogin={() => { setIsCartOpen(false); setIsLoginOpen(true); }} onAddFreebie={addToCart} publicProducts={dbProducts} />
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} onLogin={(u) => { setUser(u); setIsLoginOpen(false); }} />
-      <LuckyWheel isOpen={showLuckyWheel} onClose={() => setShowLuckyWheel(false)} user={user} onUpdateUser={handleUpdateUser} />
       
       <ProductComparator 
           isOpen={isComparatorOpen} 

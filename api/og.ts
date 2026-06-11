@@ -135,10 +135,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     <meta name="twitter:description" content="${description}">
     <meta name="twitter:image" content="${finalImage}">
 
+    <link rel="canonical" href="${PUBLIC_URL}/${productId === 'home' ? '' : `p/${productId}`}" />
+
     <!-- Redirecionamento Automático para Humanos -->
     <script>
         setTimeout(function() {
-            window.location.href = "${destinationUrl}";
+            window.location.replace("${destinationUrl}");
         }, 50);
     </script>
 </head>
