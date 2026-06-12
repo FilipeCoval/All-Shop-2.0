@@ -374,8 +374,8 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                         </td>
                                         <td className="px-4 py-4 text-center">
                                             <div className="flex flex-col items-center">
-                                                <span className={`font-bold px-2 py-1 rounded text-sm ${availableStock > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
-                                                    {availableStock} un.
+                                                <span className={`font-bold px-2 py-1 rounded text-sm ${totalPhysicalStock > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
+                                                    {totalPhysicalStock} un. {pendingInOrders > 0 && <span className="font-normal text-xs opacity-75">(Disp: {availableStock})</span>}
                                                 </span>
                                                 {pendingInOrders > 0 && (
                                                     <button 
