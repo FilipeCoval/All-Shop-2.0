@@ -320,11 +320,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                         if (typeof item === 'object' && item !== null) {
                                             const orderItem = item as any;
                                             if (String(orderItem.productId) === String(mainItem.publicProductId)) {
-                                                const itemVariant = (orderItem.selectedVariant || '').trim().toLowerCase();
-                                                const batchVariant = (mainItem.variant || '').trim().toLowerCase();
-                                                if (batchVariant === '' || itemVariant === batchVariant) {
-                                                    pendingInOrders += (Number(orderItem.quantity) || 1);
-                                                }
+                                                pendingInOrders += (Number(orderItem.quantity) || 1);
                                             }
                                         }
                                     });
@@ -520,7 +516,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                                             ) : <span className="text-gray-400 dark:text-gray-500 text-xs">-</span>}
                                                                         </td>
                                                                         <td className="px-4 py-3 text-center">
-                                                                            <div className="flex justify-center text-[10px] mb-1 font-medium text-gray-600 dark:text-gray-300"><span>{batchStock} un.</span></div>
+                                                                            <div className="flex justify-center text-[10px] mb-1 font-medium text-gray-600 dark:text-gray-300"><span>{batchStock}/{Math.max(qtyBought, 1)} un.</span></div>
                                                                             <div className="w-20 bg-gray-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden mx-auto">
                                                                                 <div 
                                                                                     className={`h-full rounded-full ${ qtyBought > 0 && (qtySold / Math.max(qtyBought, 1)) >= 1 ? 'bg-gray-400 dark:bg-gray-600' : 'bg-blue-500 dark:bg-blue-400'}`} 
