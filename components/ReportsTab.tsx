@@ -45,15 +45,38 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
                 totalShippingCost += (order.storeShippingCost !== undefined ? order.storeShippingCost : 5.40);
             }
 
-            // 3. Custo dos Produtos (CPV)
+            // 3. Custo dos Produtos (CPV) e Cashback
             let orderCost = 0;
             if (order.totalProductCost !== undefined) {
+                // If total cost is already recorded, we assume it doesn't need re-adjustment for cashback in this simple breakdown,
+                // or we need to know if it already accounted for cashback. 
+                // Assuming it's the raw purchase price cost.
                 orderCost = order.totalProductCost;
+                // Since totalProductCost is raw, we still need to subtract cashback if received.
+                let totalOrderCashback = 0;
+                if (order.serialNumbersUsed && order.serialNumbersUsed.length > 0) {
+                    order.serialNumbersUsed.forEach((sn: string) => {
+                        const batch = inventoryProducts.find(p => p.units?.some(u => u.id === sn));
+                        if (batch && batch.cashbackStatus === 'RECEIVED') {
+                            totalOrderCashback += (batch.cashbackValue || 0) / (batch.quantityBought || 1);
+                        }
+                    });
+                } else {
+                    order.items.forEach((item: any) => {
+                        const p = inventoryProducts.find(prod => prod.publicProductId === item.productId);
+                        if (p && p.cashbackStatus === 'RECEIVED') {
+                            totalOrderCashback += ((p.cashbackValue || 0) / (p.quantityBought || 1)) * (item.quantity || 1);
+                        }
+                    });
+                }
+                orderCost -= totalOrderCashback;
             } else if (order.serialNumbersUsed && order.serialNumbersUsed.length > 0) {
                 order.serialNumbersUsed.forEach((sn: string) => {
                     const batch = inventoryProducts.find(p => p.units?.some(u => u.id === sn));
                     if (batch) {
-                        orderCost += (batch.purchasePrice || 0);
+                        const cashbackPerUnit = batch.cashbackStatus === 'RECEIVED' ? ((batch.cashbackValue || 0) / (batch.quantityBought || 1)) : 0;
+                        const netPurchasePrice = (batch.purchasePrice || 0) - cashbackPerUnit;
+                        orderCost += netPurchasePrice;
                     }
                 });
                 const totalItems = order.items.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0);
@@ -61,40 +84,28 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
                     const remainingItems = totalItems - order.serialNumbersUsed.length;
                     const avgCost = order.items.reduce((acc: number, item: any) => {
                         const p = inventoryProducts.find(prod => prod.publicProductId === item.productId);
-                        return acc + (p?.purchasePrice || 0);
+                        const cashbackPerUnit = (p?.cashbackStatus === 'RECEIVED' ? ((p?.cashbackValue || 0) / (p?.quantityBought || 1)) : 0);
+                        return acc + ((p?.purchasePrice || 0) - cashbackPerUnit);
                     }, 0) / order.items.length;
                     orderCost += (avgCost || 0) * remainingItems;
                 }
             } else {
                 order.items.forEach((item: any) => {
                     const p = inventoryProducts.find(prod => prod.publicProductId === item.productId && prod.status !== 'SOLD') || inventoryProducts.find(prod => prod.publicProductId === item.productId);
-                    orderCost += (p?.purchasePrice || 0) * (item.quantity || 1);
+                    const cashbackPerUnit = (p?.cashbackStatus === 'RECEIVED' ? ((p?.cashbackValue || 0) / (p?.quantityBought || 1)) : 0);
+                    const netPurchasePrice = (p?.purchasePrice || 0) - cashbackPerUnit;
+                    orderCost += netPurchasePrice * (item.quantity || 1);
                 });
             }
             totalProductCost += orderCost;
 
-            // 4. Cashback (Receita Extra)
+            // 4. Cashback (Já incorporado no cálculo acima)
             let orderCashback = 0;
-            if (order.serialNumbersUsed && order.serialNumbersUsed.length > 0) {
-                order.serialNumbersUsed.forEach((sn: string) => {
-                    const batch = inventoryProducts.find(p => p.units?.some(u => u.id === sn));
-                    if (batch && batch.cashbackStatus === 'RECEIVED') {
-                        orderCashback += (batch.cashbackValue || 0) / (batch.quantityBought || 1);
-                    }
-                });
-            } else {
-                order.items.forEach((item: any) => {
-                    const p = inventoryProducts.find(prod => prod.publicProductId === item.productId);
-                    if (p && p.cashbackStatus === 'RECEIVED') {
-                        orderCashback += ((p.cashbackValue || 0) / (p.quantityBought || 1)) * (item.quantity || 1);
-                    }
-                });
-            }
             totalCashback += orderCashback;
         });
 
         const totalExpenses = totalProductCost + totalShippingCost;
-        const netProfit = totalSales - totalExpenses + totalCashback;
+        const netProfit = totalSales - totalExpenses;
         const margin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
 
         return {
@@ -378,11 +389,32 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
                             ) : (
                                 monthlyOrders.map(order => {
                                     let prodCost = 0;
-                                    if (order.serialNumbersUsed && order.serialNumbersUsed.length > 0) {
+                                    if (order.totalProductCost !== undefined) {
+                                        prodCost = order.totalProductCost;
+                                        let totalOrderCashback = 0;
+                                        if (order.serialNumbersUsed && order.serialNumbersUsed.length > 0) {
+                                            order.serialNumbersUsed.forEach((sn: string) => {
+                                                const batch = inventoryProducts.find(p => p.units?.some(u => u.id === sn));
+                                                if (batch && batch.cashbackStatus === 'RECEIVED') {
+                                                    totalOrderCashback += (batch.cashbackValue || 0) / (batch.quantityBought || 1);
+                                                }
+                                            });
+                                        } else {
+                                            order.items.forEach((item: any) => {
+                                                const p = inventoryProducts.find(prod => prod.publicProductId === item.productId);
+                                                if (p && p.cashbackStatus === 'RECEIVED') {
+                                                    totalOrderCashback += ((p.cashbackValue || 0) / (p.quantityBought || 1)) * (item.quantity || 1);
+                                                }
+                                            });
+                                        }
+                                        prodCost -= totalOrderCashback;
+                                    } else if (order.serialNumbersUsed && order.serialNumbersUsed.length > 0) {
                                         order.serialNumbersUsed.forEach((sn: string) => {
                                             const batch = inventoryProducts.find(p => p.units?.some(u => u.id === sn));
                                             if (batch) {
-                                                prodCost += (batch.purchasePrice || 0);
+                                                const cashbackPerUnit = batch.cashbackStatus === 'RECEIVED' ? ((batch.cashbackValue || 0) / (batch.quantityBought || 1)) : 0;
+                                                const netPurchasePrice = (batch.purchasePrice || 0) - cashbackPerUnit;
+                                                prodCost += netPurchasePrice;
                                             }
                                         });
                                         const totalItems = order.items.reduce((acc: number, item: any) => acc + (item.quantity || 1), 0);
@@ -390,36 +422,22 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
                                             const remainingItems = totalItems - order.serialNumbersUsed.length;
                                             const avgCost = order.items.reduce((acc: number, item: any) => {
                                                 const p = inventoryProducts.find(prod => prod.publicProductId === item.productId);
-                                                return acc + (p?.purchasePrice || 0);
+                                                const cashbackPerUnit = (p?.cashbackStatus === 'RECEIVED' ? ((p?.cashbackValue || 0) / (p?.quantityBought || 1)) : 0);
+                                                return acc + ((p?.purchasePrice || 0) - cashbackPerUnit);
                                             }, 0) / order.items.length;
                                             prodCost += (avgCost || 0) * remainingItems;
                                         }
                                     } else {
                                         order.items.forEach((item: any) => {
                                             const p = inventoryProducts.find(prod => prod.publicProductId === item.productId && prod.status !== 'SOLD') || inventoryProducts.find(prod => prod.publicProductId === item.productId);
-                                            prodCost += (p?.purchasePrice || 0) * (item.quantity || 1);
+                                            const cashbackPerUnit = (p?.cashbackStatus === 'RECEIVED' ? ((p?.cashbackValue || 0) / (p?.quantityBought || 1)) : 0);
+                                            const netPurchasePrice = (p?.purchasePrice || 0) - cashbackPerUnit;
+                                            prodCost += netPurchasePrice * (item.quantity || 1);
                                         });
                                     }
                                     const shipCost = order.shippingInfo.deliveryMethod === 'Pickup' ? 0 : (order.storeShippingCost || 5.40);
                                     
-                                    let orderCashback = 0;
-                                    if (order.serialNumbersUsed && order.serialNumbersUsed.length > 0) {
-                                        order.serialNumbersUsed.forEach((sn: string) => {
-                                            const batch = inventoryProducts.find(p => p.units?.some(u => u.id === sn));
-                                            if (batch && batch.cashbackStatus === 'RECEIVED') {
-                                                orderCashback += (batch.cashbackValue || 0) / (batch.quantityBought || 1);
-                                            }
-                                        });
-                                    } else {
-                                        order.items.forEach((item: any) => {
-                                            const p = inventoryProducts.find(prod => prod.publicProductId === item.productId);
-                                            if (p && p.cashbackStatus === 'RECEIVED') {
-                                                orderCashback += ((p.cashbackValue || 0) / (p.quantityBought || 1)) * (item.quantity || 1);
-                                            }
-                                        });
-                                    }
-
-                                    const profit = order.total - prodCost - shipCost + orderCashback;
+                                    const profit = order.total - prodCost - shipCost;
 
                                     return (
                                         <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">

@@ -1548,7 +1548,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const handleDeleteCoupon = async (id?: string) => { if (!id || !window.confirm("Apagar cupão permanentemente?")) return; try { await deleteDoc(doc(modularDb, 'coupons', id)); setCoupons(prevCoupons => prevCoupons.filter(coupon => coupon.id !== id)); } catch (e) { alert("Erro ao apagar o cupão."); console.error("Delete coupon error:", e); } };
   const handleOpenInvestedModal = () => { setDetailsModalData({ title: "Detalhe do Investimento", data: products.map(p => ({ id: p.id, name: p.name, qty: p.quantityBought, cost: (p.purchasePrice || 0), total: (p.purchasePrice || 0) * (p.quantityBought || 1) })).filter(i => i.total > 0).sort((a,b) => b.total - a.total), total: stats.totalInvested, columns: [{ header: "Produto", accessor: "name" }, { header: "Qtd. Comprada", accessor: "qty" }, { header: "Custo Unit.", accessor: (i) => formatCurrency(i.cost) }, { header: "Total", accessor: (i) => formatCurrency(i.total) }] }); };
   const handleOpenRevenueModal = () => { setDetailsModalData({ title: "Receita Realizada", data: products.flatMap(p => { const manualSales = (p.salesHistory || []).map(s => ({ id: s.id, name: p.name, date: s.date, qty: s.quantity, val: s.quantity * s.unitPrice })); const manualQty = manualSales.reduce((acc, s) => acc + s.qty, 0); const onlineQty = Math.max(0, (p.quantitySold || 0) - manualQty); const onlineSales = onlineQty > 0 ? [{ id: `online-${p.id}`, name: `${p.name} (Online)`, date: new Date().toISOString().split('T')[0], qty: onlineQty, val: onlineQty * (p.salePrice || 0) }] : []; return [...manualSales, ...onlineSales]; }).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()), total: stats.realizedRevenue, columns: [{ header: "Data", accessor: (i) => new Date(i.date).toLocaleDateString() }, { header: "Produto", accessor: "name" }, { header: "Qtd", accessor: "qty" }, { header: "Valor", accessor: (i) => formatCurrency(i.val) }] }); };
-  const handleOpenProfitModal = () => { setDetailsModalData({ title: "Lucro Líquido por Produto", data: products.map(p => { const manualQty = (p.salesHistory || []).reduce((acc, s) => acc + (s.quantity || 0), 0); const onlineQty = Math.max(0, (p.quantitySold || 0) - manualQty); const revenue = (p.salesHistory || []).reduce((acc, s) => acc + ((s.quantity || 0) * (s.unitPrice || 0)), 0) + (onlineQty * (p.salePrice || 0)); const cogs = (p.quantitySold || 0) * (p.purchasePrice || 0); const cashback = p.cashbackStatus === 'RECEIVED' ? ((p.cashbackValue || 0) / (p.quantityBought || 1)) * (p.quantitySold || 0) : 0; return { id: p.id, name: p.name, profit: revenue - cogs + cashback }; }).filter(p => p.profit !== 0).sort((a,b) => b.profit - a.profit), total: stats.realizedProfit, columns: [{ header: "Produto", accessor: "name" }, { header: "Lucro", accessor: (i) => <span className={i.profit >= 0 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{formatCurrency(i.profit)}</span> }] }); };
+  const handleOpenProfitModal = () => { setDetailsModalData({ title: "Lucro Líquido por Produto", data: products.map(p => { 
+            const manualQty = (p.salesHistory || []).reduce((acc, s) => acc + (s.quantity || 0), 0); 
+            const onlineQty = Math.max(0, (p.quantitySold || 0) - manualQty); 
+            const revenue = (p.salesHistory || []).reduce((acc, s) => acc + ((s.quantity || 0) * (s.unitPrice || 0)), 0) + (onlineQty * (p.salePrice || 0)); 
+            
+            const cashbackPerUnit = p.cashbackStatus === 'RECEIVED' ? ((p.cashbackValue || 0) / (p.quantityBought || 1)) : 0; 
+            const netPurchasePrice = (p.purchasePrice || 0) - cashbackPerUnit;
+            const cogs = (p.quantitySold || 0) * netPurchasePrice; 
+            
+            return { id: p.id, name: p.name, profit: revenue - cogs }; 
+        }).filter(p => p.profit !== 0).sort((a,b) => b.profit - a.profit), total: stats.realizedProfit, columns: [{ header: "Produto", accessor: "name" }, { header: "Lucro", accessor: (i) => <span className={i.profit >= 0 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{formatCurrency(i.profit)}</span> }] }); };
   const handleOpenCashbackManager = () => { setIsCashbackManagerOpen(true); };
   
   // --- HANDLE PRINT LABELS COM BARCODE REAL ---
@@ -1664,11 +1674,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
         totalShippingPaid = (p.salesHistory || []).reduce((acc, sale) => acc + (sale.shippingCost || 0), 0); 
         realizedRevenue += revenue; 
         
-        const cogs = (p.quantitySold || 0) * (p.purchasePrice || 0); 
+        const cashbackPerUnit = p.cashbackStatus === 'RECEIVED' ? ((p.cashbackValue || 0) / (p.quantityBought || 1)) : 0;
+        const netPurchasePrice = (p.purchasePrice || 0) - cashbackPerUnit;
+        const cogs = (p.quantitySold || 0) * netPurchasePrice; 
         const profitFromSales = revenue - cogs - totalShippingPaid; 
         
-        const cashback = p.cashbackStatus === 'RECEIVED' ? ((p.cashbackValue || 0) / (p.quantityBought || 1)) * (p.quantitySold || 0) : 0; 
-        realizedProfit += profitFromSales + cashback; 
+        realizedProfit += profitFromSales; 
         
         if (p.cashbackStatus === 'PENDING') { pendingCashback += (p.cashbackValue || 0); } 
         
