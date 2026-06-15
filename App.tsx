@@ -1037,14 +1037,18 @@ const App: React.FC = () => {
             <span className="opacity-50">&copy; {new Date().getFullYear()} Allshop Store.</span>
             
             {isAdmin && (
-                <div className="md:absolute md:left-1/2 md:-translate-x-1/2 mt-2 md:mt-0">
-                    <a 
-                        href="#dashboard" 
-                        onClick={(e) => { e.preventDefault(); window.location.hash = 'dashboard'; }} 
-                        className="px-4 py-2 bg-gray-800 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-all font-bold shadow-md"
+                <div className="md:absolute md:left-1/2 md:-translate-x-1/2 mt-2 md:mt-0 relative z-50">
+                    <button 
+                        onClick={(e) => { 
+                            e.preventDefault(); 
+                            window.location.hash = '#dashboard'; 
+                            setRoute('#dashboard');
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }} 
+                        className="px-4 py-2 bg-gray-800 rounded-full text-gray-400 hover:text-white hover:bg-gray-700 transition-all font-bold shadow-md cursor-pointer"
                     >
                         Painel Admin
-                    </a>
+                    </button>
                 </div>
             )}
         </div>
