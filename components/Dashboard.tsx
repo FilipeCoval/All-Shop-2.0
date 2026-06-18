@@ -95,9 +95,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   const activeProducts = useMemo(() => {
     if (publicProductsList.length === 0) return products;
 
-    return products
-      .filter(p => p.publicProductId && publicProductsList.some(pub => String(pub.id) === String(p.publicProductId)))
-      .map(p => {
+    return products.map(p => {
+        // If private, return as is
+        if (p.isPrivate) return p;
+
+        // If public, try to find in publicProductsList
         const pub = publicProductsList.find(pub => String(pub.id) === String(p.publicProductId));
         if (pub) {
           return {
@@ -109,7 +111,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
           };
         }
         return p;
-      });
+    });
   }, [products, publicProductsList]);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scannerMode, setScannerMode] = useState<'search' | 'add_unit' | 'sell_unit' | 'tracking' | 'verify_product'>('search');
