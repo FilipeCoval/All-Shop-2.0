@@ -110,6 +110,9 @@ const ProductList: React.FC<ProductListProps> = ({
         const matchesSearch = (name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                               (description || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesCategory = selectedCategory === 'Todas' || normalizeString(category) === normalizeString(selectedCategory);
+        
+        if (product.isPrivate) return false;
+        
         return matchesSearch && matchesCategory;
       });
 
