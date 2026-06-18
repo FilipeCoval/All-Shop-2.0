@@ -26,7 +26,8 @@ const mapToPublicProduct = (inv: Omit<InventoryProduct, 'id'> | InventoryProduct
       images: [],
       variantLabel: 'Opção',
       weight: inv.weight || 0,
-      specs: inv.specs || {}
+      specs: inv.specs || {},
+      isPrivate: inv.isPrivate || false
   };
 
   if (inv.images && inv.images.length > 0) {
@@ -153,22 +154,31 @@ export const useInventory = (isAdmin: boolean = false) => {
         : Date.now();
       
       // 2. Atualizar ou Criar Produto Público
-      const publicProduct = mapToPublicProduct(product, publicId);
-      // Ensure the id field is explicitly present
-      publicProduct.id = publicId;
-      const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
+      if (!product.isPrivate) {
+          const publicProduct = mapToPublicProduct(product, publicId);
+          // Ensure the id field is explicitly present
+          publicProduct.id = publicId;
+          const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
 
-      if (product.publicProductId !== undefined && product.publicProductId !== null) {
-          // If publicProductId exists, ensure the document exists and has the 'id' field
-          await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct, { merge: true });
+          if (product.publicProductId !== undefined && product.publicProductId !== null) {
+              // If publicProductId exists, ensure the document exists and has the 'id' field
+              await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct, { merge: true });
+          } else {
+              // If it's a new product, create it
+              await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct);
+              await updateDoc(docRef, { publicProductId: publicId });
+          }
+
+          // 3. SINCRONIZAÇÃO AUTOMÁTICA DE STOCK
+          await refreshPublicProductStock(publicId);
       } else {
-          // If it's a new product, create it
-          await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct);
-          await updateDoc(docRef, { publicProductId: publicId });
+          // If it is private, ensure it is NOT in products_public
+          try {
+              await deleteDoc(doc(modularDb, 'products_public', publicId.toString()));
+          } catch (e) {
+              // Ignore if it didn't exist
+          }
       }
-
-      // 3. SINCRONIZAÇÃO AUTOMÁTICA DE STOCK
-      await refreshPublicProductStock(publicId);
 
     } catch (error) {
       console.error("Erro ao adicionar produto:", error);
@@ -188,12 +198,25 @@ export const useInventory = (isAdmin: boolean = false) => {
       if (currentData && currentData.publicProductId !== undefined && currentData.publicProductId !== null) {
           const publicId = Number(currentData.publicProductId);
           
-          // NÃO atualizamos metadados públicos (Nome, Preço, Imagens) aqui
-          // para não sobrescrever as edições feitas na Gestão da Loja Online.
+          if (currentData.isPrivate) {
+              // Ensure removed
+              try {
+                  await deleteDoc(doc(modularDb, 'products_public', publicId.toString()));
+              } catch (e) {
+                  // Ignore
+              }
+          } else {
+              // Ensure added/updated
+              const publicProduct = mapToPublicProduct(currentData, publicId);
+              publicProduct.id = publicId;
+              const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
 
-          // 3. SINCRONIZAÇÃO AUTOMÁTICA DE STOCK
-          // Recalcula a soma de todos os lotes
-          await refreshPublicProductStock(publicId);
+              await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct, { merge: true });
+
+              // 3. SINCRONIZAÇÃO AUTOMÁTICA DE STOCK
+              // Recalcula a soma de todos os lotes
+              await refreshPublicProductStock(publicId);
+          }
       }
 
     } catch (error) {

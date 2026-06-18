@@ -211,6 +211,7 @@ export interface Product {
   weight?: number; // Peso em KG
   specs?: Record<string, string | boolean>; // Especificações técnicas para comparação
   isFreebie?: boolean; // NOVO: Produto elegível como oferta
+  isPrivate?: boolean; // NOVO: Produto privado (só admin vê)
 }
 
 export interface ProductVariant {
@@ -255,6 +256,7 @@ export interface InventoryProduct {
   weight?: number; // Peso em KG
   specs?: Record<string, string | boolean>; // Especificações técnicas
   isFreebie?: boolean; // NOVO: Produto elegível como oferta
+  isPrivate?: boolean; // NOVO: Produto privado (só admin vê)
 }
 
 export interface ProductUnit {

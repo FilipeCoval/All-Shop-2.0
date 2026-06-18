@@ -320,7 +320,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
     quantityBought: '', purchasePrice: '', salePrice: '', targetSalePrice: '', originalPrice: '', promoEndsAt: '',
     cashbackValue: '', cashbackStatus: 'NONE' as CashbackStatus, cashbackPlatform: '', cashbackAccount: '', cashbackExpectedDate: '',
     badges: [] as string[], newImageUrl: '', 
-    images: [] as string[], features: [] as string[], newFeature: '', comingSoon: false,
+    images: [] as string[], features: [] as string[], newFeature: '', comingSoon: false, isPrivate: false,
     weight: '', specs: {} as Record<string, string | boolean>, newSpecKey: '', newSpecValue: ''
   });
 
@@ -604,7 +604,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       if (currentSold >= qBought && qBought > 0) productStatus = 'SOLD'; 
       else if (currentSold > 0) productStatus = 'PARTIAL'; 
       
-      const payload: any = { name: formData.name, description: formData.description, category: formData.category, publicProductId: formData.publicProductId !== '' && formData.publicProductId !== null ? Number(formData.publicProductId) : null, variant: formData.variant || null, purchaseDate: formData.purchaseDate, supplierName: formData.supplierName, supplierOrderId: formData.supplierOrderId, quantityBought: qBought, quantitySold: currentSold, salesHistory: (existingProduct && Array.isArray(existingProduct.salesHistory)) ? existingProduct.salesHistory : [], purchasePrice: Number(formData.purchasePrice) || 0, targetSalePrice: formData.targetSalePrice ? Number(formData.targetSalePrice) : null, salePrice: currentSalePrice, originalPrice: formData.originalPrice ? Number(formData.originalPrice) : null, promoEndsAt: formData.promoEndsAt || null, cashbackValue: Number(formData.cashbackValue) || 0, cashbackStatus: formData.cashbackStatus, cashbackPlatform: formData.cashbackPlatform, cashbackAccount: formData.cashbackAccount, cashbackExpectedDate: formData.cashbackExpectedDate, units: modalUnits, status: productStatus, badges: formData.badges, images: formData.images, features: formData.features, comingSoon: formData.comingSoon, weight: formData.weight ? parseFloat(formData.weight) : 0, specs: formData.specs }; 
+      const payload: any = { name: formData.name, description: formData.description, category: formData.category, publicProductId: formData.publicProductId !== '' && formData.publicProductId !== null ? Number(formData.publicProductId) : null, variant: formData.variant || null, purchaseDate: formData.purchaseDate, supplierName: formData.supplierName, supplierOrderId: formData.supplierOrderId, quantityBought: qBought, quantitySold: currentSold, salesHistory: (existingProduct && Array.isArray(existingProduct.salesHistory)) ? existingProduct.salesHistory : [], purchasePrice: Number(formData.purchasePrice) || 0, targetSalePrice: formData.targetSalePrice ? Number(formData.targetSalePrice) : null, salePrice: currentSalePrice, originalPrice: formData.originalPrice ? Number(formData.originalPrice) : null, promoEndsAt: formData.promoEndsAt || null, cashbackValue: Number(formData.cashbackValue) || 0, cashbackStatus: formData.cashbackStatus, cashbackPlatform: formData.cashbackPlatform, cashbackAccount: formData.cashbackAccount, cashbackExpectedDate: formData.cashbackExpectedDate, units: modalUnits, status: productStatus, badges: formData.badges, images: formData.images, features: formData.features, comingSoon: formData.comingSoon, isPrivate: formData.isPrivate, weight: formData.weight ? parseFloat(formData.weight) : 0, specs: formData.specs }; 
       Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]); 
       
       try { 
@@ -614,7 +614,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               await addProduct(payload); 
           }
           setIsModalOpen(false); 
-          if (payload.publicProductId && availableStock > 0 && !payload.comingSoon) { await checkAndProcessStockAlerts(payload.publicProductId, payload.name, availableStock); }
+          if (payload.publicProductId && availableStock > 0 && !payload.comingSoon && !payload.isPrivate) { await checkAndProcessStockAlerts(payload.publicProductId, payload.name, availableStock); }
       } catch (err) { alert('Erro ao guardar.'); } 
   };
   
@@ -634,7 +634,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
         cashbackStatus: product.cashbackStatus, cashbackPlatform: product.cashbackPlatform || '', 
         cashbackAccount: product.cashbackAccount || '', cashbackExpectedDate: product.cashbackExpectedDate || '', 
         badges: product.badges || [], images: product.images || [], newImageUrl: '', 
-        features: product.features || [], newFeature: '', comingSoon: product.comingSoon || false, 
+        features: product.features || [], newFeature: '', comingSoon: product.comingSoon || false, isPrivate: product.isPrivate || false,
         weight: product.weight ? product.weight.toString() : '', specs: product.specs || {}, 
         newSpecKey: '', newSpecValue: '' 
     }); 
@@ -652,8 +652,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
     setIsPublicIdEditable(false); 
     setIsModalOpen(true); 
   };
-  const handleAddNew = () => { setEditingId(null); setFormData({ name: '', description: '', category: 'TV Box', publicProductId: '', variant: '', purchaseDate: new Date().toISOString().split('T')[0], supplierName: '', supplierOrderId: '', quantityBought: '', purchasePrice: '', salePrice: '', targetSalePrice: '', originalPrice: '', promoEndsAt: '', cashbackValue: '', cashbackStatus: 'NONE', cashbackPlatform: '', cashbackAccount: '', cashbackExpectedDate: '', badges: [], images: [], newImageUrl: '', features: [], newFeature: '', comingSoon: false, weight: '', specs: {}, newSpecKey: '', newSpecValue: '' }); setModalUnits([]); setGeneratedCodes([]); setIsPublicIdEditable(false); setIsModalOpen(true); };
-  const handleCreateVariant = (parentProduct: InventoryProduct) => { setEditingId(null); setFormData({ name: parentProduct.name, description: parentProduct.description || '', category: parentProduct.category, publicProductId: parentProduct.publicProductId ? parentProduct.publicProductId.toString() : '', variant: '', purchaseDate: new Date().toISOString().split('T')[0], supplierName: parentProduct.supplierName || '', supplierOrderId: '', quantityBought: '', purchasePrice: parentProduct.purchasePrice.toString(), salePrice: parentProduct.salePrice ? parentProduct.salePrice.toString() : '', targetSalePrice: parentProduct.targetSalePrice ? parentProduct.targetSalePrice.toString() : '', originalPrice: parentProduct.originalPrice ? parentProduct.originalPrice.toString() : '', promoEndsAt: parentProduct.promoEndsAt || '', cashbackValue: '', cashbackStatus: 'NONE', cashbackPlatform: '', cashbackAccount: '', cashbackExpectedDate: '', badges: parentProduct.badges || [], images: parentProduct.images || [], newImageUrl: '', features: parentProduct.features || [], newFeature: '', comingSoon: parentProduct.comingSoon || false, weight: parentProduct.weight ? parentProduct.weight.toString() : '', specs: parentProduct.specs || {}, newSpecKey: '', newSpecValue: '' }); setModalUnits([]); setGeneratedCodes([]); setIsPublicIdEditable(false); setIsModalOpen(true); };
+  const handleAddNew = () => { setEditingId(null); setFormData({ name: '', description: '', category: 'TV Box', publicProductId: '', variant: '', purchaseDate: new Date().toISOString().split('T')[0], supplierName: '', supplierOrderId: '', quantityBought: '', purchasePrice: '', salePrice: '', targetSalePrice: '', originalPrice: '', promoEndsAt: '', cashbackValue: '', cashbackStatus: 'NONE', cashbackPlatform: '', cashbackAccount: '', cashbackExpectedDate: '', badges: [], images: [], newImageUrl: '', features: [], newFeature: '', comingSoon: false, isPrivate: false, weight: '', specs: {}, newSpecKey: '', newSpecValue: '' }); setModalUnits([]); setGeneratedCodes([]); setIsPublicIdEditable(false); setIsModalOpen(true); };
+  const handleCreateVariant = (parentProduct: InventoryProduct) => { setEditingId(null); setFormData({ name: parentProduct.name, description: parentProduct.description || '', category: parentProduct.category, publicProductId: parentProduct.publicProductId ? parentProduct.publicProductId.toString() : '', variant: '', purchaseDate: new Date().toISOString().split('T')[0], supplierName: parentProduct.supplierName || '', supplierOrderId: '', quantityBought: '', purchasePrice: parentProduct.purchasePrice.toString(), salePrice: parentProduct.salePrice ? parentProduct.salePrice.toString() : '', targetSalePrice: parentProduct.targetSalePrice ? parentProduct.targetSalePrice.toString() : '', originalPrice: parentProduct.originalPrice ? parentProduct.originalPrice.toString() : '', promoEndsAt: parentProduct.promoEndsAt || '', cashbackValue: '', cashbackStatus: 'NONE', cashbackPlatform: '', cashbackAccount: '', cashbackExpectedDate: '', badges: parentProduct.badges || [], images: parentProduct.images || [], newImageUrl: '', features: parentProduct.features || [], newFeature: '', comingSoon: parentProduct.comingSoon || false, isPrivate: parentProduct.isPrivate || false, weight: parentProduct.weight ? parentProduct.weight.toString() : '', specs: parentProduct.specs || {}, newSpecKey: '', newSpecValue: '' }); setModalUnits([]); setGeneratedCodes([]); setIsPublicIdEditable(false); setIsModalOpen(true); };
   const handleDelete = async (id: string) => { if (!id) return; if (window.confirm('Apagar registo?')) { try { await deleteProduct(id); } catch (error: any) { alert("Erro: " + error.message); } } };
   const handleDeleteGroup = async (groupId: string, items: InventoryProduct[]) => { 
       if (!window.confirm(`Apagar grupo "${items[0].name}" e ${items.length} lotes?`)) return; 
@@ -2356,7 +2356,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
         }} 
       />
 
-      {isModalOpen && (<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"><div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto transition-colors"><div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center sticky top-0 bg-white dark:bg-slate-900 z-10 transition-colors"><h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">{editingId ? <Edit2 size={20} /> : <Plus size={20} />} {editingId ? 'Editar Lote / Produto' : 'Novo Lote de Stock'}</h2><button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-gray-500 dark:text-gray-400"><X size={24}/></button></div><div className="p-6"><form onSubmit={handleProductSubmit} className="space-y-6">        <div className="bg-blue-50/50 dark:bg-blue-900/10 p-5 rounded-xl border border-blue-100 dark:border-blue-800/30">
+      {isModalOpen && (<div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"><div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto transition-colors"><div className="p-6 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center sticky top-0 bg-white dark:bg-slate-900 z-10 transition-colors"><h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">{editingId ? <Edit2 size={20} /> : <Plus size={20} />} {editingId ? 'Editar Lote / Produto' : 'Novo Lote de Stock'}</h2><button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full text-gray-500 dark:text-gray-400"><X size={24}/></button></div><div className="p-6"><form onSubmit={handleProductSubmit} className="space-y-6">
+        <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 mb-4 flex items-center justify-between">
+            <label className="text-sm font-bold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                {formData.isPrivate ? <Lock size={16} className="text-red-500" /> : <Unlock size={16} className="text-green-500" />} 
+                Produto Privado (Admin Only)
+            </label>
+            <button 
+                type="button" 
+                onClick={() => setFormData({...formData, isPrivate: !formData.isPrivate})}
+                className={`w-12 h-6 rounded-full transition-colors ${formData.isPrivate ? 'bg-red-500' : 'bg-gray-300 dark:bg-slate-600'}`}
+            >
+                <div className={`w-4 h-4 rounded-full bg-white transition-transform ${formData.isPrivate ? 'translate-x-7' : 'translate-x-1'}`}></div>
+            </button>
+        </div>
+        <div className="bg-blue-50/50 dark:bg-blue-900/10 p-5 rounded-xl border border-blue-100 dark:border-blue-800/30">
             <h3 className="text-sm font-bold text-blue-900 dark:text-blue-300 uppercase mb-4 flex items-center gap-2">
                 <LinkIcon size={16} /> Passo 1: Ligar a Produto da Loja (Opcional)
             </h3>
