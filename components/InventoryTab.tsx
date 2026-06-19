@@ -120,6 +120,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
   }, [products]);
 
   const filteredProducts = products.filter(p => {
+    console.log("Filtering product:", p.name, "isPrivate:", p.isPrivate);
     const matchesSearch = (p.name || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     // Calcular stock real para o filtro ser mais preciso que o campo status

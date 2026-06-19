@@ -172,12 +172,14 @@ export const useInventory = (isAdmin: boolean = false) => {
           // 3. SINCRONIZAÇÃO AUTOMÁTICA DE STOCK
           await refreshPublicProductStock(publicId);
       } else {
-          // If it is private, ensure it is NOT in products_public
-          try {
-              await deleteDoc(doc(modularDb, 'products_public', publicId.toString()));
-          } catch (e) {
-              // Ignore if it didn't exist
-          }
+          // If it is private, mark it as private in products_public
+          const publicProduct = mapToPublicProduct(product, publicId);
+          publicProduct.id = publicId;
+          publicProduct.isPrivate = true;
+          const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
+
+          await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct);
+          await updateDoc(docRef, { publicProductId: publicId });
       }
 
     } catch (error) {
@@ -199,16 +201,13 @@ export const useInventory = (isAdmin: boolean = false) => {
           const publicId = Number(currentData.publicProductId);
           
           if (currentData.isPrivate) {
-              // Ensure removed
-              try {
-                  await deleteDoc(doc(modularDb, 'products_public', publicId.toString()));
-              } catch (e) {
-                  // Ignore
-              }
+              // Mark as private instead of deleting
+              await updateDoc(doc(modularDb, 'products_public', publicId.toString()), { isPrivate: true });
           } else {
               // Ensure added/updated
               const publicProduct = mapToPublicProduct(currentData, publicId);
               publicProduct.id = publicId;
+              publicProduct.isPrivate = false;
               const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
 
               await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct, { merge: true });
