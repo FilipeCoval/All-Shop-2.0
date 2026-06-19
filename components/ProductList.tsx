@@ -20,6 +20,7 @@ interface ProductListProps {
   compareList: number[];
   onToggleCompare: (id: number) => void;
   onOpenComparator: () => void;
+  isAdmin?: boolean;
 }
 
 const ProductList: React.FC<ProductListProps> = ({ 
@@ -34,7 +35,8 @@ const ProductList: React.FC<ProductListProps> = ({
     processingProductIds = [],
     compareList = [],
     onToggleCompare,
-    onOpenComparator
+    onOpenComparator,
+    isAdmin = false
 }) => {
   const [sortOption, setSortOption] = useState<'default' | 'price-asc' | 'price-desc'>('default');
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
@@ -111,7 +113,7 @@ const ProductList: React.FC<ProductListProps> = ({
                               (description || '').toLowerCase().includes(searchTerm.toLowerCase());
         const matchesCategory = selectedCategory === 'Todas' || normalizeString(category) === normalizeString(selectedCategory);
         
-        if (product.isPrivate) return false;
+        if (product.isPrivate && !isAdmin) return false;
         
         return matchesSearch && matchesCategory;
       });

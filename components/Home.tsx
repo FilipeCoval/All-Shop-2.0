@@ -21,6 +21,7 @@ interface HomeProps {
   onToggleCompare: (id: number) => void;
   onOpenComparator: () => void;
   reviews?: Review[];
+  isAdmin: boolean;
 }
 
 const Home: React.FC<HomeProps> = ({ 
@@ -36,7 +37,8 @@ const Home: React.FC<HomeProps> = ({
     compareList = [],
     onToggleCompare,
     onOpenComparator,
-    reviews = []
+    reviews = [],
+    isAdmin
 }) => {
   const { categories: storeCategories, loading: catsLoading } = useStoreCategories();
   const [email, setEmail] = useState('');
@@ -205,6 +207,7 @@ const Home: React.FC<HomeProps> = ({
         compareList={compareList}
         onToggleCompare={onToggleCompare}
         onOpenComparator={onOpenComparator}
+        isAdmin={isAdmin}
       />
 
       {/* TESTIMONIALS SECTION */}
