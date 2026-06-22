@@ -301,7 +301,6 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                             
                             // O stock exibido no topo (agregado) deve refletir SEMPRE a soma dos lotes (database of reality para o inventário físico)
                             let totalPhysicalStock = 0;
-                            let totalReservedInBatches = 0;
                             items.forEach(i => {
                                 let b = Number(i.quantityBought) || 0;
                                 let s = Number(i.quantitySold) || 0;
@@ -310,8 +309,18 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                     s = i.units.filter(u => u.status === 'SOLD').length;
                                 }
                                 totalPhysicalStock += Math.max(0, b - s);
-                                totalReservedInBatches += Number(i.reserved) || 0;
                             });
+
+                            // Calcular reservas de stock em tempo real
+                            const nowTime = Date.now();
+                            const activeReservationsCount = (reservations || [])
+                                .filter(r => {
+                                    if (String(r.productId) !== String(mainItem.publicProductId)) return false;
+                                    const rawExp = r.expiresAt as any;
+                                    const exp = !rawExp ? 0 : (typeof rawExp === 'number' ? rawExp : (typeof rawExp.toMillis === 'function' ? rawExp.toMillis() : (typeof rawExp.toDate === 'function' ? rawExp.toDate().getTime() : (rawExp.seconds !== undefined ? rawExp.seconds * 1000 : Number(rawExp)))));
+                                    return !isNaN(exp) && exp > nowTime;
+                                })
+                                .reduce((sum, r) => sum + (r.quantity || 0), 0);
 
                             // Calcular stock pendente em encomendas por processar/enviar
                             let pendingInOrders = 0;
@@ -329,7 +338,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                             });
 
                             // O stock disponível é o físico subtraído pelas reservas nos lotes (carrinhos) e ordens pendentes
-                            const availableStock = Math.max(0, totalPhysicalStock - totalReservedInBatches - pendingInOrders);
+                            const availableStock = Math.max(0, totalPhysicalStock - activeReservationsCount - pendingInOrders);
                             
                             const alertsCount = mainItem.publicProductId 
                                 ? stockAlerts.filter(a => a.productId === mainItem.publicProductId).length
@@ -376,7 +385,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                         <td className="px-4 py-4 text-center">
                                             <div className="flex flex-col items-center">
                                                 <span className={`font-bold px-2 py-1 rounded text-sm ${totalPhysicalStock > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
-                                                    {totalPhysicalStock} un. {pendingInOrders > 0 && <span className="font-normal text-xs opacity-75">(Disp: {availableStock})</span>}
+                                                    {totalPhysicalStock} un. {(pendingInOrders > 0 || activeReservationsCount > 0) && <span className="font-normal text-xs opacity-75">(Disp: {availableStock})</span>}
                                                 </span>
                                                 {pendingInOrders > 0 && (
                                                     <button 

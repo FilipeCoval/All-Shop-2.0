@@ -14,13 +14,33 @@ export const useStock = (isAdmin: boolean) => {
     setLoading(true);
 
     // 1. Escutar Reservas Temporárias em Carrinhos (Todos os utilizadores)
-    const resQ = query(collection(modularDb, 'stock_reservations'), where('expiresAt', '>', Date.now()));
+    const resQ = collection(modularDb, 'stock_reservations');
     const unsubRes = onSnapshot(
       resQ,
       (snapshot) => {
         const resList: StockReservation[] = [];
+        const now = Date.now();
         snapshot.forEach(doc => {
-            resList.push({ id: doc.id, ...doc.data() } as StockReservation);
+            const data = doc.data();
+            let expMillis = 0;
+            if (data.expiresAt) {
+                if (typeof data.expiresAt === 'number') {
+                    expMillis = data.expiresAt;
+                } else if (typeof data.expiresAt.toMillis === 'function') {
+                    expMillis = data.expiresAt.toMillis();
+                } else if (typeof data.expiresAt.toDate === 'function') {
+                    expMillis = data.expiresAt.toDate().getTime();
+                } else if (data.expiresAt.seconds !== undefined) {
+                    expMillis = data.expiresAt.seconds * 1000;
+                } else {
+                    const parsed = Number(data.expiresAt);
+                    expMillis = isNaN(parsed) ? 0 : parsed;
+                }
+            }
+            // Apenas considerar reservas futuras
+            if (!expMillis || expMillis > now) {
+                resList.push({ id: doc.id, ...data, expiresAt: expMillis } as any);
+            }
         });
         setReservations(resList);
       }, 

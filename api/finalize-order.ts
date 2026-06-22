@@ -26,7 +26,30 @@ export default async function handler(req: Request, res: Response) {
             const orderRef = firestore.collection('orders').doc(idempotencyKey);
             const orderDoc = await t.get(orderRef);
             if (orderDoc.exists) {
-                console.info(`[finalize-order] Order ${idempotencyKey} already exists. Returning success.`);
+                console.info(`[finalize-order] Order ${idempotencyKey} already exists. Updating any status/confirmations...`);
+                if (order) {
+                    const existingData = orderDoc.data() || {};
+                    const updateObj: any = {};
+                    if (order.status && order.status !== existingData.status) {
+                        updateObj.status = order.status;
+                    }
+                    if (order.statusHistory) {
+                        updateObj.statusHistory = order.statusHistory;
+                    }
+                    if (order.shippingInfo) {
+                        updateObj.shippingInfo = order.shippingInfo;
+                    }
+                    if (order.trackingNumber !== undefined) {
+                        updateObj.trackingNumber = order.trackingNumber;
+                    }
+                    if (order.pointsAwarded !== undefined) {
+                        updateObj.pointsAwarded = order.pointsAwarded;
+                    }
+                    
+                    if (Object.keys(updateObj).length > 0) {
+                        t.update(orderRef, updateObj);
+                    }
+                }
                 return;
             }
 

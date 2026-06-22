@@ -539,7 +539,7 @@ const App: React.FC = () => {
                       variantName: variantName || null,
                       quantity: newQuantity,
                       sessionId,
-                      expiresAt: Date.now() + 15 * 60 * 1000
+                      expiresAt: new Date(Date.now() + 15 * 60 * 1000)
                   }).catch(err => console.debug("Reservation write ignored:", err));
               }
               return true;
@@ -718,6 +718,10 @@ const App: React.FC = () => {
           console.log("DEBUG handleCheckout cleanOrder:", cleanOrder, "User UID from app state:", user?.uid);
           cleanOrder.stockDeducted = true; // Indica que o stock público já foi deduzido na altura da compra
           
+          const orderRefCheck = doc(modularDb, "orders", cleanOrder.id);
+          const orderSnapCheck = await getDoc(orderRefCheck);
+          const isExistingOrder = orderSnapCheck.exists();
+          
           // Using backend finalizeOrder with graceful client fallback
           const apiResponse = await finalizeOrder(
               cleanOrder.items,
@@ -731,87 +735,95 @@ const App: React.FC = () => {
               console.warn("Server API returned fallbackToClient due to Admin SDK permissions. Writing order to database via client SDK...");
               
               const orderRef = doc(modularDb, "orders", cleanOrder.id);
-              await setDoc(orderRef, {
-                  ...cleanOrder,
-                  createdAt: serverTimestamp()
-              });
-              
-              for (const item of cleanOrder.items) {
-                  try {
-                      const publicRef = doc(modularDb, "products_public", item.productId.toString());
-                      const publicSnap = await getDoc(publicRef);
-                      if (publicSnap.exists()) {
-                          const publicData = publicSnap.data();
-                          const currentStock = Number(publicData.stock || 0);
-                          const newStock = Math.max(0, currentStock - Number(item.quantity));
-                          
-                          if (item.selectedVariant && publicData.variants) {
-                              const updatedVariants = (publicData.variants || []).map((v: any) => {
-                                  if (String(v.name).trim() === String(item.selectedVariant).trim()) {
-                                      return { ...v, stock: Math.max(0, (Number(v.stock) || 0) - Number(item.quantity)) };
-                                  }
-                                  return v;
-                              });
-                              await updateDoc(publicRef, { stock: newStock, variants: updatedVariants });
-                          } else {
-                              await updateDoc(publicRef, { stock: newStock });
+              if (isExistingOrder) {
+                  // Se a encomenda já existe na base de dados, atualiza apenas o estado sem decrementar stock de novo
+                  await updateDoc(orderRef, {
+                      status: cleanOrder.status,
+                      statusHistory: cleanOrder.statusHistory || [],
+                      ...(cleanOrder.shippingInfo ? { shippingInfo: cleanOrder.shippingInfo } : {}),
+                      ...(cleanOrder.trackingNumber !== undefined ? { trackingNumber: cleanOrder.trackingNumber } : {}),
+                      ...(cleanOrder.pointsAwarded !== undefined ? { pointsAwarded: cleanOrder.pointsAwarded } : {})
+                  });
+              } else {
+                  await setDoc(orderRef, {
+                      ...cleanOrder,
+                      createdAt: serverTimestamp()
+                  });
+                  
+                  for (const item of cleanOrder.items) {
+                      try {
+                          const publicRef = doc(modularDb, "products_public", item.productId.toString());
+                          const publicSnap = await getDoc(publicRef);
+                          if (publicSnap.exists()) {
+                              const publicData = publicSnap.data();
+                              const currentStock = Number(publicData.stock || 0);
+                              const newStock = Math.max(0, currentStock - Number(item.quantity));
+                              
+                              if (item.selectedVariant && publicData.variants) {
+                                  const updatedVariants = (publicData.variants || []).map((v: any) => {
+                                      if (String(v.name).trim() === String(item.selectedVariant).trim()) {
+                                          return { ...v, stock: Math.max(0, (Number(v.stock) || 0) - Number(item.quantity)) };
+                                      }
+                                      return v;
+                                  });
+                                  await updateDoc(publicRef, { stock: newStock, variants: updatedVariants });
+                              } else {
+                                  await updateDoc(publicRef, { stock: newStock });
+                              }
                           }
+                      } catch (stockErr) {
+                          console.error("Client-side stock decrement failed:", stockErr);
                       }
-                  } catch (stockErr) {
-                      console.error("Client-side stock decrement failed:", stockErr);
-                  }
 
-                  try {
-                      // Query inventory lots matching the public product ID
-                      const qInv = query(
-                          collection(modularDb, "products_inventory"),
-                          where("publicProductId", "==", Number(item.productId))
-                      );
-                      const invSnap = await getDocs(qInv);
-                      if (!invSnap.empty) {
-                          // Find exact match by variant name (case-insensitive and trimmed)
-                          let matchedDoc = invSnap.docs.find(docSnap => {
-                              const d = docSnap.data();
-                              const vName = (d.variant || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                              const requestedV = (item.selectedVariant || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                              return vName === requestedV;
-                          });
-                          
-                          if (!matchedDoc) {
-                              matchedDoc = invSnap.docs[0];
+                      try {
+                          // Query inventory lots matching the public product ID
+                          const qInv = query(
+                              collection(modularDb, "products_inventory"),
+                              where("publicProductId", "==", Number(item.productId))
+                          );
+                          const invSnap = await getDocs(qInv);
+                          if (!invSnap.empty) {
+                              // Find exact match by variant name (case-insensitive and trimmed)
+                              let matchedDoc = invSnap.docs.find(docSnap => {
+                                  const d = docSnap.data();
+                                  const vName = (d.variant || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                                  const requestedV = (item.selectedVariant || '').replace(/\s+/g, ' ').trim().toLowerCase();
+                                  return vName === requestedV;
+                              });
+                              
+                              if (!matchedDoc) {
+                                  matchedDoc = invSnap.docs[0];
+                              }
+                              
+                              const inventoryData = matchedDoc.data();
+                              const currentQtySold = Number(inventoryData.quantitySold || 0);
+                              const currentReserved = Number(inventoryData.reserved || 0);
+                              await updateDoc(matchedDoc.ref, {
+                                  quantitySold: currentQtySold + Number(item.quantity),
+                                  reserved: Math.max(0, currentReserved - Number(item.quantity))
+                              });
                           }
-                          
-                          const inventoryData = matchedDoc.data();
-                          const currentQtySold = Number(inventoryData.quantitySold || 0);
-                          const currentReserved = Number(inventoryData.reserved || 0);
-                          await updateDoc(matchedDoc.ref, {
-                              quantitySold: currentQtySold + Number(item.quantity),
-                              reserved: Math.max(0, currentReserved - Number(item.quantity))
-                          });
+                      } catch (invErr) {
+                          console.error("Client-side inventory update failed:", invErr);
                       }
-                  } catch (invErr) {
-                      console.error("Client-side inventory update failed:", invErr);
                   }
               }
           }
 
           console.info("Order processed successfully");
           
-          const alreadyExists = false;
-
           // 4. Limpar reservas do carrinho (fora da transação principal para não bloquear se falhar)
-          try {
-              const reservationQuery = await getDocs(query(collection(modularDb, 'stock_reservations'), where('sessionId', '==', sessionId)));
-              if (!reservationQuery.empty) {
-                  const batch = writeBatch(modularDb);
-                  reservationQuery.forEach(docSnap => batch.delete(doc(modularDb, 'stock_reservations', docSnap.id)));
-                  await batch.commit();
+          if (!isExistingOrder) {
+              try {
+                  const reservationQuery = await getDocs(query(collection(modularDb, 'stock_reservations'), where('sessionId', '==', sessionId)));
+                  if (!reservationQuery.empty) {
+                      const batch = writeBatch(modularDb);
+                      reservationQuery.forEach(docSnap => batch.delete(doc(modularDb, 'stock_reservations', docSnap.id)));
+                      await batch.commit();
+                  }
+              } catch (resErr) {
+                  console.error("Erro ao limpar reservas:", resErr);
               }
-              
-              // Removed logic that tries to call the backend API. 
-              // Stock is already updated via transaction on lines 646-649.
-          } catch (resErr) {
-              console.error("Erro ao limpar reservas:", resErr);
           }
 
           setOrders(prev => {
@@ -822,7 +834,7 @@ const App: React.FC = () => {
               return [newOrder, ...prev];
           });
           
-          if (!isAutoSave) {
+          if (!isAutoSave && !isExistingOrder) {
               setCartItems([]);
               
               (async () => {
@@ -861,7 +873,7 @@ const App: React.FC = () => {
               })();
           }
           
-          if (user?.uid && !alreadyExists) {
+          if (user?.uid && !isExistingOrder) {
             const userRef = doc(modularDb, "users", user.uid);
             await runTransaction(modularDb, async (transaction) => {
               const userDoc = await transaction.get(userRef);

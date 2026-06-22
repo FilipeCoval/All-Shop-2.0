@@ -434,7 +434,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                                   const oscillator = audioCtx.createOscillator();
                                   const gainNode = audioCtx.createGain();
                                   
-                                  oscillator.type = 'bell' as any || 'sine'; // Fallback to sine if not supported
+                                  oscillator.type = 'sine'; // Fallback to sine if not supported
                                   oscillator.frequency.setValueAtTime(1046.50, audioCtx.currentTime); // C6 Note
                                   oscillator.frequency.exponentialRampToValueAtTime(1318.51, audioCtx.currentTime + 0.1); // E6 Note
                                   

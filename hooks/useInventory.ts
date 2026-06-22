@@ -103,7 +103,12 @@ export const useInventory = (isAdmin: boolean = false) => {
           const normalizeVName = (n: string) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
           lots.forEach(l => {
-              const qty = Math.max(0, (l.data.quantityBought || 0) - (l.data.quantitySold || 0));
+              let qty = Math.max(0, (l.data.quantityBought || 0) - (l.data.quantitySold || 0));
+              if (l.data.units && Array.isArray(l.data.units) && l.data.units.length > 0) {
+                  const b = l.data.units.length;
+                  const s = l.data.units.filter((u: any) => u.status === 'SOLD').length;
+                  qty = Math.max(0, b - s);
+              }
               totalPhysical += qty;
               
               const vNameRaw = l.data.variant || '';
