@@ -730,6 +730,11 @@ const App: React.FC = () => {
           const orderRefCheck = doc(modularDb, "orders", cleanOrder.id);
           const orderSnapCheck = await getDoc(orderRefCheck);
           const isExistingOrder = orderSnapCheck.exists();
+          const existingOrderStatus = isExistingOrder ? orderSnapCheck.data()?.status : null;
+          
+          // isFirstFinalization é true quando estamos a finalizar a compra (isAutoSave é false)
+          // e a encomenda ainda não existia ou o seu estado anterior na DB era 'Pendente'.
+          const isFirstFinalization = !isAutoSave && (!isExistingOrder || existingOrderStatus === 'Pendente');
           
           // Using backend finalizeOrder with graceful client fallback
           const apiResponse = await finalizeOrder(
@@ -822,7 +827,7 @@ const App: React.FC = () => {
           console.info("Order processed successfully");
           
           // 4. Limpar reservas do carrinho (fora da transação principal para não bloquear se falhar)
-          if (!isExistingOrder) {
+          if (isFirstFinalization) {
               try {
                   const reservationQuery = await getDocs(query(collection(modularDb, 'stock_reservations'), where('sessionId', '==', sessionId)));
                   if (!reservationQuery.empty) {
@@ -843,7 +848,7 @@ const App: React.FC = () => {
               return [newOrder, ...prev];
           });
           
-          if (!isAutoSave && !isExistingOrder) {
+          if (isFirstFinalization) {
               setCartItems([]);
               
               (async () => {
@@ -882,7 +887,7 @@ const App: React.FC = () => {
               })();
           }
           
-          if (user?.uid && !isExistingOrder) {
+          if (user?.uid && isFirstFinalization) {
             const userRef = doc(modularDb, "users", user.uid);
             await runTransaction(modularDb, async (transaction) => {
               const userDoc = await transaction.get(userRef);
