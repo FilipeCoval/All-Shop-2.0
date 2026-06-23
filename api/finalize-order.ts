@@ -88,13 +88,35 @@ export default async function handler(req: Request, res: Response) {
                     reserved: Math.max(0, currentReserved - itemQty)
                 });
 
+                // Recalculate true physical stock across all batches
+                let totalStock = 0;
+                let totalSold = 0;
+                fallbackQuery.docs.forEach(docSnap => {
+                    const d = docSnap.data();
+                    let b = Number(d.quantityBought) || 0;
+                    let s = Number(d.quantitySold) || 0;
+                    
+                    if (d.units && Array.isArray(d.units) && d.units.length > 0) {
+                        b = d.units.length;
+                        s = d.units.filter((u: any) => u.status === 'SOLD').length;
+                    }
+                    
+                    // If this doc is the matched one, its quantitySold is about to increase by itemQty
+                    if (docSnap.id === matchedDoc.id) {
+                        s += itemQty;
+                    }
+                    
+                    totalStock += b;
+                    totalSold += s;
+                });
+                
+                const physicalAvailable = Math.max(0, totalStock - totalSold);
+
                 // ALSO update the public catalog document ('products_public') stock!
                 const publicRef = firestore.collection('products_public').doc(productIdStr);
                 const publicDoc = await t.get(publicRef);
                 if (publicDoc.exists) {
                     const publicData = publicDoc.data()!;
-                    const currentStock = Number(publicData.stock || 0);
-                    const newStock = Math.max(0, currentStock - itemQty);
 
                     // If item has a variant, update the variant-specific stock in products_public too!
                     if (item.selectedVariant && publicData.variants) {
@@ -109,12 +131,12 @@ export default async function handler(req: Request, res: Response) {
                             return v;
                         });
                         t.update(publicRef, {
-                            stock: newStock,
+                            stock: physicalAvailable,
                             variants: updatedVariants
                         });
                     } else {
                         t.update(publicRef, {
-                            stock: newStock
+                            stock: physicalAvailable
                         });
                     }
                 }

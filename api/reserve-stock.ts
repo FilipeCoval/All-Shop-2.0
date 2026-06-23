@@ -10,6 +10,7 @@ export default async function handler(req: Request, res: Response) {
     const userId = req.headers.authorization; // Simple mock of auth check
     
     if (!productId || quantity === undefined) return res.status(400).json({ error: 'Missing data' });
+    if (!userId && !guestToken) return res.status(400).json({ error: 'Falta o guestToken ou userId para efetuar a reserva.' });
 
     const firestore = db;
     if (!firestore) {
@@ -96,47 +97,77 @@ export default async function handler(req: Request, res: Response) {
                     break;
                 }
             }
-
-            // Query for the product by publicProductId
+            
+            // Query for ALL products_inventory documents by publicProductId
             const productQuery = firestore.collection('products_inventory').where('publicProductId', '==', Number(productId));
             const snapshot = await t.get(productQuery);
             
-            let productRef;
-            let productDoc;
-            if (snapshot.empty) {
-                productRef = firestore.collection('products_inventory').doc(productId);
-                productDoc = await t.get(productRef);
-                if (!productDoc.exists) {
-                    throw new Error(`Product not found in inventory with productId: ${productId}`);
+            // Calculate total available stock across ALL inventory docs
+            let totalStock = 0;
+            let totalSold = 0;
+            let totalReserved = 0;
+            let bestDoc: any = null;
+            let maxCapacity = -1;
+
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                let b = data.quantityBought || 0;
+                let s = data.quantitySold || 0;
+                const r = data.reserved || 0;
+                
+                // If there's an active units array, use it as database of truth for bought/sold
+                if (data.units && Array.isArray(data.units) && data.units.length > 0) {
+                    b = data.units.length;
+                    s = data.units.filter((u: any) => u.status === 'SOLD').length;
                 }
-            } else {
-                productDoc = snapshot.docs[0];
-                productRef = productDoc.ref;
+                
+                totalStock += b;
+                totalSold += s;
+                totalReserved += r;
+                
+                const capacity = b - s - r;
+                if (capacity > maxCapacity) {
+                    maxCapacity = capacity;
+                    bestDoc = doc;
+                }
+            });
+
+            if (!bestDoc) {
+                throw new Error('Product not found');
             }
-            
-            const data = productDoc.data()!;
+            const data = bestDoc.data()!;
+            const productRef = bestDoc.ref;
             
             if (quantity === 0) {
                 // Delete existing reservation
                 if (existingRes) {
                     const resQty = existingRes.data().quantity || 0;
                     t.update(productRef, { reserved: Math.max(0, (data.reserved || 0) - resQty) });
+                    
+                    // Sync products_public: stock should contain the physical stock (client handles dynamic subtraction of active reservations)
+                    const publicProductRef = firestore.collection('products_public').doc(String(productId));
+                    const physicalAvailable = Math.max(0, totalStock - totalSold);
+                    t.update(publicProductRef, { stock: physicalAvailable });
+                    
                     t.delete(existingRes.ref);
                 }
             } else {
                 // Update/Create reservation
-                const stock = data.quantityBought || 0; 
                 const reserved = data.reserved || 0;
-                const sold = data.quantitySold || 0;
                 
                 // If updating, subtract the old reservation quantity first
                 const oldResQty = existingRes ? (existingRes.data().quantity || 0) : 0;
-                const available = stock - sold - (reserved - oldResQty);
+                const availableTotal = totalStock - totalSold - (totalReserved - oldResQty);
                 
-                if (available < quantity) throw new Error('Insufficient stock');
+                if (availableTotal < quantity) throw new Error('Insufficient stock');
                 
-                // Update reserved count
-                t.update(productRef, { reserved: reserved - oldResQty + quantity });
+                // Update reserved count on the bestDoc
+                t.update(productRef, { reserved: (data.reserved || 0) - oldResQty + quantity });
+                
+                // Sync products_public: stock should contain the physical stock (client handles dynamic subtraction of active reservations)
+                const publicProductRef = firestore.collection('products_public').doc(String(productId));
+                const physicalAvailable = Math.max(0, totalStock - totalSold);
+                t.update(publicProductRef, { stock: physicalAvailable });
                 
                 // Update or Create reservation
                 if (existingRes) {

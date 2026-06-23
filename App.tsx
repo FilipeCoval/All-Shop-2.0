@@ -229,6 +229,15 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Garantir que guestToken existe localmente desde o primeiro instante para reservas
+  useEffect(() => {
+    let gt = localStorage.getItem('guestToken');
+    if (!gt) {
+        gt = 'guest_' + Math.random().toString(36).substring(2, 15) + '_' + Date.now();
+        localStorage.setItem('guestToken', gt);
+    }
+  }, []);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const mode = params.get('mode');
