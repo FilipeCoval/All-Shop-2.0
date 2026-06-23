@@ -822,6 +822,29 @@ const App: React.FC = () => {
                       }
                   }
               }
+          } else {
+              // Mesmo que a API tenha sucesso no servidor, fazemos também uma atualização rápida via SDK do cliente
+              // para garantir sincronização instantânea em tempo real com a Dashboard do administrador
+              try {
+                  const orderRef = doc(modularDb, "orders", cleanOrder.id);
+                  if (isExistingOrder) {
+                      await updateDoc(orderRef, {
+                          status: cleanOrder.status,
+                          statusHistory: cleanOrder.statusHistory || [],
+                          ...(cleanOrder.shippingInfo ? { shippingInfo: cleanOrder.shippingInfo } : {}),
+                          ...(cleanOrder.trackingNumber !== undefined ? { trackingNumber: cleanOrder.trackingNumber } : {}),
+                          ...(cleanOrder.pointsAwarded !== undefined ? { pointsAwarded: cleanOrder.pointsAwarded } : {})
+                      });
+                  } else {
+                      await setDoc(orderRef, {
+                          ...cleanOrder,
+                          createdAt: serverTimestamp()
+                      }, { merge: true });
+                  }
+                  console.log("Sincronização imediata do estado da encomenda concluída do lado do cliente.");
+              } catch (clientSyncErr) {
+                  console.warn("Aviso na sincronização do lado do cliente (a API do servidor reportou sucesso):", clientSyncErr);
+              }
           }
 
           console.info("Order processed successfully");
