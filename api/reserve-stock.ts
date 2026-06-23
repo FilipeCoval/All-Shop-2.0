@@ -9,7 +9,7 @@ export default async function handler(req: Request, res: Response) {
     const { productId, quantity, guestToken } = req.body;
     const userId = req.headers.authorization; // Simple mock of auth check
     
-    if (!productId || !quantity) return res.status(400).json({ error: 'Missing data' });
+    if (!productId || quantity === undefined) return res.status(400).json({ error: 'Missing data' });
 
     const firestore = db;
     if (!firestore) {
@@ -81,54 +81,81 @@ export default async function handler(req: Request, res: Response) {
         
         await firestore.runTransaction(async (t) => {
             console.log("DEBUG: transaction attempt");
+
+            // Look for existing reservation for this user/token and product
+            const resQuery = firestore.collection('stock_reservations')
+                .where('productId', '==', Number(productId));
             
+            // Filter by userId or guestToken
+            const resSnap = await t.get(resQuery);
+            let existingRes = null;
+            for (const doc of resSnap.docs) {
+                const data = doc.data();
+                if ((userId && data.userId === userId) || (guestToken && data.guestToken === guestToken)) {
+                    existingRes = doc;
+                    break;
+                }
+            }
+
             // Query for the product by publicProductId
-            console.log("DEBUG: Looking for products_inventory with publicProductId:", Number(productId));
             const productQuery = firestore.collection('products_inventory').where('publicProductId', '==', Number(productId));
             const snapshot = await t.get(productQuery);
             
-            console.log("DEBUG: snapshot empty:", snapshot.empty);
             let productRef;
             let productDoc;
             if (snapshot.empty) {
-                // Try looking up by ID as fallback if Number(productId) fails
-                console.log("DEBUG: Trying fallback lookup by doc ID:", productId);
                 productRef = firestore.collection('products_inventory').doc(productId);
                 productDoc = await t.get(productRef);
                 if (!productDoc.exists) {
                     throw new Error(`Product not found in inventory with productId: ${productId}`);
                 }
-                console.log("DEBUG: Found product via fallback doc ID");
             } else {
                 productDoc = snapshot.docs[0];
                 productRef = productDoc.ref;
             }
             
             const data = productDoc.data()!;
-            console.log("DEBUG: product data", data);
             
-            const stock = data.quantityBought || 0; 
-            const reserved = data.reserved || 0;
-            const available = stock - (data.quantitySold || 0) - reserved;
-            
-            console.log("DEBUG: stock details", { stock, sold: data.quantitySold, reserved, available });
-            
-            if (available < quantity) throw new Error('Insufficient stock');
-            
-            // Increment reserved
-            t.update(productRef, { reserved: reserved + quantity });
-            
-            // Create reservation
-            const reservationRef = firestore.collection('stock_reservations').doc();
-            console.log("DEBUG: creating reservation");
-            t.set(reservationRef, {
-                productId: Number(productId),
-                quantity,
-                userId: userId || null,
-                guestToken: guestToken || null,
-                createdAt: FieldValue.serverTimestamp(),
-                expiresAt: Timestamp.fromMillis(Date.now() + 15 * 60 * 1000)
-            });
+            if (quantity === 0) {
+                // Delete existing reservation
+                if (existingRes) {
+                    const resQty = existingRes.data().quantity || 0;
+                    t.update(productRef, { reserved: Math.max(0, (data.reserved || 0) - resQty) });
+                    t.delete(existingRes.ref);
+                }
+            } else {
+                // Update/Create reservation
+                const stock = data.quantityBought || 0; 
+                const reserved = data.reserved || 0;
+                const sold = data.quantitySold || 0;
+                
+                // If updating, subtract the old reservation quantity first
+                const oldResQty = existingRes ? (existingRes.data().quantity || 0) : 0;
+                const available = stock - sold - (reserved - oldResQty);
+                
+                if (available < quantity) throw new Error('Insufficient stock');
+                
+                // Update reserved count
+                t.update(productRef, { reserved: reserved - oldResQty + quantity });
+                
+                // Update or Create reservation
+                if (existingRes) {
+                    t.update(existingRes.ref, {
+                        quantity,
+                        expiresAt: Timestamp.fromMillis(Date.now() + 15 * 60 * 1000)
+                    });
+                } else {
+                    const reservationRef = firestore.collection('stock_reservations').doc();
+                    t.set(reservationRef, {
+                        productId: Number(productId),
+                        quantity,
+                        userId: userId || null,
+                        guestToken: guestToken || null,
+                        createdAt: FieldValue.serverTimestamp(),
+                        expiresAt: Timestamp.fromMillis(Date.now() + 15 * 60 * 1000)
+                    });
+                }
+            }
         });
         
         console.log("DEBUG: reserve-stock transaction success");
