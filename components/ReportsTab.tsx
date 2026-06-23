@@ -1,19 +1,58 @@
 import React, { useState, useMemo } from 'react';
 import { Order, InventoryProduct, OrderItem } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer, Tooltip } from 'recharts';
-import { Calendar, DollarSign, TrendingUp, TrendingDown, Truck, Package, Download } from 'lucide-react';
+import { Calendar, DollarSign, TrendingUp, TrendingDown, Truck, Package, Download, Eye } from 'lucide-react';
 
 interface ReportsTabProps {
     orders: Order[];
     inventoryProducts: InventoryProduct[];
+    onViewOrderDetails?: (order: Order) => void;
 }
 
-const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) => {
+const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts, onViewOrderDetails }) => {
     const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
     // Helper para formatar moeda
     const formatCurrency = (val: number) => new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(val);
+
+    // Helper robusto para calcular receita de produtos e portes pagos pelo cliente, integrando total editado (com gorjetas/descontos manuais)
+    const getOrderRevenueAndShipping = (order: Order) => {
+        const deliveryMethod = order.shippingInfo?.deliveryMethod || 'Shipping';
+        const paymentMethod = order.shippingInfo?.paymentMethod || '';
+        const discountValue = order.discountValue || 0;
+        
+        const productSubtotal = order.items.reduce((acc: number, item: any) => {
+            if (typeof item === 'string') return acc;
+            return acc + (item.price * item.quantity);
+        }, 0);
+        
+        const payableTotal = Math.max(0, productSubtotal - discountValue);
+        
+        let standardCustomerShipping = 0;
+        if (deliveryMethod !== 'Pickup') {
+            if (order.id.startsWith('MANUAL-')) {
+                const diff = order.total - payableTotal;
+                standardCustomerShipping = diff > 0 && diff < 20 ? diff : 0;
+            } else {
+                if (paymentMethod === 'Cobrança') {
+                    standardCustomerShipping = payableTotal < 50 ? 12 : 7;
+                } else {
+                    standardCustomerShipping = payableTotal >= 50 ? 0 : 4.99;
+                }
+            }
+        }
+        
+        let productRevenue = Math.max(0, order.total - standardCustomerShipping);
+        let customerPaidShipping = standardCustomerShipping;
+        
+        if (customerPaidShipping > order.total) {
+            customerPaidShipping = 0;
+            productRevenue = order.total;
+        }
+
+        return { productRevenue, customerPaidShipping };
+    };
 
     // Filtrar encomendas válidas (pagas/enviadas) do mês selecionado
     const monthlyOrders = useMemo(() => {
@@ -34,15 +73,10 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
         let totalCashback = 0;
 
         monthlyOrders.forEach(order => {
-            // Calcular quanto o cliente pagou de portes (Diferença entre o total e a soma dos produtos com desconto)
-            const productSubtotal = order.items.reduce((acc: number, item: any) => {
-                if (typeof item === 'string') return acc;
-                return acc + (item.price * item.quantity);
-            }, 0);
-            const productRevenue = Math.max(0, productSubtotal - (order.discountValue || 0));
-            const customerPaidShipping = Math.max(0, order.total - productRevenue);
+            // Calcular receita de produtos e portas paid pelo cliente recorrendo ao helper robusto
+            const { productRevenue, customerPaidShipping } = getOrderRevenueAndShipping(order);
 
-            // 1. Total Vendas (Preço dos produtos sem os portes)
+            // 1. Total Vendas (Preço dos produtos sem os portes, contemplando gorjetas/ajustes manuais do total)
             totalSales += productRevenue;
 
             // 2. Custo de Envio Líquido da Loja
@@ -140,20 +174,12 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
             for (let i = 0; i < 12; i++) {
                 const monthOrders = monthlyOrders.filter(o => new Date(o.date).getMonth() === i);
                 const monthSales = monthOrders.reduce((acc, o) => {
-                    const productSubtotal = o.items.reduce((iAcc: number, item: any) => {
-                        if (typeof item === 'string') return iAcc;
-                        return iAcc + (item.price * item.quantity);
-                    }, 0);
-                    return acc + Math.max(0, productSubtotal - (o.discountValue || 0));
+                    const { productRevenue } = getOrderRevenueAndShipping(o);
+                    return acc + productRevenue;
                 }, 0);
 
                 const monthProfit = monthOrders.reduce((acc, o) => {
-                    const productSubtotal = o.items.reduce((iAcc: number, item: any) => {
-                        if (typeof item === 'string') return iAcc;
-                        return iAcc + (item.price * item.quantity);
-                    }, 0);
-                    const productRevenue = Math.max(0, productSubtotal - (o.discountValue || 0));
-                    const customerPaidShipping = Math.max(0, o.total - productRevenue);
+                    const { productRevenue, customerPaidShipping } = getOrderRevenueAndShipping(o);
                     
                     const carrierCost = (o.shippingInfo.deliveryMethod === 'Pickup' ? 0 : (o.storeShippingCost || 5.40));
                     const netShippingExpense = Math.max(0, carrierCost - customerPaidShipping);
@@ -219,20 +245,12 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
             for (let i = 1; i <= daysInMonth; i++) {
                 const dayOrders = monthlyOrders.filter(o => new Date(o.date).getDate() === i);
                 const daySales = dayOrders.reduce((acc, o) => {
-                    const productSubtotal = o.items.reduce((iAcc: number, item: any) => {
-                        if (typeof item === 'string') return iAcc;
-                        return iAcc + (item.price * item.quantity);
-                    }, 0);
-                    return acc + Math.max(0, productSubtotal - (o.discountValue || 0));
+                    const { productRevenue } = getOrderRevenueAndShipping(o);
+                    return acc + productRevenue;
                 }, 0);
 
                 const dayProfit = dayOrders.reduce((acc, o) => {
-                    const productSubtotal = o.items.reduce((iAcc: number, item: any) => {
-                        if (typeof item === 'string') return iAcc;
-                        return iAcc + (item.price * item.quantity);
-                    }, 0);
-                    const productRevenue = Math.max(0, productSubtotal - (o.discountValue || 0));
-                    const customerPaidShipping = Math.max(0, o.total - productRevenue);
+                    const { productRevenue, customerPaidShipping } = getOrderRevenueAndShipping(o);
                     
                     const carrierCost = (o.shippingInfo.deliveryMethod === 'Pickup' ? 0 : (o.storeShippingCost || 5.40));
                     const netShippingExpense = Math.max(0, carrierCost - customerPaidShipping);
@@ -479,12 +497,7 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
                                             prodCost += netPurchasePrice * (item.quantity || 1);
                                         });
                                     }
-                                    const productSubtotal = order.items.reduce((iAcc: number, item: any) => {
-                                        if (typeof item === 'string') return iAcc;
-                                        return iAcc + (item.price * item.quantity);
-                                    }, 0);
-                                    const productRevenue = Math.max(0, productSubtotal - (order.discountValue || 0));
-                                    const customerPaidShipping = Math.max(0, order.total - productRevenue);
+                                    const { productRevenue, customerPaidShipping } = getOrderRevenueAndShipping(order);
                                     
                                     const carrierCost = order.shippingInfo.deliveryMethod === 'Pickup' ? 0 : (order.storeShippingCost || 5.40);
                                     const shipCost = Math.max(0, carrierCost - customerPaidShipping);
@@ -494,7 +507,24 @@ const ReportsTab: React.FC<ReportsTabProps> = ({ orders, inventoryProducts }) =>
                                     return (
                                         <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
                                             <td className="px-6 py-4 text-gray-600 dark:text-gray-400">{new Date(order.date).toLocaleDateString()}</td>
-                                            <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{order.id}</td>
+                                            <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                                                <div className="flex flex-col gap-0.5 align-left">
+                                                    <span className="font-semibold text-gray-950 dark:text-gray-50">{order.id}</span>
+                                                    {order.shippingInfo?.name && (
+                                                        <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                                            {order.shippingInfo.name}
+                                                        </span>
+                                                    )}
+                                                    {onViewOrderDetails && (
+                                                        <button 
+                                                            onClick={() => onViewOrderDetails(order)}
+                                                            className="mt-1 self-start inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors"
+                                                        >
+                                                            <Eye size={12} /> Ver Detalhes
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
                                             <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{formatCurrency(productRevenue)}</td>
                                             <td className="px-6 py-4 text-red-500 dark:text-red-400">-{formatCurrency(prodCost)}</td>
                                             <td className="px-6 py-4 text-orange-500 dark:text-orange-400">-{formatCurrency(shipCost)}</td>

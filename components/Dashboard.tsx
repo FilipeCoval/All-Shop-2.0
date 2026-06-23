@@ -1197,6 +1197,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               }) 
           }; 
 
+          // Se voltarem a mudar o estado para um estado não expedido, repomos fulfillmentStatus para null para permitir re-expedir se necessário
+          if (['Pendente', 'Processamento', 'Pago'].includes(newStatus)) {
+              updates.fulfillmentStatus = null;
+          } 
+
           // Safe parsing of total to avoid NaN database writes on old orders
           const orderTotal = typeof currentOrder.total === 'number'
               ? currentOrder.total
@@ -2221,7 +2226,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
         )}
 
         {activeTab === 'reports' && (
-            <ReportsTab orders={allOrders} inventoryProducts={activeProducts} />
+            <ReportsTab orders={allOrders} inventoryProducts={activeProducts} onViewOrderDetails={(order) => setSelectedOrderDetails(order)} />
         )}
 
         {activeTab === 'imports' && (

@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { FileText, X, Truck, Scale, CheckCircle, Copy, AlertTriangle, Loader2, XCircle, Coins, QrCode, Printer, TicketPercent, Package, Wrench } from 'lucide-react';
+import { FileText, X, Truck, Scale, CheckCircle, Copy, AlertTriangle, Loader2, XCircle, Coins, QrCode, Printer, TicketPercent, Package, Wrench, Edit2 } from 'lucide-react';
 import { Order, InventoryProduct, OrderItem, User as UserType, PointHistory } from '../types';
 import {  db , modularDb } from '../services/firebaseConfig';
 import { collection, doc, updateDoc, query, where, runTransaction, getDoc, getDocs, DocumentReference, orderBy, limit } from 'firebase/firestore';
@@ -44,6 +44,28 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, o
     const [isEditingTotal, setIsEditingTotal] = useState(false);
     const [newTotalValue, setNewTotalValue] = useState(order?.total?.toString() || '0');
     const [isSavingTotal, setIsSavingTotal] = useState(false);
+    const [isEditingShippingCost, setIsEditingShippingCost] = useState(false);
+    const [newShippingCostValue, setNewShippingCostValue] = useState(order?.storeShippingCost?.toString() ?? '5.40');
+    const [isSavingShippingCost, setIsSavingShippingCost] = useState(false);
+
+    const handleSaveShippingCost = async () => {
+        const val = parseFloat(newShippingCostValue);
+        if (isNaN(val) || val < 0) {
+            alert('Custo de envio inválido!');
+            return;
+        }
+        setIsSavingShippingCost(true);
+        try {
+            await updateDoc(doc(modularDb, 'orders', order.id), { storeShippingCost: val });
+            onUpdateOrder(order.id, { storeShippingCost: val });
+            setIsEditingShippingCost(false);
+        } catch (error) {
+            console.error('Erro ao atualizar custo de envio:', error);
+            alert('Ocorreu um erro ao atualizar o custo de envio.');
+        } finally {
+            setIsSavingShippingCost(false);
+        }
+    };
 
     const handleSaveTotal = async () => {
         const val = parseFloat(newTotalValue);
@@ -359,14 +381,35 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, o
                         <p className="font-bold text-lg text-gray-900 dark:text-white">{totalWeight.toFixed(3)} kg</p>
                     </div>
                 </div>
-                {order.storeShippingCost !== undefined && (
-                    <div className="flex items-center gap-2 border-l border-blue-200 dark:border-blue-800 pl-4">
-                        <div>
-                            <p className="text-xs text-blue-600 dark:text-blue-400 font-bold uppercase">Custo Transportadora</p>
-                            <p className="font-bold text-lg text-gray-900 dark:text-white">{formatCurrency(order.storeShippingCost)}</p>
-                        </div>
+                <div className="flex items-center gap-2 border-l border-blue-200 dark:border-blue-800 pl-4">
+                    <div>
+                        <p className="text-xs text-blue-600 dark:text-blue-400 font-bold uppercase">Custo Transportadora</p>
+                        {isEditingShippingCost ? (
+                            <div className="flex items-center gap-1 mt-1">
+                                <input 
+                                    type="number" 
+                                    step="0.01" 
+                                    value={newShippingCostValue} 
+                                    onChange={e => setNewShippingCostValue(e.target.value)} 
+                                    className="w-20 p-1 border rounded text-xs dark:bg-slate-705 dark:text-white dark:bg-slate-700 font-mono"
+                                />
+                                <button onClick={handleSaveShippingCost} disabled={isSavingShippingCost} className="text-xs px-2 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 rounded hover:bg-green-200 font-bold transition-colors">
+                                    {isSavingShippingCost ? '...' : 'Salvar'}
+                                </button>
+                                <button onClick={() => { setIsEditingShippingCost(false); setNewShippingCostValue((order.storeShippingCost ?? 5.40).toString()); }} className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 font-bold">X</button>
+                            </div>
+                        ) : (
+                            <p className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-1 group">
+                                {formatCurrency(order.storeShippingCost !== undefined ? order.storeShippingCost : 5.40)}
+                                {isAdmin && (
+                                    <button onClick={() => setIsEditingShippingCost(true)} className="text-indigo-500 hover:text-indigo-700 p-1 transition-colors">
+                                        <Edit2 size={14} />
+                                    </button>
+                                )}
+                            </p>
+                        )}
                     </div>
-                )}
+                </div>
             </div>
             <div className="text-right whitespace-nowrap">
                 <button 
