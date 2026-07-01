@@ -38,7 +38,7 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (
           // O cliente/guest pode atualizar o stock ao finalizar compras
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['stock', 'variants'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'variants'])
         );
     }
 
@@ -192,7 +192,7 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (
           // O cliente pode atualizar as quantidades vendidas e reservadas no checkout
-          request.resource.data.diff(resource.data).changedKeys().hasOnly(['quantitySold', 'reserved'])
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quantitySold', 'reserved'])
         );
     }
 
