@@ -91,22 +91,19 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow create: if true;
 
-      allow read: if isAdmin()
+      // Permite a qualquer pessoa ler uma encomenda específica pelo seu ID único (ex: consulta de estado da encomenda ou checkout)
+      allow get: if true;
+
+      // Permite listar/pesquisar apenas se for Admin, ou se a query filtrar pelas encomendas do próprio utilizador
+      allow list: if isAdmin()
         || (
           isAuthenticated()
-          && resource.data.userId == request.auth.uid
-        )
-        || (
-          isAuthenticated()
-          && resource.data.shippingInfo.email == request.auth.token.email
-        )
-        || (
-          isAuthenticated()
-          && resource.data.customerEmail == request.auth.token.email
-        )
-        || (
-          isAuthenticated()
-          && resource.data.email == request.auth.token.email
+          && (
+            resource.data.userId == request.auth.uid
+            || resource.data.shippingInfo.email == request.auth.token.email
+            || resource.data.customerEmail == request.auth.token.email
+            || resource.data.email == request.auth.token.email
+          )
         );
 
       // Permite ao admin gerir todas as encomendas.
@@ -185,8 +182,7 @@ service cloud.firestore {
 
     // Reservas de stock/carrinho
     match /stock_reservations/{reservationId} {
-      allow read, create, update: if true;
-      allow delete: if isAdmin();
+      allow read, create, update, delete: if true;
     }
 
     // Área privada/admin
