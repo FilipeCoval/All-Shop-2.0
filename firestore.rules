@@ -34,7 +34,12 @@ service cloud.firestore {
     // Produtos públicos
     match /products_public/{productId} {
       allow read: if true;
-      allow write: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          // O cliente/guest pode atualizar o stock ao finalizar compras
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'variants'])
+        );
     }
 
     match /store_categories/{categoryId} {
@@ -67,9 +72,9 @@ service cloud.firestore {
         || (
           isOwner(userId)
 
-          // impede user de se tornar admin
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.isAdmin == resource.data.isAdmin
+          // impede user de se tornar admin (acesso robusto usando .get para evitar erros se os campos não existirem)
+          && request.resource.data.get('role', 'Cliente') == resource.data.get('role', 'Cliente')
+          && request.resource.data.get('isAdmin', false) == resource.data.get('isAdmin', false)
         );
 
       allow delete: if isAdmin();
@@ -104,8 +109,18 @@ service cloud.firestore {
           && resource.data.email == request.auth.token.email
         );
 
-      // Cliente lê a encomenda, mas só admin altera estados/pagamentos/etc.
-      allow update, delete: if isAdmin();
+      // Permite ao admin gerir todas as encomendas.
+      // Permite a atualização da encomenda do próprio cliente/guest caso esteja no estado 'Pendente' (ex: checkout ou adoção de encomenda guest).
+      allow update: if isAdmin()
+        || (
+          existing().get('status', 'Pendente') == 'Pendente'
+          && (
+            existing().get('userId', null) == null
+            || existing().get('userId', null) == request.auth.uid
+          )
+        );
+
+      allow delete: if isAdmin();
     }
 
     // Tickets de suporte
@@ -176,7 +191,13 @@ service cloud.firestore {
 
     // Área privada/admin
     match /products_inventory/{itemId} {
-      allow read, write: if isAdmin();
+      allow read: if true; // Permite ao checkout consultar o lote/variante correspondente
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (
+          // O cliente pode atualizar as quantidades vendidas e reservadas no checkout
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quantitySold', 'reserved'])
+        );
     }
 
     match /import_shipments/{itemId} {
