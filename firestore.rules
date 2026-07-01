@@ -38,7 +38,7 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (
           // O cliente/guest pode atualizar o stock ao finalizar compras
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'variants'])
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['stock', 'variants'])
         );
     }
 
@@ -113,10 +113,10 @@ service cloud.firestore {
       // Permite a atualização da encomenda do próprio cliente/guest caso esteja no estado 'Pendente' (ex: checkout ou adoção de encomenda guest).
       allow update: if isAdmin()
         || (
-          existing().get('status', 'Pendente') == 'Pendente'
+          resource.data.get('status', 'Pendente') == 'Pendente'
           && (
-            existing().get('userId', null) == null
-            || existing().get('userId', null) == request.auth.uid
+            resource.data.get('userId', null) == null
+            || (isAuthenticated() && resource.data.get('userId', null) == request.auth.uid)
           )
         );
 
@@ -196,7 +196,7 @@ service cloud.firestore {
       allow update: if isAdmin()
         || (
           // O cliente pode atualizar as quantidades vendidas e reservadas no checkout
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quantitySold', 'reserved'])
+          request.resource.data.diff(resource.data).changedKeys().hasOnly(['quantitySold', 'reserved'])
         );
     }
 
