@@ -1,207 +1,117 @@
-import { Request, Response } from 'express';
+import type { Request, Response } from 'express';
+import { Timestamp } from 'firebase-admin/firestore';
 import { db } from '../services/firebase-admin.js';
-import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { getRequestIdentity } from '../services/server/request-identity.js';
+import {
+  asPositiveInt,
+  makeReservationId,
+  normaliseVariant,
+  reservationExpiry,
+  syncInventoryReservedSummary,
+  syncPublicProductStock,
+  toReservationRecord,
+  getMatchingBatches,
+  getBatchPhysical,
+  type ReservationRecord,
+} from '../services/server/stock-utils.js';
+
+const MAX_QUANTITY_PER_ITEM = 20;
 
 export default async function handler(req: Request, res: Response) {
-    if (req.method !== 'POST') return res.status(405).end();
-    
-    // In a real production app, verify the Auth token here!
-    const { productId, quantity, guestToken } = req.body;
-    const userId = req.headers.authorization; // Simple mock of auth check
-    
-    if (!productId || quantity === undefined) return res.status(400).json({ error: 'Missing data' });
-    if (!userId && !guestToken) return res.status(400).json({ error: 'Falta o guestToken ou userId para efetuar a reserva.' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido.' });
+  const firestore = db;
+  if (!firestore) return res.status(503).json({ error: 'O serviço de stock está temporariamente indisponível. Tente novamente dentro de momentos.' });
 
-    const firestore = db;
-    if (!firestore) {
-        console.warn("[reserve-stock] Permission Denied or Database connection error detected at startup. Returning fallbackToClient flag.");
-        return res.status(200).json({ 
-            success: false, 
-            fallbackToClient: true, 
-            reason: "PERMISSION_DENIED or connection issues on server-side Admin SDK (local sandbox workspace fallback active)" 
-        });
+  try {
+    const productId = Number(req.body?.productId);
+    const quantity = asPositiveInt(req.body?.quantity, MAX_QUANTITY_PER_ITEM);
+    const variantKey = normaliseVariant(req.body?.variantName);
+
+    if (!Number.isInteger(productId) || productId <= 0 || quantity === null) {
+      return res.status(400).json({ error: 'Dados de reserva inválidos.' });
     }
 
-    try {
-        // --- CLEANUP EXPIRED RESERVATIONS BACKGROUND TASK ---
-        // Runs asynchronously to not block the current request
-        (async () => {
-            try {
-                const nowTimestamp = Timestamp.now();
-                const nowMillis = Date.now();
-                
-                // Fetch expired reservations of both types (Timestamp and number milliseconds)
-                const expiredT = await firestore.collection('stock_reservations')
-                    .where('expiresAt', '<=', nowTimestamp)
-                    .get();
-                    
-                const expiredN = await firestore.collection('stock_reservations')
-                    .where('expiresAt', '<=', nowMillis)
-                    .get();
-                    
-                // Combine unique docs by ID
-                const docsMap = new Map();
-                expiredT.forEach(d => docsMap.set(d.id, d));
-                expiredN.forEach(d => docsMap.set(d.id, d));
-                
-                const expiredDocs = Array.from(docsMap.values());
-                
-                if (expiredDocs.length > 0) {
-                    console.log(`[reserve-stock] Found ${expiredDocs.length} expired reservations to clean up...`);
-                    for (const doc of expiredDocs) {
-                        const resData = doc.data();
-                        await firestore.runTransaction(async (t) => {
-                            const productQuery = firestore.collection('products_inventory').where('publicProductId', '==', Number(resData.productId));
-                            const snap = await t.get(productQuery);
-                            let productRef;
-                            if (!snap.empty) {
-                                productRef = snap.docs[0].ref;
-                            } else {
-                                productRef = firestore.collection('products_inventory').doc(String(resData.productId));
-                            }
-                            
-                            const pDoc = await t.get(productRef);
-                            if (pDoc.exists) {
-                                const pData = pDoc.data()!;
-                                t.update(productRef, {
-                                    reserved: Math.max(0, (pData.reserved || 0) - (resData.quantity || 0))
-                                });
-                            }
-                            t.delete(doc.ref);
-                        });
-                    }
-                    console.log("[reserve-stock] Cleanup of expired reservations completed successfully.");
-                }
-            } catch (e) {
-                console.error("[reserve-stock] Background cleanup failed:", e);
-            }
-        })();
-        // --- END CLEANUP ---
+    const identity = await getRequestIdentity(req, req.body?.guestToken);
+    const reservationId = makeReservationId(identity.ownerKey, productId, variantKey);
+    const expiresAt = reservationExpiry();
 
-        console.log("DEBUG: reserve-stock transaction start, productId:", productId, "quantity:", quantity);
-        
-        await firestore.runTransaction(async (t) => {
-            console.log("DEBUG: transaction attempt");
+    const result = await firestore.runTransaction(async (transaction) => {
+      const inventoryQuery = firestore.collection('products_inventory').where('publicProductId', '==', productId);
+      const reservationsQuery = firestore.collection('stock_reservations').where('productId', '==', productId);
+      const productRef = firestore.collection('products_public').doc(String(productId));
+      const reservationRef = firestore.collection('stock_reservations').doc(reservationId);
 
-            // Look for existing reservation for this user/token and product
-            const resQuery = firestore.collection('stock_reservations')
-                .where('productId', '==', Number(productId));
-            
-            // Filter by userId or guestToken
-            const resSnap = await t.get(resQuery);
-            let existingRes = null;
-            for (const doc of resSnap.docs) {
-                const data = doc.data();
-                if ((userId && data.userId === userId) || (guestToken && data.guestToken === guestToken)) {
-                    existingRes = doc;
-                    break;
-                }
-            }
-            
-            // Query for ALL products_inventory documents by publicProductId
-            const productQuery = firestore.collection('products_inventory').where('publicProductId', '==', Number(productId));
-            const snapshot = await t.get(productQuery);
-            
-            // Calculate total available stock across ALL inventory docs
-            let totalStock = 0;
-            let totalSold = 0;
-            let totalReserved = 0;
-            let bestDoc: any = null;
-            let maxCapacity = -1;
+      const [inventorySnapshot, reservationsSnapshot, productSnapshot] = await Promise.all([
+        transaction.get(inventoryQuery),
+        transaction.get(reservationsQuery),
+        transaction.get(productRef),
+      ]);
 
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                let b = data.quantityBought || 0;
-                let s = data.quantitySold || 0;
-                const r = data.reserved || 0;
-                
-                // If there's an active units array, use it as database of truth for bought/sold
-                if (data.units && Array.isArray(data.units) && data.units.length > 0) {
-                    b = data.units.length;
-                    s = data.units.filter((u: any) => u.status === 'SOLD').length;
-                }
-                
-                totalStock += b;
-                totalSold += s;
-                totalReserved += r;
-                
-                const capacity = b - s - r;
-                if (capacity > maxCapacity) {
-                    maxCapacity = capacity;
-                    bestDoc = doc;
-                }
-            });
+      if (inventorySnapshot.empty || !productSnapshot.exists) {
+        throw new Error('Este produto deixou de estar disponível. Atualize a página.');
+      }
 
-            if (!bestDoc) {
-                throw new Error('Product not found');
-            }
-            const data = bestDoc.data()!;
-            const productRef = bestDoc.ref;
-            
-            if (quantity === 0) {
-                // Delete existing reservation
-                if (existingRes) {
-                    const resQty = existingRes.data().quantity || 0;
-                    t.update(productRef, { reserved: Math.max(0, (data.reserved || 0) - resQty) });
-                    
-                    // Sync products_public: stock should contain the physical stock (client handles dynamic subtraction of active reservations)
-                    const publicProductRef = firestore.collection('products_public').doc(String(productId));
-                    const physicalAvailable = Math.max(0, totalStock - totalSold);
-                    t.update(publicProductRef, { stock: physicalAvailable });
-                    
-                    t.delete(existingRes.ref);
-                }
-            } else {
-                // Update/Create reservation
-                const reserved = data.reserved || 0;
-                
-                // If updating, subtract the old reservation quantity first
-                const oldResQty = existingRes ? (existingRes.data().quantity || 0) : 0;
-                const availableTotal = totalStock - totalSold - (totalReserved - oldResQty);
-                
-                if (availableTotal < quantity) throw new Error('Insufficient stock');
-                
-                // Update reserved count on the bestDoc
-                t.update(productRef, { reserved: (data.reserved || 0) - oldResQty + quantity });
-                
-                // Sync products_public: stock should contain the physical stock (client handles dynamic subtraction of active reservations)
-                const publicProductRef = firestore.collection('products_public').doc(String(productId));
-                const physicalAvailable = Math.max(0, totalStock - totalSold);
-                t.update(publicProductRef, { stock: physicalAvailable });
-                
-                // Update or Create reservation
-                if (existingRes) {
-                    t.update(existingRes.ref, {
-                        quantity,
-                        expiresAt: Timestamp.fromMillis(Date.now() + 15 * 60 * 1000)
-                    });
-                } else {
-                    const reservationRef = firestore.collection('stock_reservations').doc();
-                    t.set(reservationRef, {
-                        productId: Number(productId),
-                        quantity,
-                        userId: userId || null,
-                        guestToken: guestToken || null,
-                        createdAt: FieldValue.serverTimestamp(),
-                        expiresAt: Timestamp.fromMillis(Date.now() + 15 * 60 * 1000)
-                    });
-                }
-            }
+      const now = Date.now();
+      const activeReservations = reservationsSnapshot.docs
+        .map(toReservationRecord)
+        .filter((record): record is ReservationRecord => !!record && record.expiresAtMs > now);
+      const ownExisting = activeReservations.find((record) => record.id === reservationId);
+      const otherReservations = activeReservations.filter((record) => record.id !== reservationId);
+
+      const requestedBatches = getMatchingBatches(inventorySnapshot.docs, variantKey);
+      if (requestedBatches.length === 0) {
+        throw new Error('A variação selecionada já não está disponível.');
+      }
+
+      const physicalAvailable = requestedBatches.reduce((sum, batch) => sum + getBatchPhysical(batch.data()).available, 0);
+      const reservedByOthers = otherReservations
+        .filter((record) => record.variantKey === variantKey || (!record.variantKey && !!variantKey))
+        .reduce((sum, record) => sum + record.quantity, 0);
+
+      if (quantity > 0 && physicalAvailable - reservedByOthers < quantity) {
+        throw new Error('Não existe stock suficiente para a quantidade selecionada.');
+      }
+
+      if (quantity === 0) {
+        if (ownExisting) transaction.delete(reservationRef);
+      } else {
+        const reservationData: Record<string, unknown> = {
+          productId,
+          variantName: req.body?.variantName ? String(req.body.variantName).trim().slice(0, 120) : null,
+          variantKey,
+          quantity,
+          ownerKey: identity.ownerKey,
+          userId: identity.userId,
+          updatedAt: Timestamp.now(),
+          expiresAt,
+          schemaVersion: 2,
+        };
+        if (!ownExisting) reservationData.createdAt = Timestamp.now();
+        transaction.set(reservationRef, reservationData, { merge: true });
+      }
+
+      const nextReservations = [...otherReservations];
+      if (quantity > 0) {
+        nextReservations.push({
+          id: reservationId,
+          productId,
+          variantKey,
+          quantity,
+          ownerKey: identity.ownerKey,
+          expiresAtMs: expiresAt.toMillis(),
         });
-        
-        console.log("DEBUG: reserve-stock transaction success");
-        return res.status(200).json({ success: true });
-    } catch (e: any) {
-        console.error("DEBUG: reserve-stock error caught:", e);
-        const errorMessage = String(e.message || "");
-        if (errorMessage.includes("PERMISSION_DENIED") || errorMessage.includes("Database not connected") || e.code === 7) {
-            console.warn("[reserve-stock] Permission Denied or Database connection error detected. Returning fallbackToClient flag.");
-            return res.status(200).json({ 
-                success: false, 
-                fallbackToClient: true, 
-                reason: "PERMISSION_DENIED or connection issues on server-side Admin SDK (local sandbox workspace fallback active)" 
-            });
-        }
-        return res.status(400).json({ error: errorMessage });
-    }
+      }
+
+      syncInventoryReservedSummary(transaction, inventorySnapshot.docs, nextReservations);
+      syncPublicProductStock(transaction, productSnapshot, productRef, inventorySnapshot.docs, nextReservations);
+
+      return { expiresAt: quantity > 0 ? expiresAt.toMillis() : null };
+    });
+
+    return res.status(200).json({ success: true, ...result });
+  } catch (error: any) {
+    const message = String(error?.message || 'Não foi possível reservar o stock.');
+    console.error('[reserve-stock]', error);
+    return res.status(message.includes('stock suficiente') || message.includes('disponível') ? 409 : 400).json({ error: message });
+  }
 }

@@ -60,8 +60,6 @@ import { doc, getDoc, setDoc, updateDoc, writeBatch, runTransaction, arrayUnion,
 
 import { useStock } from './hooks/useStock'; 
 import { usePublicProducts } from './hooks/usePublicProducts';
-import { useStockReservations } from './hooks/useStockReservations';
-import { usePendingOrders } from './hooks/usePendingOrders';
 import { notifyNewOrder } from './services/telegramNotifier';
 import { supabaseSync } from './services/supabaseSync';
 import LoyaltyPage from './components/LoyaltyPage';
@@ -172,10 +170,8 @@ const App: React.FC = () => {
   }, [user]);
 
   // --- LÓGICA DE STOCK ---
-  const { getStockForProduct: getAdminStock, loading: stockLoading } = useStock(isAdmin);
+  const { loading: stockLoading } = useStock(isAdmin);
   const { products: dbProducts, loading: productsLoading } = usePublicProducts();
-  const { reservations } = useStockReservations(); 
-  const { pendingOrders } = usePendingOrders(isAdmin); 
 
   const sessionId = useMemo(() => {
     let id = sessionStorage.getItem('session_id');
@@ -188,32 +184,18 @@ const App: React.FC = () => {
 
   const getStockForProduct = (productId: number, variantName?: string): number => {
     const product = dbProducts.find(p => p.id === productId);
-    
-    let availableStock = product?.stock ?? 0;
-    
-    if (variantName && product?.variants) {
-        const variant = product.variants.find(v => v.name === variantName);
-        if (variant && variant.stock !== undefined) {
-            availableStock = variant.stock;
-        }
-    } else if (!variantName && product?.variants && product.variants.length > 0) {
-        availableStock = product.variants.reduce((acc, v) => acc + (v.stock || 0), 0);
+    if (!product) return 0;
+
+    // O servidor já publica o stock disponível depois de subtrair reservas ativas.
+    // O browser não lê nem calcula reservas de outros clientes.
+    if (variantName && Array.isArray(product.variants)) {
+      const variant = product.variants.find(v => v.name === variantName);
+      return Math.max(0, Number(variant?.stock ?? 0));
     }
-    
-    // 1. Subtrair Reservas Temporárias (Carrinhos ativos)
-    // Se for stock de variante, filtra reservas da variante. Senão filtra do produto inteiro.
-    const now = Date.now();
-    const reservedQuantity = reservations
-        .filter(r => r.productId === productId && (!variantName || r.variantName === variantName) && r.expiresAt > now)
-        .reduce((sum, r) => sum + r.quantity, 0);
-
-    // 2. Subtrair Encomendas Pendentes (Ainda não processadas no inventário físico)
-    // REMOVIDO: Agora o stock já é decrementado no checkout atomicamente.
-    let pendingInOrders = 0;
-
-    const result = Math.max(0, availableStock - reservedQuantity - pendingInOrders);
-    
-    return result;
+    if (!variantName && Array.isArray(product.variants) && product.variants.length > 0) {
+      return Math.max(0, product.variants.reduce((sum, variant) => sum + Math.max(0, Number(variant.stock || 0)), 0));
+    }
+    return Math.max(0, Number(product.stock || 0));
   };
 
   // --- REDIRECT LOGIC FOR SHARED LINKS ---
@@ -532,36 +514,16 @@ const App: React.FC = () => {
 
   const updateReservationInFirebase = async (productId: number, variantName: string | undefined | null, newQuantity: number): Promise<boolean> => {
       try {
-          const apiResponse = await reserveStock(productId.toString(), newQuantity, localStorage.getItem('guestToken') || undefined);
-          
-          if (apiResponse && apiResponse.fallbackToClient) {
-              console.warn("Server stock reservation returned fallbackToClient. Managing reservation on client-side...");
-              
-              const reservationId = `${sessionId}-${productId}-${variantName || 'default'}`;
-              const reservationRef = doc(modularDb, "stock_reservations", reservationId);
-              
-              if (newQuantity <= 0) {
-                  await deleteDoc(reservationRef).catch(err => console.debug("Reservation delete ignored:", err));
-              } else {
-                  await setDoc(reservationRef, {
-                      productId,
-                      variantName: variantName || null,
-                      quantity: newQuantity,
-                      sessionId,
-                      expiresAt: new Date(Date.now() + 15 * 60 * 1000)
-                  }).catch(err => console.debug("Reservation write ignored:", err));
-              }
-              return true;
-          }
-          
-          if (apiResponse && apiResponse.success === false) {
-              throw new Error(apiResponse.reason || "Erro ao reservar stock");
-          }
-          
-          return true;
-      } catch (e: any) {
-          console.error("Erro na reserva de stock:", e);
-          alert(e.message || "Erro ao reservar stock.");
+          const response = await reserveStock(
+              productId.toString(),
+              variantName,
+              newQuantity,
+              localStorage.getItem('guestToken') || undefined,
+          );
+          return response?.success === true;
+      } catch (error: any) {
+          console.error('Erro na reserva de stock:', error);
+          alert(error?.message || 'Não foi possível reservar o stock. Atualize a página e tente novamente.');
           return false;
       }
   };
@@ -717,221 +679,44 @@ const App: React.FC = () => {
   };
 
   const handleCheckout = async (newOrder: Order, isAutoSave: boolean = false): Promise<boolean> => {
+      // A encomenda só é criada quando o cliente confirma que enviou o pedido.
+      // Mantemos o argumento para compatibilidade, mas não gravamos rascunhos que prendem stock.
+      if (isAutoSave) return true;
+
       try {
-          // Garantir que o ID não contém '#' que atua como fragmento de URL
-          if (newOrder.id && typeof newOrder.id === 'string') {
-              newOrder.id = newOrder.id.trim().replace(/^#+/, '');
-          }
-          // Limpar dados para evitar erros de 'undefined' no Firebase
-          const cleanOrder = JSON.parse(JSON.stringify(newOrder));
-          console.log("DEBUG handleCheckout cleanOrder:", cleanOrder, "User UID from app state:", user?.uid);
-          cleanOrder.stockDeducted = true; // Indica que o stock público já foi deduzido na altura da compra
-          
-          const orderRefCheck = doc(modularDb, "orders", cleanOrder.id);
-          const orderSnapCheck = await getDoc(orderRefCheck);
-          const isExistingOrder = orderSnapCheck.exists();
-          const existingOrderStatus = isExistingOrder ? orderSnapCheck.data()?.status : null;
-          
-          // isFirstFinalization é true quando estamos a finalizar a compra (isAutoSave é false)
-          // e a encomenda ainda não existia ou o seu estado anterior na DB era 'Pendente'.
-          const isFirstFinalization = !isAutoSave && (!isExistingOrder || existingOrderStatus === 'Pendente');
-          
-          // Using backend finalizeOrder with graceful client fallback
-          const apiResponse = await finalizeOrder(
-              cleanOrder.items,
-              localStorage.getItem('guestToken') || '',
-              cleanOrder.shippingInfo,
-              cleanOrder.id, // idempotencyKey
-              cleanOrder
-          );
-
-          if (apiResponse && apiResponse.fallbackToClient) {
-              console.warn("Server API returned fallbackToClient due to Admin SDK permissions. Writing order to database via client SDK...");
-              
-              const orderRef = doc(modularDb, "orders", cleanOrder.id);
-              if (isExistingOrder) {
-                  // Se a encomenda já existe na base de dados, atualiza apenas o estado sem decrementar stock de novo
-                  await updateDoc(orderRef, {
-                      status: cleanOrder.status,
-                      statusHistory: cleanOrder.statusHistory || [],
-                      ...(cleanOrder.shippingInfo ? { shippingInfo: cleanOrder.shippingInfo } : {}),
-                      ...(cleanOrder.trackingNumber !== undefined ? { trackingNumber: cleanOrder.trackingNumber } : {}),
-                      ...(cleanOrder.pointsAwarded !== undefined ? { pointsAwarded: cleanOrder.pointsAwarded } : {})
-                  });
-              } else {
-                  await setDoc(orderRef, {
-                      ...cleanOrder,
-                      createdAt: serverTimestamp()
-                  });
-                  
-                  for (const item of cleanOrder.items) {
-                      try {
-                          const publicRef = doc(modularDb, "products_public", item.productId.toString());
-                          const publicSnap = await getDoc(publicRef);
-                          if (publicSnap.exists()) {
-                              const publicData = publicSnap.data();
-                              const currentStock = Number(publicData.stock || 0);
-                              const newStock = Math.max(0, currentStock - Number(item.quantity));
-                              
-                              if (item.selectedVariant && publicData.variants) {
-                                  const updatedVariants = (publicData.variants || []).map((v: any) => {
-                                      if (String(v.name).trim() === String(item.selectedVariant).trim()) {
-                                          return { ...v, stock: Math.max(0, (Number(v.stock) || 0) - Number(item.quantity)) };
-                                      }
-                                      return v;
-                                  });
-                                  await updateDoc(publicRef, { stock: newStock, variants: updatedVariants });
-                              } else {
-                                  await updateDoc(publicRef, { stock: newStock });
-                              }
-                          }
-                      } catch (stockErr) {
-                          console.error("Client-side stock decrement failed:", stockErr);
-                      }
-
-                      try {
-                          // Query inventory lots matching the public product ID
-                          const qInv = query(
-                              collection(modularDb, "products_inventory"),
-                              where("publicProductId", "==", Number(item.productId))
-                          );
-                          const invSnap = await getDocs(qInv);
-                          if (!invSnap.empty) {
-                              // Find exact match by variant name (case-insensitive and trimmed)
-                              let matchedDoc = invSnap.docs.find(docSnap => {
-                                  const d = docSnap.data();
-                                  const vName = (d.variant || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                                  const requestedV = (item.selectedVariant || '').replace(/\s+/g, ' ').trim().toLowerCase();
-                                  return vName === requestedV;
-                              });
-                              
-                              if (!matchedDoc) {
-                                  matchedDoc = invSnap.docs[0];
-                              }
-                              
-                              const inventoryData = matchedDoc.data();
-                              const currentQtySold = Number(inventoryData.quantitySold || 0);
-                              const currentReserved = Number(inventoryData.reserved || 0);
-                              await updateDoc(matchedDoc.ref, {
-                                  quantitySold: currentQtySold + Number(item.quantity),
-                                  reserved: Math.max(0, currentReserved - Number(item.quantity))
-                              });
-                          }
-                      } catch (invErr) {
-                          console.error("Client-side inventory update failed:", invErr);
-                      }
-                  }
-              }
-          } else {
-              // Mesmo que a API tenha sucesso no servidor, fazemos também uma atualização rápida via SDK do cliente
-              // para garantir sincronização instantânea em tempo real com a Dashboard do administrador
-              try {
-                  const orderRef = doc(modularDb, "orders", cleanOrder.id);
-                  if (isExistingOrder) {
-                      await updateDoc(orderRef, {
-                          status: cleanOrder.status,
-                          statusHistory: cleanOrder.statusHistory || [],
-                          ...(cleanOrder.shippingInfo ? { shippingInfo: cleanOrder.shippingInfo } : {}),
-                          ...(cleanOrder.trackingNumber !== undefined ? { trackingNumber: cleanOrder.trackingNumber } : {}),
-                          ...(cleanOrder.pointsAwarded !== undefined ? { pointsAwarded: cleanOrder.pointsAwarded } : {})
-                      });
-                  } else {
-                      await setDoc(orderRef, {
-                          ...cleanOrder,
-                          createdAt: serverTimestamp()
-                      }, { merge: true });
-                  }
-                  console.log("Sincronização imediata do estado da encomenda concluída do lado do cliente.");
-              } catch (clientSyncErr) {
-                  console.warn("Aviso na sincronização do lado do cliente (a API do servidor reportou sucesso):", clientSyncErr);
-              }
-          }
-
-          console.info("Order processed successfully");
-          
-          // 4. Limpar reservas do carrinho (fora da transação principal para não bloquear se falhar)
-          if (isFirstFinalization) {
-              try {
-                  const reservationQuery = await getDocs(query(collection(modularDb, 'stock_reservations'), where('sessionId', '==', sessionId)));
-                  if (!reservationQuery.empty) {
-                      const batch = writeBatch(modularDb);
-                      reservationQuery.forEach(docSnap => batch.delete(doc(modularDb, 'stock_reservations', docSnap.id)));
-                      await batch.commit();
-                  }
-              } catch (resErr) {
-                  console.error("Erro ao limpar reservas:", resErr);
-              }
-          }
+          const cleanOrder = JSON.parse(JSON.stringify({
+              ...newOrder,
+              id: String(newOrder.id || '').trim().replace(/^#+/, ''),
+          }));
+          const response = await finalizeOrder(cleanOrder, localStorage.getItem('guestToken') || undefined);
+          const savedOrder = (response?.order || cleanOrder) as Order;
 
           setOrders(prev => {
-              const exists = prev.some(o => o.id === newOrder.id);
-              if (exists) {
-                  return prev.map(o => o.id === newOrder.id ? newOrder : o);
-              }
-              return [newOrder, ...prev];
+              const exists = prev.some(order => order.id === savedOrder.id);
+              return exists ? prev.map(order => order.id === savedOrder.id ? savedOrder : order) : [savedOrder, ...prev];
           });
-          
-          if (isFirstFinalization) {
-              setCartItems([]);
-              
-              (async () => {
-                  try {
-                      await notifyNewOrder(newOrder, user ? user.name : newOrder.shippingInfo.name);
-                      
-                      // Supabase Backup Sync
-                      supabaseSync.saveOrder(newOrder);
+          setCartItems([]);
 
-                      // Sync products whose stock was updated
-                      await Promise.all(newOrder.items.map(async (item: any) => {
-                          try {
-                              const productDoc = await getDoc(doc(modularDb, 'products_public', item.productId.toString()));
-                              if (productDoc.exists()) {
-                                  supabaseSync.saveProduct({ id: item.productId, ...productDoc.data() } as Product);
-                              }
-                          } catch (e) {
-                              console.error("Erro ao sincronizar produto pós-checkout:", e);
-                          }
-                      }));
-
-                      // Notificar Admins via Push (Nova Funcionalidade)
-                      await fetch('/api/send-push', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                              target: 'admins',
-                              title: 'Nova Encomenda! 💰',
-                              body: `Pedido ${newOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(newOrder.total)} recebido de ${newOrder.shippingInfo.name}.`,
-                              link: 'https://www.all-shop.net/#dashboard'
-                          })
-                      });
-                  } catch (err) {
-                      console.error("Post-checkout background tasks failed:", err);
-                  }
-              })();
-          }
-          
-          if (user?.uid && isFirstFinalization) {
-            const userRef = doc(modularDb, "users", user.uid);
-            await runTransaction(modularDb, async (transaction) => {
-              const userDoc = await transaction.get(userRef);
-              if (!userDoc.exists()) return;
-              const userData = userDoc.data() as User;
-              const newTotalSpent = (userData.totalSpent || 0) + newOrder.total;
-              let newTier: UserTier = userData.tier || 'Bronze';
-              if (newTotalSpent >= LOYALTY_TIERS.GOLD.threshold) newTier = 'Ouro';
-              else if (newTotalSpent >= LOYALTY_TIERS.SILVER.threshold) newTier = 'Prata';
-              transaction.update(userRef, { totalSpent: newTotalSpent, tier: newTier });
-            });
+          try {
+              await notifyNewOrder(savedOrder, user ? user.name : savedOrder.shippingInfo.name);
+              supabaseSync.saveOrder(savedOrder);
+              await fetch('/api/send-push', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                      target: 'admins',
+                      title: 'Nova Encomenda! 💰',
+                      body: `Pedido ${savedOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(savedOrder.total)} recebido de ${savedOrder.shippingInfo.name}.`,
+                      link: 'https://www.all-shop.net/#dashboard'
+                  })
+              });
+          } catch (backgroundError) {
+              console.error('Tarefas posteriores ao checkout falharam:', backgroundError);
           }
           return true;
-      } catch (e: any) {
-          console.error("Erro CRÍTICO no checkout:", e);
-          const errorMessage = e instanceof Error ? e.message : String(e);
-          if (errorMessage.includes("stock suficiente") || errorMessage.includes("não encontrado")) {
-              alert(errorMessage);
-          } else {
-              alert("Ocorreu um erro ao guardar a sua encomenda. Por favor, tente novamente ou contacte o suporte se o erro persistir.");
-          }
+      } catch (error: any) {
+          console.error('Erro CRÍTICO no checkout:', error);
+          alert(error?.message || 'Não foi possível concluir a encomenda. Tente novamente.');
           return false;
       }
   };
