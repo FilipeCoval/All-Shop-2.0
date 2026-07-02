@@ -302,20 +302,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
   const handleStartCheckout = async (platform: 'wa' | 'tg') => {
     setIsFinalizing(true);
     
-    // Atualizar uso do cupão
-    if (appliedCoupon && appliedCoupon.id) {
-        try {
-            const newUsageCount = (appliedCoupon.usageCount || 0) + 1;
-            const updateData: any = { usageCount: newUsageCount };
-            
-            // Se atingiu o limite de usos, desativar o cupão
-            if (appliedCoupon.maxUsages && newUsageCount >= appliedCoupon.maxUsages) {
-                updateData.isActive = false;
-            }
-
-            await updateDoc(doc(modularDb, 'coupons', appliedCoupon.id), updateData);
-        } catch (e) { console.error("Erro ao atualizar cupão", e); }
-    }
+    // O cupão é validado e registado pelo servidor apenas quando o pedido é confirmado.
 
     // Preparar dados finais 
     const finalUserInfo: any = { ...userInfo, deliveryMethod };
@@ -377,8 +364,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
     setCheckoutStep('tutorial');
     setIsFinalizing(false);
     
-    // Auto-save the order as Pendente immediately when starting checkout
-    onCheckout(newOrder, true);
+    // A encomenda ainda não é gravada: o stock mantém-se reservado até o cliente confirmar.
   };
 
   const handleConfirmSent = async (isAutoSave: boolean = false) => {
