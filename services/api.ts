@@ -67,3 +67,17 @@ export async function trackOrder(orderId: string, email: string) {
   });
   return parseResponse(response);
 }
+export async function requestOrderAction(input: {
+  action: 'cancel_order' | 'cancel_item' | 'request_return';
+  orderId: string;
+  reason: string;
+  productId?: number;
+  quantity?: number;
+}) {
+  const response = await fetch('/api/update-order', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify(input),
+  });
+  return parseResponse(response);
+}
