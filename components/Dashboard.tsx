@@ -601,12 +601,51 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       const existingProduct = products.find(p => p.id === editingId); 
       const currentSold = existingProduct ? existingProduct.quantitySold : 0; 
       const availableStock = Math.max(0, qBought - currentSold);
-      const currentSalePrice = formData.salePrice ? Number(formData.salePrice) : 0; 
+      const linkedCatalogProduct = formData.publicProductId && !formData.isPrivate
+        ? publicProductsList.find(p => String(p.id) === String(formData.publicProductId))
+        : undefined;
+      const currentSalePrice = linkedCatalogProduct
+        ? Number(linkedCatalogProduct.price || 0)
+        : (formData.salePrice ? Number(formData.salePrice) : 0);
       let productStatus: ProductStatus = 'IN_STOCK'; 
       if (currentSold >= qBought && qBought > 0) productStatus = 'SOLD'; 
       else if (currentSold > 0) productStatus = 'PARTIAL'; 
       
-      const payload: any = { name: formData.name, description: formData.description, category: formData.category, publicProductId: formData.publicProductId !== '' && formData.publicProductId !== null ? Number(formData.publicProductId) : null, variant: formData.variant || null, purchaseDate: formData.purchaseDate, supplierName: formData.supplierName, supplierOrderId: formData.supplierOrderId, quantityBought: qBought, quantitySold: currentSold, salesHistory: (existingProduct && Array.isArray(existingProduct.salesHistory)) ? existingProduct.salesHistory : [], purchasePrice: Number(formData.purchasePrice) || 0, targetSalePrice: formData.targetSalePrice ? Number(formData.targetSalePrice) : null, salePrice: currentSalePrice, originalPrice: formData.originalPrice ? Number(formData.originalPrice) : null, promoEndsAt: formData.promoEndsAt || null, cashbackValue: Number(formData.cashbackValue) || 0, cashbackStatus: formData.cashbackStatus, cashbackPlatform: formData.cashbackPlatform, cashbackAccount: formData.cashbackAccount, cashbackExpectedDate: formData.cashbackExpectedDate, units: modalUnits, status: productStatus, badges: formData.badges, images: formData.images, features: formData.features, comingSoon: formData.comingSoon, isPrivate: formData.isPrivate, weight: formData.weight ? parseFloat(formData.weight) : 0, specs: formData.specs }; 
+      // Para lotes ligados ao catálogo, o catálogo é a fonte dos dados de loja.
+      // Mantemos os campos antigos no lote apenas por compatibilidade, mas já não aceitamos
+      // preço, promoção, imagens ou descrição diferentes dentro de cada lote.
+      const payload: any = {
+        name: linkedCatalogProduct?.name || formData.name,
+        description: linkedCatalogProduct?.description || formData.description,
+        category: linkedCatalogProduct?.category || formData.category,
+        publicProductId: formData.publicProductId !== '' && formData.publicProductId !== null ? Number(formData.publicProductId) : null,
+        variant: formData.variant || null,
+        purchaseDate: formData.purchaseDate,
+        supplierName: formData.supplierName,
+        supplierOrderId: formData.supplierOrderId,
+        quantityBought: qBought,
+        quantitySold: currentSold,
+        salesHistory: (existingProduct && Array.isArray(existingProduct.salesHistory)) ? existingProduct.salesHistory : [],
+        purchasePrice: Number(formData.purchasePrice) || 0,
+        targetSalePrice: linkedCatalogProduct ? Number(linkedCatalogProduct.price || 0) : (formData.targetSalePrice ? Number(formData.targetSalePrice) : null),
+        salePrice: currentSalePrice,
+        originalPrice: linkedCatalogProduct ? (linkedCatalogProduct.originalPrice || null) : (formData.originalPrice ? Number(formData.originalPrice) : null),
+        promoEndsAt: linkedCatalogProduct ? (linkedCatalogProduct.promoEndsAt || null) : (formData.promoEndsAt || null),
+        cashbackValue: Number(formData.cashbackValue) || 0,
+        cashbackStatus: formData.cashbackStatus,
+        cashbackPlatform: formData.cashbackPlatform,
+        cashbackAccount: formData.cashbackAccount,
+        cashbackExpectedDate: formData.cashbackExpectedDate,
+        units: modalUnits,
+        status: productStatus,
+        badges: linkedCatalogProduct?.badges || formData.badges,
+        images: linkedCatalogProduct?.images || formData.images,
+        features: linkedCatalogProduct?.features || formData.features,
+        comingSoon: linkedCatalogProduct?.comingSoon || formData.comingSoon,
+        isPrivate: formData.isPrivate,
+        weight: linkedCatalogProduct?.weight || (formData.weight ? parseFloat(formData.weight) : 0),
+        specs: linkedCatalogProduct?.specs || formData.specs
+      }; 
       Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]); 
       
       try { 
@@ -2436,7 +2475,28 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                     </div>
                 </div>
             </div>
-        </div> {!formData.publicProductId && (<div className="bg-gray-50 dark:bg-slate-800/50 p-4 rounded-xl border border-gray-200 dark:border-slate-700 space-y-4"><div>
+        </div>
+        {formData.publicProductId && !formData.isPrivate && (() => {
+            const linkedCatalog = publicProductsList.find(p => String(p.id) === String(formData.publicProductId));
+            if (!linkedCatalog) return null;
+            return (
+                <div className="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800/40 flex flex-col md:flex-row md:items-center gap-3">
+                    <div className="flex-1">
+                        <p className="text-xs font-bold uppercase text-emerald-700 dark:text-emerald-300">Dados de loja — geridos no Catálogo</p>
+                        <p className="font-bold text-gray-900 dark:text-white mt-1">{linkedCatalog.name}</p>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">{linkedCatalog.category} · Preço atual: {formatCurrency(Number(linkedCatalog.price || 0))}</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => { setEditingStoreProduct(linkedCatalog); setIsCatalogModalOpen(true); }}
+                        className="px-4 py-2 rounded-lg bg-white dark:bg-slate-800 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 text-sm font-bold hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition-colors flex items-center justify-center gap-2"
+                    >
+                        <Store size={16}/> Editar Catálogo
+                    </button>
+                </div>
+            );
+        })()}
+        {!formData.publicProductId && (<div className="bg-gray-50 dark:bg-slate-800/50 p-4 rounded-xl border border-gray-200 dark:border-slate-700 space-y-4"><div>
       
       <div className="flex justify-between items-center mb-1">
           <h4 className="font-bold text-gray-800 text-sm flex items-center gap-2"><AlignLeft size={16} /> Descrição Completa</h4>
@@ -2531,6 +2591,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
 </div>
 )}
 
+{(!formData.publicProductId || formData.isPrivate) && (
 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
     <div>
         <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Nome do Lote</label>
@@ -2543,7 +2604,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
             {storeCategories.map(cat => <option key={cat.name} value={cat.name}>{cat.name}</option>)}
         </select>
     </div>
-</div> 
+</div>
+)}
 
 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-gray-50 dark:bg-slate-800/50 p-4 rounded-xl border border-gray-200 dark:border-slate-700">
     <div className="md:col-span-2">
@@ -2658,7 +2720,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               </div>
           </div>
       </div>
-      {/* SEÇÃO DE PROMOÇÕES (NOVA) */}
+      {/* Preço, promoções e peso pertencem ao Catálogo quando o lote está associado. */}
+      {(!formData.publicProductId || formData.isPrivate) && (<>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-6 border-gray-100">
           <div>
               <label className="block text-xs font-bold text-green-700 uppercase mb-1 bg-green-50 w-fit px-1 rounded">Preço Venda (Loja)</label>
@@ -2700,6 +2763,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Essencial para calcular portes de envio automáticos no futuro.</p>
           </div>
       </div>
+      </>)}
       <div className="border-t pt-4 border-gray-100 dark:border-slate-800">
           <h4 className="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2 mb-3">
                <ScanBarcode size={16} /> Gestão de Unidades (S/N)
