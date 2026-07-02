@@ -36,6 +36,7 @@ import CategoriesTab from './CategoriesTab';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 import { notifyNewOrder } from '../services/telegramNotifier';
 import { supabaseSync } from '../services/supabaseSync';
+import { reviewOrderRequest } from '../services/api';
 import { isSupabaseEnabled } from '../services/supabaseConfig';
 import OrderXRayModal from './OrderXRayModal';
 import RequestsTab from './RequestsTab';
@@ -1412,6 +1413,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
           alert("Erro ao atualizar estado da encomenda: " + errorMsg); 
       } 
   };
+  const handleReviewOrderRequest = async (
+      orderId: string,
+      requestKind: 'cancellation' | 'return',
+      decision: 'approve' | 'reject',
+      reviewNote?: string,
+  ) => {
+      const result = await reviewOrderRequest({ orderId, requestKind, decision, reviewNote });
+      const updatedOrder = result?.order as Order | undefined;
+      if (updatedOrder) {
+          setAllOrders(prev => prev.map(order => order.id === orderId ? { ...order, ...updatedOrder } : order));
+          if (selectedOrderDetails?.id === orderId) {
+              setSelectedOrderDetails(prev => prev ? { ...prev, ...updatedOrder } : null);
+          }
+      }
+      alert(result?.message || 'Pedido atualizado com sucesso.');
+  };
+
   const handleDeleteOrder = async (orderId: string) => { 
       if(!window.confirm("ATENÇÃO: Apagar a encomenda é irreversível. Deseja continuar?")) return; 
       try { 
@@ -2006,6 +2024,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                     console.log("Opening fulfillment for order:", order.id);
                     setSelectedOrderForFulfillment(order);
                 }}
+                onReviewRequest={handleReviewOrderRequest}
             />
         )}
         

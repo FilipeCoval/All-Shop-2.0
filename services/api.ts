@@ -82,3 +82,17 @@ export async function requestOrderAction(input: {
   });
   return parseResponse(response);
 }
+
+export async function reviewOrderRequest(input: {
+  orderId: string;
+  requestKind: 'cancellation' | 'return';
+  decision: 'approve' | 'reject';
+  reviewNote?: string;
+}) {
+  const response = await fetch('/api/update-order', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({ action: 'review_request', ...input }),
+  });
+  return parseResponse(response);
+}
