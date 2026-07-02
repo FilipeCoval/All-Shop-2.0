@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { FieldValue } from 'firebase-admin/firestore';
 import { db } from '../services/firebase-admin.js';
-import { getRequestIdentity } from './request-identity.js';
+import { getRequestIdentity } from '../services/server/request-identity.js';
 import {
   asPositiveInt,
   getBatchPhysical,
@@ -14,7 +14,7 @@ import {
   allocateReservationSummaries,
   toReservationRecord,
   type ReservationRecord,
-} from './stock-utils.js';
+} from '../services/server/stock-utils.js';
 
 type RequestedItem = {
   productId: number;

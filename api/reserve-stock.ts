@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { Timestamp } from 'firebase-admin/firestore';
 import { db } from '../services/firebase-admin.js';
-import { getRequestIdentity } from './request-identity.js';
+import { getRequestIdentity } from '../services/server/request-identity.js';
 import {
   asPositiveInt,
   makeReservationId,
@@ -13,7 +13,7 @@ import {
   getMatchingBatches,
   getBatchPhysical,
   type ReservationRecord,
-} from './stock-utils.js';
+} from '../services/server/stock-utils.js';
 
 const MAX_QUANTITY_PER_ITEM = 20;
 
