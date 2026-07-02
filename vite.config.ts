@@ -1,13 +1,10 @@
 
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, (process as any).cwd(), '');
-  
-  return {
+export default defineConfig({
     plugins: [
       tailwindcss(),
       react(),
@@ -42,10 +39,5 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
       sourcemap: false,
       chunkSizeWarningLimit: 3000
-    },
-    define: {
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || ""),
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || "")
     }
-  };
 });

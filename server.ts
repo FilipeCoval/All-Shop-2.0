@@ -15,6 +15,7 @@ import cleanupReservationsHandler from './api/cleanup-reservations.ts';
 import updateOrderHandler from './api/update-order.ts';
 import syncUserHandler from './api/sync-user.ts';
 import sitemapHandler from './api/sitemap.ts';
+import chatHandler from './api/chat.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -101,6 +102,14 @@ async function startServer() {
         await syncUserHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.all('/api/chat', async (req, res) => {
+    try {
+        await chatHandler(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: 'Erro interno no assistente.' });
     }
   });
 

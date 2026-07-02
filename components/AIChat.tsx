@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Loader2 } from 'lucide-react';
 import { ChatMessage, Product, Order } from '../types';
-import { sendMessageToGemini } from '../services/geminiService';
 import { STORE_NAME, BOT_NAME, BOT_AVATAR_URL } from '../constants';
 
 interface AIChatProps {
@@ -21,7 +20,7 @@ const GREETINGS = [
   "Fale comigo! 💬"
 ];
 
-const AIChat: React.FC<AIChatProps> = ({ products, isOpen, onToggle, userOrders = [] }) => {
+const AIChat: React.FC<AIChatProps> = ({ isOpen, onToggle }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome',
@@ -72,8 +71,21 @@ const AIChat: React.FC<AIChatProps> = ({ products, isOpen, onToggle, userOrders 
     setIsLoading(true);
 
     try {
-      // Passamos userOrders para o serviço
-      const responseText = await sendMessageToGemini(userMsg.text, products, userOrders);
+      const history = messages
+        .slice(-6)
+        .filter((message) => message.id !== 'welcome')
+        .map((message) => ({ role: message.role, text: message.text }));
+
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg.text, history })
+      });
+
+      const data = await response.json().catch(() => ({}));
+      const responseText = response.ok && typeof data.reply === 'string'
+        ? data.reply
+        : (data.error || 'A assistente está temporariamente indisponível. Tente novamente mais tarde.');
       
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
