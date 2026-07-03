@@ -1,16 +1,43 @@
-import React, { useState, useMemo } from 'react';
-import { 
-  Search, Edit2, Trash2, RefreshCw, Camera, BrainCircuit, UploadCloud, Plus, 
-  ChevronDown, ChevronRight, Globe, FileText, Copy, DollarSign, Package, TrendingUp, AlertCircle, Users, Loader2, Layers, BellRing, Info, X, Check, Wallet
+import React, { useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  Barcode,
+  BellRing,
+  BrainCircuit,
+  Camera,
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  Copy,
+  Edit2,
+  Globe,
+  Info,
+  Layers,
+  Loader2,
+  Package,
+  Plus,
+  RefreshCw,
+  Search,
+  Tag,
+  Trash2,
+  TrendingUp,
+  Wallet,
+  X,
 } from 'lucide-react';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { modularDb } from '../services/firebaseConfig';
-import { InventoryProduct, Order, Product, StockReservation } from '../types';
+import { InventoryProduct, Order, Product, ProductUnit, StockReservation } from '../types';
 import KpiCard from './KpiCard';
+import {
+  getLotStockMetrics,
+  getProductStockMetrics,
+  isReservationActive,
+  unitMatchesSearch,
+} from '../services/inventoryMetrics';
 
 interface InventoryTabProps {
   products: InventoryProduct[];
-  catalogProducts?: Product[]; // NOVO: Para poder ir buscar imagens
+  catalogProducts?: Product[];
   pendingOrders: Order[];
   reservations: StockReservation[];
   stats: {
@@ -39,672 +66,456 @@ interface InventoryTabProps {
   onOpenCashbackManager: () => void;
   onOpenOnlineDetails: () => void;
   onOpenStockAlerts: (product: InventoryProduct) => void;
-
   copyToClipboard: (text: string) => boolean;
   searchTerm: string;
   onSearchChange: (term: string) => void;
 }
 
-const formatCurrency = (value: number) => 
-  new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
+type StockFilter = 'ALL' | 'AVAILABLE' | 'LOW' | 'OUT' | 'TRACKED';
+type UnitEdit = { lotId: string; unitId: string; value: string } | null;
+
+const currency = (value: number) =>
+  new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(Number(value || 0));
+
+const normalise = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+
+const unitCode = (unit: ProductUnit) => unit.serialNumber || unit.internalLabel || unit.id;
+
+const unitStatusLabel: Record<string, string> = {
+  AVAILABLE: 'Disponível',
+  RESERVED: 'Reservado',
+  SOLD: 'Vendido',
+  RETURNED: 'Devolvido',
+  DEFECTIVE: 'Defeituoso',
+  IN_TRANSIT: 'Em trânsito',
+};
+
+const unitStatusClass: Record<string, string> = {
+  AVAILABLE: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  RESERVED: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  SOLD: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  RETURNED: 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+  DEFECTIVE: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  IN_TRANSIT: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+};
+
+const Metric = ({
+  label,
+  value,
+  tone = 'slate',
+}: {
+  label: string;
+  value: number;
+  tone?: 'slate' | 'green' | 'amber' | 'red' | 'blue';
+}) => {
+  const toneClasses = {
+    slate: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200',
+    green: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+    amber: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    red: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+    blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold ${toneClasses[tone]}`}>
+      <span className="opacity-70">{label}</span>
+      <span>{value}</span>
+    </span>
+  );
+};
 
 const InventoryTab: React.FC<InventoryTabProps> = ({
-  products, catalogProducts, pendingOrders, reservations, stats, onlineUsersCount, stockAlerts,
-  onEdit, onEditProduct, onCreateVariant, onDeleteGroup, onSale, onDelete,
-  onSyncStock, isSyncingStock,
-  onOpenScanner, onOpenCalculator, 
+  products,
+  catalogProducts = [],
+  reservations,
+  stats,
+  onlineUsersCount,
+  stockAlerts,
+  onEdit,
+  onEditProduct,
+  onCreateVariant,
+  onDeleteGroup,
+  onSale,
+  onDelete,
+  onSyncStock,
+  isSyncingStock,
+  onOpenScanner,
+  onOpenCalculator,
   onAddNew,
-  onOpenInvestedModal, onOpenRevenueModal, onOpenProfitModal, onOpenCashbackManager, onOpenOnlineDetails,
+  onOpenInvestedModal,
+  onOpenRevenueModal,
+  onOpenProfitModal,
+  onOpenCashbackManager,
+  onOpenOnlineDetails,
   onOpenStockAlerts,
-
   copyToClipboard,
-  searchTerm, onSearchChange
+  searchTerm,
+  onSearchChange,
 }) => {
-  const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
-  const [editingUnitValue, setEditingUnitValue] = useState<string>('');
-  const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
+  const [stockFilter, setStockFilter] = useState<StockFilter>('ALL');
+  const [supplierFilter, setSupplierFilter] = useState('ALL');
+  const [expanded, setExpanded] = useState<string[]>([]);
+  const [unitEdit, setUnitEdit] = useState<UnitEdit>(null);
+  const [savingUnit, setSavingUnit] = useState(false);
+  const [showOnlyAlerts, setShowOnlyAlerts] = useState(false);
+  const now = Date.now();
 
-  const handleSaveUnitSN = async (productId: string, oldSn: string, newSnTrimmed: string) => {
-    const newSn = newSnTrimmed.trim();
-    if (!newSn) return;
-    if (newSn === oldSn) {
-      setEditingUnitId(null);
-      return;
+  const suppliers = useMemo(
+    () => Array.from(new Set(products.map(product => product.supplierName?.trim()).filter(Boolean) as string[])).sort(),
+    [products],
+  );
+
+  const groups = useMemo(() => {
+    const grouped = new Map<string, InventoryProduct[]>();
+    for (const product of products) {
+      const key = product.publicProductId !== undefined && product.publicProductId !== null
+        ? `public-${product.publicProductId}`
+        : `private-${product.id}`;
+      const current = grouped.get(key) || [];
+      current.push(product);
+      grouped.set(key, current);
     }
-    
-    setSavingUnitId(oldSn);
+
+    const term = normalise(searchTerm);
+    return Array.from(grouped.entries())
+      .map(([key, lots]) => {
+        const metrics = getProductStockMetrics(lots, reservations, now);
+        const catalog = catalogProducts.find(item => String(item.id) === String(lots[0].publicProductId));
+        const productAlertCount = lots[0].publicProductId
+          ? stockAlerts.filter(alert => String(alert.productId) === String(lots[0].publicProductId)).length
+          : 0;
+
+        const matchesSearch = !term || lots.some(lot =>
+          [lot.name, lot.category, lot.supplierName, lot.supplierOrderId, lot.variant]
+            .some(value => normalise(value).includes(term))
+          || (lot.units || []).some(unit => unitMatchesSearch(unit, term)),
+        );
+
+        const matchesStock =
+          stockFilter === 'ALL'
+          || (stockFilter === 'AVAILABLE' && metrics.available > 0)
+          || (stockFilter === 'LOW' && metrics.available > 0 && metrics.available <= 3)
+          || (stockFilter === 'OUT' && metrics.available === 0)
+          || (stockFilter === 'TRACKED' && lots.some(lot => (lot.units || []).length > 0));
+
+        const matchesSupplier =
+          supplierFilter === 'ALL' || lots.some(lot => lot.supplierName === supplierFilter);
+
+        const matchesAlerts = !showOnlyAlerts || productAlertCount > 0;
+
+        return { key, lots, metrics, catalog, productAlertCount, matchesSearch, matchesStock, matchesSupplier, matchesAlerts };
+      })
+      .filter(group => group.matchesSearch && group.matchesStock && group.matchesSupplier && group.matchesAlerts)
+      .sort((a, b) => a.lots[0].name.localeCompare(b.lots[0].name, 'pt-PT'));
+  }, [products, reservations, catalogProducts, searchTerm, stockFilter, supplierFilter, stockAlerts, showOnlyAlerts, now]);
+
+  const totals = useMemo(() => groups.reduce(
+    (sum, group) => ({
+      physical: sum.physical + group.metrics.physical,
+      reserved: sum.reserved + group.metrics.reserved,
+      available: sum.available + group.metrics.available,
+      sold: sum.sold + group.metrics.sold,
+      defective: sum.defective + group.metrics.defective,
+      inTransit: sum.inTransit + group.metrics.inTransit,
+    }),
+    { physical: 0, reserved: 0, available: 0, sold: 0, defective: 0, inTransit: 0 },
+  ), [groups]);
+
+  const toggleGroup = (key: string) => {
+    setExpanded(current => current.includes(key) ? current.filter(item => item !== key) : [...current, key]);
+  };
+
+  const saveUnitCode = async () => {
+    if (!unitEdit) return;
+    const value = unitEdit.value.trim();
+    if (!value) return;
+
+    setSavingUnit(true);
     try {
-      const productRef = doc(modularDb, 'products_inventory', productId);
-      const productSnap = await getDoc(productRef);
-      if (productSnap.exists()) {
-        const data = productSnap.data() as InventoryProduct;
-        if (data.units) {
-          const alreadyExists = data.units.some(u => u.id === newSn);
-          if (alreadyExists) {
-            alert(`O número de série "${newSn}" já existe neste produto.`);
-            setSavingUnitId(null);
-            return;
-          }
-          
-          const updatedUnits = data.units.map(u => {
-            if (u.id === oldSn) {
-              return { ...u, id: newSn };
-            }
-            return u;
-          });
-          
-          await updateDoc(productRef, { units: updatedUnits });
-          console.log(`Unidade de S/N ${oldSn} atualizada para ${newSn}`);
-        }
-      }
-    } catch (e) {
-      console.error("Erro ao atualizar S/N:", e);
+      const ref = doc(modularDb, 'products_inventory', unitEdit.lotId);
+      const snapshot = await getDoc(ref);
+      if (!snapshot.exists()) throw new Error('Lote não encontrado.');
+
+      const lot = snapshot.data() as InventoryProduct;
+      const units = Array.isArray(lot.units) ? lot.units : [];
+      const duplicate = units.some(unit => unit.id !== unitEdit.unitId && [unit.id, unit.serialNumber, unit.internalLabel, unit.barcode]
+        .some(code => normalise(code) === normalise(value)));
+      if (duplicate) throw new Error('Já existe uma unidade com este código neste lote.');
+
+      const updatedUnits = units.map(unit => unit.id === unitEdit.unitId
+        ? { ...unit, serialNumber: value, id: unit.id || value }
+        : unit);
+
+      await updateDoc(ref, { units: updatedUnits });
+      setUnitEdit(null);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Não foi possível atualizar a unidade.');
     } finally {
-      setSavingUnitId(null);
-      setEditingUnitId(null);
+      setSavingUnit(false);
     }
   };
 
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'IN_STOCK' | 'SOLD'>('ALL');
-  const [cashbackFilter, setCashbackFilter] = useState<'ALL' | 'PENDING' | 'RECEIVED' | 'NONE'>('ALL');
-  const [supplierFilter, setSupplierFilter] = useState<string>('ALL');
-  const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
-  const [selectedReservationProduct, setSelectedReservationProduct] = useState<{ name: string, orders: { id: string, customer: string, qty: number }[] } | null>(null);
-
-  const suppliers = useMemo(() => {
-    const s = new Set<string>();
-    products.forEach(p => {
-      if (p.supplierName) s.add(p.supplierName.trim());
-    });
-    return Array.from(s).sort();
-  }, [products]);
-
-  const filteredProducts = products.filter(p => {
-    console.log("Filtering product:", p.name, "isPrivate:", p.isPrivate);
-    const matchesSearch = (p.name || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // Calcular stock real para o filtro ser mais preciso que o campo status
-    let physicalQty = (p.quantityBought || 0) - (p.quantitySold || 0);
-    if (p.units && Array.isArray(p.units) && p.units.length > 0) {
-        physicalQty = p.units.filter(u => u.status === 'AVAILABLE').length;
-    }
-    
-    // Calcular stock pendente especificamente para esta variante/produto
-    let pendingForThis = 0;
-    pendingOrders.forEach(order => {
-        if (order.items && Array.isArray(order.items)) {
-            order.items.forEach(item => {
-                if (typeof item === 'object' && item !== null) {
-                    const orderItem = item as any;
-                    if (orderItem.productId === p.publicProductId) {
-                        const itemVariant = (orderItem.selectedVariant || '').trim().toLowerCase();
-                        const batchVariant = (p.variant || '').trim().toLowerCase();
-                        if (batchVariant === '' || itemVariant === batchVariant) {
-                            pendingForThis += (orderItem.quantity || 1);
-                        }
-                    }
-                }
-            });
-        }
-    });
-
-    const reservationsForThis = reservations
-        .filter(r => r.productId === p.publicProductId && (!p.variant || r.variantName === p.variant))
-        .reduce((sum, r) => sum + r.quantity, 0);
-
-    const effectiveAvailableQty = Math.max(0, physicalQty - pendingForThis - reservationsForThis);
-
-    let matchesStatus = true;
-    if (statusFilter === 'IN_STOCK') matchesStatus = effectiveAvailableQty > 0;
-    if (statusFilter === 'SOLD') matchesStatus = effectiveAvailableQty <= 0;
-    
-    let matchesCashback = true;
-    if (cashbackFilter !== 'ALL') matchesCashback = p.cashbackStatus === cashbackFilter;
-
-    let matchesSupplier = true;
-    if (supplierFilter !== 'ALL') matchesSupplier = p.supplierName === supplierFilter;
-
-    return matchesSearch && matchesStatus && matchesCashback && matchesSupplier;
-  });
-
-  const groupedInventory = useMemo(() => {
-    const groups: { [key: string]: InventoryProduct[] } = {};
-    filteredProducts.forEach(p => {
-      const key = p.publicProductId ? p.publicProductId.toString() : `local-${p.id}`;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(p);
-    });
-    return Object.entries(groups).sort(([, itemsA], [, itemsB]) => (itemsA[0]?.name || '').localeCompare(itemsB[0]?.name || ''));
-  }, [filteredProducts]);
-
-  const toggleGroup = (groupId: string) => {
-    setExpandedGroups(prev => prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]);
-  };
-
-  const handleCopy = (text: string) => {
-      if (!copyToClipboard(text)) alert("Não foi possível copiar.");
-  };
+  const activeReservationCount = reservations.filter(reservation => isReservationActive(reservation, now)).length;
 
   return (
-    <div className="animate-fade-in">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-            <KpiCard title="Total Investido" value={stats.totalInvested} icon={<Package size={18} />} color="blue" onClick={onOpenInvestedModal} />
-            <KpiCard title="Vendas Reais" value={stats.realizedRevenue} icon={<DollarSign size={18} />} color="indigo" onClick={onOpenRevenueModal} />
-            <KpiCard title="Lucro Líquido" value={stats.realizedProfit} icon={<TrendingUp size={18} />} color={stats.realizedProfit >= 0 ? "green" : "red"} onClick={onOpenProfitModal} />
-            <KpiCard title="Cashback Pendente" value={stats.pendingCashback} icon={<AlertCircle size={18} />} color="yellow" onClick={onOpenCashbackManager} />
-            <div onClick={onOpenOnlineDetails} className="p-4 rounded-xl border bg-white dark:bg-slate-800 dark:border-slate-700 shadow-sm flex flex-col justify-between h-full cursor-pointer hover:border-green-300 dark:hover:border-green-500 transition-colors relative overflow-hidden">
-                <div className="flex justify-between items-start mb-2">
-                    <span className="text-gray-500 dark:text-gray-400 text-xs font-bold uppercase flex items-center gap-1">Online Agora</span>
-                    <div className="p-1.5 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 relative">
-                        <Users size={18} />
-                        <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full animate-ping"></span>
-                    </div>
-                </div>
-                <div className="text-2xl font-bold text-green-600 dark:text-green-400 flex items-end gap-2">
-                    {onlineUsersCount}
-                    <span className="text-xs text-gray-400 dark:text-gray-500 font-normal mb-1">visitantes</span>
-                </div>
+    <div className="animate-fade-in space-y-5">
+      <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
+        <KpiCard title="Investido" value={stats.totalInvested} icon={<Package size={18} />} color="blue" onClick={onOpenInvestedModal} />
+        <KpiCard title="Vendas reais" value={stats.realizedRevenue} icon={<Wallet size={18} />} color="indigo" onClick={onOpenRevenueModal} />
+        <KpiCard title="Lucro líquido" value={stats.realizedProfit} icon={<TrendingUp size={18} />} color={stats.realizedProfit >= 0 ? 'green' : 'red'} onClick={onOpenProfitModal} />
+        <KpiCard title="Cashback pendente" value={stats.pendingCashback} icon={<AlertTriangle size={18} />} color="yellow" onClick={onOpenCashbackManager} />
+        <button onClick={onOpenOnlineDetails} className="rounded-xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:border-emerald-300 dark:border-slate-700 dark:bg-slate-800">
+          <div className="text-xs font-bold uppercase text-gray-500 dark:text-gray-400">Online agora</div>
+          <div className="mt-2 text-2xl font-black text-emerald-600 dark:text-emerald-400">{onlineUsersCount}</div>
+          <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">visitantes ativos</div>
+        </button>
+      </div>
+
+      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+        <div className="border-b border-gray-200 bg-gradient-to-r from-slate-50 to-blue-50 px-5 py-4 dark:border-slate-700 dark:from-slate-800 dark:to-slate-800">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div>
+              <h2 className="flex items-center gap-2 text-lg font-black text-gray-900 dark:text-white">
+                <Layers size={20} className="text-blue-600" /> Stock & Rastreabilidade
+              </h2>
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                Lotes/unidades são a fonte de verdade. A loja mostra apenas o stock disponível calculado.
+              </p>
             </div>
+            <div className="flex flex-wrap gap-2">
+              <Metric label="Físico" value={totals.physical} tone="blue" />
+              <Metric label="Reservado" value={totals.reserved} tone="amber" />
+              <Metric label="Disponível" value={totals.available} tone="green" />
+              <Metric label="Vendido" value={totals.sold} />
+              {totals.defective > 0 && <Metric label="Defeituoso" value={totals.defective} tone="red" />}
+              {totals.inTransit > 0 && <Metric label="Em trânsito" value={totals.inTransit} tone="blue" />}
+            </div>
+          </div>
         </div>
-        
-        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden transition-colors">
-            <div className="bg-gray-50 dark:bg-slate-700 px-4 py-3 border-b border-gray-200 dark:border-slate-600 flex gap-4 text-xs font-medium text-gray-500 dark:text-gray-300 transition-colors">
-                <span>Total: {products.length}</span>
-                <span className="w-px h-4 bg-gray-300 dark:bg-slate-500"></span>
-                <span className="text-green-600 dark:text-green-400">
-                    Disponíveis: {products.filter(p => {
-                        let phys = Math.max(0, (Number(p.quantityBought) || 0) - (Number(p.quantitySold) || 0));
-                        if (p.units && Array.isArray(p.units) && p.units.length > 0) phys = p.units.filter(u => u.status === 'AVAILABLE').length;
-                        const pend = pendingOrders.filter(o => o.items && Array.isArray(o.items) && o.items.some((i: any) => String(i.productId) === String(p.publicProductId))).reduce((sum, o) => {
-                            return sum + o.items.filter((i: any) => String(i.productId) === String(p.publicProductId)).reduce((s: number, i: any) => s + (Number(i.quantity) || 1), 0);
-                        }, 0);
-                        return (phys - pend) > 0;
-                    }).length}
-                </span>
-                <span className="w-px h-4 bg-gray-300 dark:bg-slate-500"></span>
-                <span className="text-red-600 dark:text-red-400">
-                    Esgotados: {products.filter(p => {
-                        let phys = Math.max(0, (Number(p.quantityBought) || 0) - (Number(p.quantitySold) || 0));
-                        if (p.units && Array.isArray(p.units) && p.units.length > 0) phys = p.units.filter(u => u.status === 'AVAILABLE').length;
-                        const pend = pendingOrders.filter(o => o.items && Array.isArray(o.items) && o.items.some((i: any) => String(i.productId) === String(p.publicProductId))).reduce((sum, o) => {
-                            return sum + o.items.filter((i: any) => String(i.productId) === String(p.publicProductId)).reduce((s: number, i: any) => s + (Number(i.quantity) || 1), 0);
-                        }, 0);
-                        return (phys - pend) <= 0;
-                    }).length}
-                </span>
+
+        <div className="grid gap-3 border-b border-gray-200 p-4 dark:border-slate-700 lg:grid-cols-[1fr_auto]">
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={searchTerm}
+                onChange={event => onSearchChange(event.target.value)}
+                placeholder="Pesquisar nome, S/N, EAN, código interno, lote ou fornecedor…"
+                className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:ring-blue-950"
+              />
             </div>
-            <div className="p-4 border-b border-gray-200 dark:border-slate-700 flex flex-col lg:flex-row justify-between items-center gap-4 transition-colors">
-                <div className="flex flex-wrap gap-2 w-full lg:w-auto">
-                    <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as any)} className="py-2 px-3 border border-gray-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
-                        <option value="ALL">📦 Todos Estados</option>
-                        <option value="IN_STOCK">✅ Em Stock</option>
-                        <option value="SOLD">❌ Esgotado</option>
-                    </select>
-                    <select value={supplierFilter} onChange={(e) => setSupplierFilter(e.target.value)} className="py-2 px-3 border border-gray-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
-                        <option value="ALL">🏪 Fornecedores</option>
-                        {suppliers.map(s => (
-                            <option key={s} value={s}>{s}</option>
-                        ))}
-                    </select>
-                    <select value={cashbackFilter} onChange={(e) => setCashbackFilter(e.target.value as any)} className="py-2 px-3 border border-gray-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-indigo-500 transition-colors">
-                        <option value="ALL">💰 Cashbacks</option>
-                        <option value="PENDING">Pendente</option>
-                        <option value="RECEIVED">Recebido</option>
-                    </select>
-                </div>
-                <div className="flex flex-wrap lg:flex-nowrap gap-2 w-full lg:w-auto">
-                    <div className="relative flex-1">
-                        <input 
-                            type="text" 
-                            placeholder="Pesquisar ou escanear..." 
-                            value={searchTerm} 
-                            onChange={(e) => onSearchChange(e.target.value)} 
-                            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-gray-900 dark:text-white transition-colors" 
-                        />
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
-                    </div>
-        
-                    <button onClick={onSyncStock} disabled={isSyncingStock} className="bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-1" title="Sincronizar Stock da Loja">
-                        {isSyncingStock ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
-                    </button>
-                    <button onClick={() => onOpenScanner('search')} className="bg-gray-700 dark:bg-slate-600 text-white px-3 py-2 rounded-lg hover:bg-gray-900 dark:hover:bg-slate-500 transition-colors" title="Escanear Código de Barras">
-                        <Camera size={18} />
-                    </button>
-                    <button onClick={onOpenCalculator} className="bg-purple-600 text-white px-3 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-1" title="Calculadora de Lucro">
-                        <BrainCircuit size={18} />
-                    </button>
-                    <button onClick={onAddNew} className="bg-indigo-600 text-white px-3 py-2 rounded-lg hover:bg-indigo-700 transition-colors">
-                        <Plus size={18} />
-                    </button>
-                </div>
-            </div>
-        
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse whitespace-nowrap">
-                    <thead className="bg-gray-50 dark:bg-slate-700 text-xs font-semibold text-gray-500 dark:text-gray-300 uppercase transition-colors">
-                        <tr>
-                            <th className="px-6 py-3 w-10"></th>
-                            <th className="px-6 py-3">Produto (Loja)</th>
-                            <th className="px-4 py-3 text-center">Stock Total</th>
-                            <th className="px-4 py-3 text-center">Estado Geral</th>
-                            <th className="px-4 py-3 text-right">Preço Loja</th>
-                            <th className="px-4 py-3 text-right">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-slate-700 text-sm transition-colors">
-                        {groupedInventory.map(([groupId, items]) => {
-                            const mainItem = items[0]; 
-                            const isExpanded = expandedGroups.includes(groupId);
-                            
-                            // Fetch catalog product as source of truth for stock
-                            const catalogProd = catalogProducts?.find(p => String(p.id) === String(mainItem.publicProductId));
-                            
-                            // O stock exibido no topo (agregado) deve refletir SEMPRE a soma dos lotes (database of reality para o inventário físico)
-                            let totalPhysicalStock = 0;
-                            items.forEach(i => {
-                                let b = Number(i.quantityBought) || 0;
-                                let s = Number(i.quantitySold) || 0;
-                                if (i.units && Array.isArray(i.units) && i.units.length > 0) {
-                                    b = i.units.length;
-                                    s = i.units.filter(u => u.status === 'SOLD').length;
-                                }
-                                totalPhysicalStock += Math.max(0, b - s);
-                            });
+            <button onClick={() => onOpenScanner('search')} className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-800 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-950 dark:bg-slate-600 dark:hover:bg-slate-500" title="Ler código de barras/SN">
+              <Camera size={16} /> Scanner
+            </button>
+            <button onClick={onOpenCalculator} className="inline-flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-violet-700" title="Calculadora de margem">
+              <BrainCircuit size={16} /> Margens
+            </button>
+            <button onClick={onAddNew} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-700">
+              <Plus size={16} /> Novo lote
+            </button>
+          </div>
 
-                            // Calcular reservas de stock em tempo real
-                            const nowTime = Date.now();
-                            const activeReservationsCount = (reservations || [])
-                                .filter(r => {
-                                    if (String(r.productId) !== String(mainItem.publicProductId)) return false;
-                                    const rawExp = r.expiresAt as any;
-                                    const exp = !rawExp ? 0 : (typeof rawExp === 'number' ? rawExp : (typeof rawExp.toMillis === 'function' ? rawExp.toMillis() : (typeof rawExp.toDate === 'function' ? rawExp.toDate().getTime() : (rawExp.seconds !== undefined ? rawExp.seconds * 1000 : Number(rawExp)))));
-                                    return !isNaN(exp) && exp > nowTime;
-                                })
-                                .reduce((sum, r) => sum + (r.quantity || 0), 0);
-
-                            // Calcular stock pendente em encomendas por processar/enviar
-                            let pendingInOrders = 0;
-                            pendingOrders.forEach(order => {
-                                if (order.items && Array.isArray(order.items)) {
-                                    order.items.forEach(item => {
-                                        if (typeof item === 'object' && item !== null) {
-                                            const orderItem = item as any;
-                                            if (String(orderItem.productId) === String(mainItem.publicProductId)) {
-                                                pendingInOrders += (Number(orderItem.quantity) || 1);
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-
-                            // O stock disponível é o físico subtraído pelas reservas nos lotes (carrinhos) e ordens pendentes
-                            const availableStock = Math.max(0, totalPhysicalStock - activeReservationsCount - pendingInOrders);
-                            
-                            const alertsCount = mainItem.publicProductId 
-                                ? stockAlerts.filter(a => a.productId === mainItem.publicProductId).length
-                                : 0;
-
-                            return (
-                                <React.Fragment key={groupId}>
-                                    <tr className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${isExpanded ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
-                                        <td className="px-6 py-4">
-                                            <button onClick={() => toggleGroup(groupId)} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-500 dark:text-gray-400 transition-colors">
-                                                {isExpanded ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
-                                            </button>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                {(() => {
-                                                    const catalogProd = catalogProducts?.find(p => String(p.id) === String(mainItem.publicProductId));
-                                                    const imgUrl = catalogProd?.image || (catalogProd?.images && catalogProd.images[0]) || (mainItem.images && mainItem.images[0]);
-                                                    return imgUrl ? (
-                                                        <img src={imgUrl} className="w-10 h-10 object-cover rounded bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600" alt="" />
-                                                    ) : null;
-                                                })()}
-                                                <div>
-                                                    <div className="font-bold text-gray-900 dark:text-white">{mainItem.name}</div>
-                                                    <div className="text-xs text-gray-500 dark:text-gray-400 flex flex-wrap items-center gap-1.5 mt-0.5">
-                                                        <span>{mainItem.category} • {items.length} Lote(s)</span>
-                                                        {(() => {
-                                                            const totalCashback = items.reduce((acc, current) => acc + (current.cashbackValue || 0), 0);
-                                                            const hasPending = items.some(current => current.cashbackStatus === 'PENDING' && (current.cashbackValue || 0) > 0);
-                                                            if (totalCashback > 0) {
-                                                                return (
-                                                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${hasPending ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'}`} title={`Total Cashback: ${formatCurrency(totalCashback)}`}>
-                                                                        <Wallet size={10} />
-                                                                        {formatCurrency(totalCashback)} {hasPending ? 'Pendente' : 'Recebido'}
-                                                                    </span>
-                                                                );
-                                                            }
-                                                            return null;
-                                                        })()}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-4 text-center">
-                                            <div className="flex flex-col items-center">
-                                                <span className={`font-bold px-2 py-1 rounded text-sm ${totalPhysicalStock > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
-                                                    {totalPhysicalStock} un. {(pendingInOrders > 0 || activeReservationsCount > 0) && <span className="font-normal text-xs opacity-75">(Disp: {availableStock})</span>}
-                                                </span>
-                                                {pendingInOrders > 0 && (
-                                                    <button 
-                                                       onClick={(e) => {
-                                                           e.stopPropagation();
-                                                           const ordersReserving: any[] = [];
-                                                           pendingOrders.forEach(o => {
-                                                               const item = o.items.find((i: any) => String(i.productId) === String(mainItem.publicProductId));
-                                                               if (item && typeof item === 'object') {
-                                                                   ordersReserving.push({
-                                                                       id: o.id,
-                                                                       customer: o.shippingInfo?.name || 'N/A',
-                                                                       qty: (item as any).quantity || 1
-                                                                   });
-                                                               }
-                                                           });
-                                                           setSelectedReservationProduct({ name: mainItem.name, orders: ordersReserving });
-                                                       }}
-                                                       className="text-[10px] text-orange-600 dark:text-orange-400 font-bold mt-1 hover:underline flex items-center gap-0.5"
-                                                    >
-                                                        ({totalPhysicalStock} físico - {pendingInOrders} pend.)
-                                                        <Info size={10} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-4 text-center">
-                                            {mainItem.comingSoon ? (
-                                                <span className="text-purple-600 dark:text-purple-400 font-bold text-xs uppercase bg-purple-100 dark:bg-purple-900/30 px-2 py-1 rounded">Em Breve</span>
-                                            ) : (
-                                                <span className={`text-xs font-bold uppercase ${availableStock > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
-                                                    {availableStock > 0 ? 'Disponível' : 'Esgotado'}
-                                                </span>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-4 text-right font-medium text-gray-900 dark:text-white">
-                                            {formatCurrency(mainItem.salePrice || mainItem.targetSalePrice || 0)}
-                                        </td>
-                                        <td className="px-4 py-4 text-right">
-                                            <div className="flex justify-end gap-1">
-                                                {alertsCount > 0 && (
-                                                    <button 
-                                                        onClick={(e) => { e.stopPropagation(); onOpenStockAlerts(mainItem); }} 
-                                                        className="flex items-center gap-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-200 dark:hover:bg-yellow-900/50 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors animate-pulse"
-                                                        title="Notificar Clientes"
-                                                    >
-                                                        <BellRing size={14} /> {alertsCount}
-                                                    </button>
-                                                )}
-                                                
-                                                {onEditProduct && mainItem.publicProductId && (
-                                                    <button onClick={(e) => { e.stopPropagation(); onEditProduct(mainItem); }} className="flex items-center gap-1 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/40 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm" title="Atalho focado: Editar Imagens, Descrição e Modo Em Breve no Catálogo">
-                                                        <Globe size={14} /> Atalho Catálogo
-                                                    </button>
-                                                )}
-                                                <button onClick={(e) => { e.stopPropagation(); onCreateVariant(mainItem); }} className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors" title="Adicionar um novo lote ou opção (variante) a este produto">
-                                                    <Layers size={14} /> + Lote
-                                                </button>
-                                                <button onClick={(e) => { e.stopPropagation(); onDeleteGroup(groupId, items); }} className="p-1.5 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="Apagar todos os lotes deste produto">
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {isExpanded && (
-                                        <tr className="bg-gray-50/50 dark:bg-slate-800/50 border-b border-gray-200 dark:border-slate-700 transition-colors">
-                                            <td colSpan={6} className="px-4 py-4">
-                                                <div className="bg-white dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden shadow-sm ml-10 transition-colors">
-                                                    <table className="w-full text-xs">
-                                                        <thead className="bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 uppercase transition-colors">
-                                                            <tr>
-                                                                <th className="px-4 py-2 text-left">Lote / Variante</th>
-                                                                <th className="px-4 py-2 text-left">Origem</th>
-                                                                <th className="px-4 py-2 text-center">Stock</th>
-                                                                <th className="px-4 py-2 text-right">Compra</th>
-                                                                <th className="px-4 py-2 text-right">Venda (Estimada)</th>
-                                                                <th className="px-4 py-2 text-center">Lucro Unitário</th>
-                                                                <th className="px-4 py-2 text-right">Ações</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-gray-100 dark:divide-slate-800 transition-colors">
-                                                            {items.map(p => { 
-                                                                let qtyBought = p.quantityBought || 0;
-                                                                let qtySold = p.quantitySold || 0;
-                                                                let batchStock = Math.max(0, qtyBought - qtySold);
-
-                                                                if (p.units && Array.isArray(p.units) && p.units.length > 0) {
-                                                                    qtyBought = p.units.length;
-                                                                    qtySold = p.units.filter(u => u.status === 'SOLD').length;
-                                                                    batchStock = p.units.filter(u => u.status === 'AVAILABLE').length;
-                                                                }
-
-                                                                const salePrice = p.salePrice || p.targetSalePrice || 0; 
-                                                                const purchasePrice = p.purchasePrice || 0; 
-                                                                const cashbackValue = (p.cashbackValue || 0) / (qtyBought || 1); 
-                                                                const finalProfit = salePrice - purchasePrice + cashbackValue; 
-                                                                const hasLossBeforeCashback = salePrice < purchasePrice; 
-                                                                const profitColor = finalProfit > 0 ? 'text-green-600 dark:text-green-400' : finalProfit < 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'; 
-                                                                
-                                                                return ( 
-                                                                    <tr key={p.id} className="hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors">
-                                                                        <td className="px-4 py-3">
-                                                                            <div className="font-bold whitespace-normal text-gray-900 dark:text-white">{new Date(p.purchaseDate).toLocaleDateString()}</div>
-                                                                            <div className="flex flex-wrap gap-1 mt-1 items-center">
-                                                                                {p.variant && <span className="text-[10px] text-blue-500 dark:text-blue-400 font-bold bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded mr-1">{p.variant}</span>}
-                                                                                {p.cashbackValue > 0 && (
-                                                                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 ${p.cashbackStatus === 'PENDING' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'}`}>
-                                                                                        <Wallet size={10} />
-                                                                                        {formatCurrency(p.cashbackValue)} ({p.cashbackStatus === 'PENDING' ? 'Pendente' : 'Recebido'})
-                                                                                    </span>
-                                                                                )}
-                                                                            </div>
-                                                                            {(p.cashbackPlatform || p.cashbackAccount || p.cashbackExpectedDate) && p.cashbackValue > 0 && (
-                                                                                <div className="text-[9px] text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-slate-800/40 p-1.5 rounded border border-gray-100 dark:border-slate-800/60 mt-1.5 space-y-0.5 max-w-[240px]">
-                                                                                    {p.cashbackPlatform && <div><span className="font-bold">Plataforma:</span> {p.cashbackPlatform}</div>}
-                                                                                    {p.cashbackAccount && <div><span className="font-bold">Conta:</span> {p.cashbackAccount}</div>}
-                                                                                    {p.cashbackExpectedDate && <div><span className="font-bold">Previsão:</span> {new Date(p.cashbackExpectedDate).toLocaleDateString()}</div>}
-                                                                                </div>
-                                                                            )}
-                                                                            <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{p.description?.substring(0, 30)}...</div>
-                                                                        </td>
-                                                                        <td className="px-4 py-3">
-                                                                            {p.supplierName ? (
-                                                                                <div>
-                                                                                    <div className="flex items-center gap-1 font-bold text-gray-700 dark:text-gray-300 text-[10px]">
-                                                                                        <Globe size={10} className="text-indigo-500 dark:text-indigo-400" /> {p.supplierName}
-                                                                                    </div>
-                                                                                    {p.supplierOrderId && (
-                                                                                        <div 
-                                                                                            className="text-[10px] text-gray-500 dark:text-gray-400 flex items-center gap-1 bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded w-fit mt-1 group cursor-pointer hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors" 
-                                                                                            onClick={() => handleCopy(p.supplierOrderId!)} 
-                                                                                            title="Clique para copiar"
-                                                                                        >
-                                                                                            <FileText size={10} /> {p.supplierOrderId} <Copy size={8} className="opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            ) : <span className="text-gray-400 dark:text-gray-500 text-xs">-</span>}
-                                                                        </td>
-                                                                        <td className="px-4 py-3 text-center">
-                                                                            <div className="flex justify-center text-[10px] mb-1 font-medium text-gray-600 dark:text-gray-300"><span>{batchStock}/{Math.max(qtyBought, 1)} un.</span></div>
-                                                                            <div className="w-20 bg-gray-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden mx-auto">
-                                                                                <div 
-                                                                                    className={`h-full rounded-full ${ qtyBought > 0 && (qtySold / Math.max(qtyBought, 1)) >= 1 ? 'bg-gray-400 dark:bg-gray-600' : 'bg-blue-500 dark:bg-blue-400'}`} 
-                                                                                    style={{ width: `${qtyBought > 0 ? ((qtySold / Math.max(qtyBought, 1)) * 100) : 0}%` }}
-                                                                                ></div>
-                                                                            </div>
-                                                                            {p.units && p.units.length > 0 && (
-                                                                                <div className="mt-2 pt-2 border-t border-gray-100 dark:border-slate-800 space-y-1.5 max-w-[200px] mx-auto">
-                                                                                    {p.units.sort((a,b) => a.status.localeCompare(b.status)).map(unit => {
-                                                                                        const statusColor = unit.status === 'AVAILABLE' 
-                                                                                            ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' 
-                                                                                            : unit.status === 'SOLD' 
-                                                                                            ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300' 
-                                                                                            : 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300';
-                                                                                        const statusText = unit.status === 'AVAILABLE' ? 'Disponível' : unit.status === 'SOLD' ? 'Vendido' : 'Reservado';
-                                                                                        
-                                                                                        const isEditing = editingUnitId === unit.id;
-                                                                                        const isSaving = savingUnitId === unit.id;
-
-                                                                                        if (isEditing) {
-                                                                                            return (
-                                                                                                <div key={unit.id} className="flex justify-between items-center text-[10px] gap-1 py-0.5">
-                                                                                                    <div className="flex items-center gap-1 w-full">
-                                                                                                        <input 
-                                                                                                            type="text" 
-                                                                                                            value={editingUnitValue} 
-                                                                                                            onChange={(e) => setEditingUnitValue(e.target.value)}
-                                                                                                            disabled={isSaving}
-                                                                                                            className="w-full bg-white dark:bg-slate-800 border border-indigo-400 rounded px-1.5 py-0.5 font-mono text-[10px] text-gray-800 dark:text-gray-200 focus:outline-none"
-                                                                                                            autoFocus
-                                                                                                            onKeyDown={(e) => {
-                                                                                                                if (e.key === 'Enter') handleSaveUnitSN(p.id, unit.id, editingUnitValue);
-                                                                                                                if (e.key === 'Escape') setEditingUnitId(null);
-                                                                                                            }}
-                                                                                                        />
-                                                                                                    </div>
-                                                                                                    <div className="flex items-center gap-1 shrink-0">
-                                                                                                        {isSaving ? (
-                                                                                                            <Loader2 size={10} className="animate-spin text-indigo-500" />
-                                                                                                        ) : (
-                                                                                                            <>
-                                                                                                                <button 
-                                                                                                                    onClick={() => handleSaveUnitSN(p.id, unit.id, editingUnitValue)} 
-                                                                                                                    className="text-green-600 hover:text-green-800 p-0.5" 
-                                                                                                                    title="Guardar"
-                                                                                                                >
-                                                                                                                    <Check size={10} />
-                                                                                                                </button>
-                                                                                                                <button 
-                                                                                                                    onClick={() => setEditingUnitId(null)} 
-                                                                                                                    className="text-red-500 hover:text-red-700 p-0.5" 
-                                                                                                                    title="Cancelar"
-                                                                                                                >
-                                                                                                                    <X size={10} />
-                                                                                                                </button>
-                                                                                                            </>
-                                                                                                        )}
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                            );
-                                                                                        }
-
-                                                                                        return (
-                                                                                            <div key={unit.id} className="flex justify-between items-center text-[10px] group py-0.5">
-                                                                                                <div className="flex items-center gap-1 overflow-hidden w-full">
-                                                                                                    <span className={`font-mono truncate max-w-[85px] ${unit.status !== 'AVAILABLE' ? 'text-gray-400 dark:text-gray-500 line-through' : 'text-gray-700 dark:text-gray-300'}`} title={unit.id}>{unit.id}</span>
-                                                                                                    <span className={`px-1 py-0.2 rounded-full font-medium ${statusColor} shrink-0`}>{statusText}</span>
-                                                                                                    {unit.status === 'AVAILABLE' && (
-                                                                                                        <button 
-                                                                                                            onClick={() => {
-                                                                                                                setEditingUnitId(unit.id);
-                                                                                                                setEditingUnitValue(unit.id);
-                                                                                                            }} 
-                                                                                                            title="Editar S/N" 
-                                                                                                            className="text-indigo-500 hover:text-indigo-700 opacity-0 group-hover:opacity-100 transition-opacity p-0.5 shrink-0"
-                                                                                                        >
-                                                                                                            <Edit2 size={10} />
-                                                                                                        </button>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                                <div className="flex items-center gap-1 shrink-0 ml-1">
-                                                                                                    <span className="text-gray-400 dark:text-gray-500 text-[9px]">{unit.addedAt ? new Date(unit.addedAt).toLocaleDateString('pt-PT') : '-'}</span>
-                                                                                                    <button onClick={() => handleCopy(unit.id)} title="Copiar S/N" className="text-gray-400 dark:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity p-0.5">
-                                                                                                        <Copy size={10} />
-                                                                                                    </button>
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        );
-                                                                                    })}
-                                                                                </div>
-                                                                            )}
-                                                                        </td>
-                                                                        <td className="px-4 py-3 text-right text-gray-900 dark:text-white">{formatCurrency(p.purchasePrice)}</td>
-                                                                        <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">{p.targetSalePrice ? formatCurrency(p.targetSalePrice) : '-'}</td>
-                                                                        <td className="px-4 py-3 text-center">
-                                                                            {salePrice > 0 ? (
-                                                                                <div title={`Cálculo: Venda (${formatCurrency(salePrice)}) - Compra (${formatCurrency(purchasePrice)}) ${cashbackValue > 0 ? `+ Cashback (${formatCurrency(cashbackValue)})` : ''}`}>
-                                                                                    <div className={`font-bold text-sm ${profitColor}`}>
-                                                                                        {finalProfit >= 0 ? '+' : ''}{formatCurrency(finalProfit)}
-                                                                                    </div>
-                                                                                    {cashbackValue > 0 && (
-                                                                                        <div className={`text-[10px] font-medium mt-0.5 ${p.cashbackStatus === 'PENDING' ? 'text-yellow-600 dark:text-yellow-400' : 'text-green-700 dark:text-green-400'}`}>
-                                                                                            Cashback {p.cashbackStatus === 'PENDING' ? 'Pendente' : 'Recebido'}
-                                                                                        </div>
-                                                                                    )}
-                                                                                    {hasLossBeforeCashback && cashbackValue > 0 && finalProfit > 0 && (
-                                                                                        <div className="text-[10px] font-bold text-orange-500 dark:text-orange-400 mt-0.5" title="O preço de venda é inferior ao de compra, mas o cashback compensa.">
-                                                                                            Lucro c/ Cashback
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            ) : (
-                                                                                <span className="text-gray-400 dark:text-gray-500 text-xs">-</span>
-                                                                            )}
-                                                                        </td>
-                                                                        <td className="px-4 py-3 text-right flex justify-end gap-1">
-                                                                            <button onClick={() => onEdit(p)} className="text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 p-1.5 rounded bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-sm transition-colors" title="Editar este lote">
-                                                                                <Edit2 size={14}/>
-                                                                            </button>
-                                                                            <button onClick={() => onDelete(p.id)} className="text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 p-1.5 rounded bg-white dark:bg-slate-800 border border-red-200 dark:border-red-900/30 shadow-sm transition-colors" title="Apagar lote">
-                                                                                <Trash2 size={14}/>
-                                                                            </button>
-                                                                        </td>
-                                                                    </tr> 
-                                                                ); 
-                                                            })}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
+          <div className="flex flex-wrap gap-2">
+            <select value={stockFilter} onChange={event => setStockFilter(event.target.value as StockFilter)} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-gray-200">
+              <option value="ALL">Todo o stock</option>
+              <option value="AVAILABLE">Disponível</option>
+              <option value="LOW">Baixo (1–3)</option>
+              <option value="OUT">Esgotado</option>
+              <option value="TRACKED">Com unidades/SN</option>
+            </select>
+            <select value={supplierFilter} onChange={event => setSupplierFilter(event.target.value)} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-gray-200">
+              <option value="ALL">Todos fornecedores</option>
+              {suppliers.map(supplier => <option key={supplier} value={supplier}>{supplier}</option>)}
+            </select>
+            <button onClick={() => setShowOnlyAlerts(value => !value)} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${showOnlyAlerts ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'border-gray-300 text-gray-600 dark:border-slate-600 dark:text-gray-300'}`}>
+              <BellRing size={14} className="mr-1 inline" /> Alertas
+            </button>
+            <button onClick={onSyncStock} disabled={isSyncingStock} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 transition hover:bg-blue-100 disabled:opacity-50 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-300" title="Atualizar apenas o stock disponível do catálogo a partir dos lotes">
+              {isSyncingStock ? <Loader2 size={14} className="mr-1 inline animate-spin" /> : <RefreshCw size={14} className="mr-1 inline" />}
+              Atualizar loja
+            </button>
+          </div>
         </div>
-        {/* Modal de Detalhes de Reservas */}
-        {selectedReservationProduct && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-fade-in">
-                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transition-colors">
-                    <div className="p-4 border-b border-gray-100 dark:border-slate-800 flex justify-between items-center bg-orange-50 dark:bg-orange-900/20 transition-colors">
-                        <h3 className="font-bold text-orange-900 dark:text-orange-300 flex items-center gap-2">
-                            <Package size={18} /> Reservas: {selectedReservationProduct.name}
-                        </h3>
-                        <button onClick={() => setSelectedReservationProduct(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-                            <X size={20} />
-                        </button>
-                    </div>
-                    <div className="p-4 max-h-[60vh] overflow-y-auto bg-white dark:bg-slate-900 transition-colors">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Estas encomendas têm este produto mas o stock ainda não foi descontado oficialmente no inventário físico.</p>
-                        <div className="space-y-2">
-                            {selectedReservationProduct.orders.map((order, idx) => (
-                                <div key={idx} className="flex justify-between items-center p-3 bg-gray-50 dark:bg-slate-800 rounded-lg border border-gray-100 dark:border-slate-700 transition-colors">
-                                    <div>
-                                        <div className="text-sm font-bold text-gray-900 dark:text-white">#{order.id}</div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400">{order.customer}</div>
-                                    </div>
-                                    <div className="bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 px-2 py-1 rounded font-bold text-xs">
-                                        {order.qty} un.
-                                    </div>
-                                </div>
-                            ))}
+
+        <div className="border-b border-gray-200 px-5 py-2 text-xs text-gray-500 dark:border-slate-700 dark:text-gray-400">
+          {groups.length} produto(s) · {activeReservationCount} reserva(s) ativa(s) · preço/promoção/imagens ficam no Catálogo
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[1100px] w-full text-left">
+            <thead className="bg-slate-50 text-[11px] font-black uppercase tracking-wide text-slate-500 dark:bg-slate-900/40 dark:text-slate-400">
+              <tr>
+                <th className="w-10 px-4 py-3" />
+                <th className="px-4 py-3">Produto / catálogo</th>
+                <th className="px-3 py-3 text-center">Físico</th>
+                <th className="px-3 py-3 text-center">Reservado</th>
+                <th className="px-3 py-3 text-center">Disponível</th>
+                <th className="px-3 py-3 text-center">Vendido</th>
+                <th className="px-3 py-3 text-right">Preço loja</th>
+                <th className="px-4 py-3 text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+              {groups.map(group => {
+                const mainLot = group.lots[0];
+                const isOpen = expanded.includes(group.key);
+                const image = group.catalog?.image || group.catalog?.images?.[0] || mainLot.images?.[0];
+                const publicStock = Number(group.catalog?.stock ?? 0);
+                const discrepancy = group.catalog && publicStock !== group.metrics.available;
+
+                return (
+                  <React.Fragment key={group.key}>
+                    <tr className={`cursor-pointer transition hover:bg-slate-50 dark:hover:bg-slate-800/70 ${isOpen ? 'bg-blue-50/40 dark:bg-blue-900/10' : ''}`} onClick={() => toggleGroup(group.key)}>
+                      <td className="px-4 py-4 text-slate-500">{isOpen ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-3">
+                          {image ? <img src={image} alt="" className="h-11 w-11 rounded-lg border border-slate-200 object-cover dark:border-slate-700" /> : <div className="grid h-11 w-11 place-items-center rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-700"><Package size={18} /></div>}
+                          <div className="min-w-0">
+                            <div className="truncate font-black text-slate-900 dark:text-white">{mainLot.name}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                              <span>{group.catalog ? 'Produto público' : 'Lote privado'}</span>
+                              <span>•</span>
+                              <span>{group.metrics.lots} lote(s)</span>
+                              {group.lots.some(lot => (lot.units || []).length > 0) && <span className="inline-flex items-center gap-1 rounded bg-violet-100 px-1.5 py-0.5 font-bold text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"><Barcode size={10} /> Unidades</span>}
+                              {group.productAlertCount > 0 && <span className="rounded bg-amber-100 px-1.5 py-0.5 font-bold text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{group.productAlertCount} alerta(s)</span>}
+                              {discrepancy && <span className="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 font-bold text-red-700 dark:bg-red-900/30 dark:text-red-300"><AlertTriangle size={10} /> Loja por atualizar</span>}
+                            </div>
+                          </div>
                         </div>
-                    </div>
-                    <div className="p-4 bg-gray-50 dark:bg-slate-800 border-t border-gray-100 dark:border-slate-700 flex justify-end transition-colors">
-                        <button 
-                            onClick={() => setSelectedReservationProduct(null)}
-                            className="px-4 py-2 bg-white dark:bg-slate-700 border border-gray-300 dark:border-slate-600 rounded-lg text-sm font-bold text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
-                        >
-                            Fechar
-                        </button>
-                    </div>
-                </div>
-            </div>
+                      </td>
+                      <td className="px-3 py-4 text-center font-black text-slate-800 dark:text-slate-100">{group.metrics.physical}</td>
+                      <td className="px-3 py-4 text-center"><Metric label="" value={group.metrics.reserved} tone={group.metrics.reserved ? 'amber' : 'slate'} /></td>
+                      <td className="px-3 py-4 text-center"><Metric label="" value={group.metrics.available} tone={group.metrics.available ? 'green' : 'red'} /></td>
+                      <td className="px-3 py-4 text-center text-slate-600 dark:text-slate-300">{group.metrics.sold}</td>
+                      <td className="px-3 py-4 text-right font-black text-slate-900 dark:text-white">{group.catalog ? currency(group.catalog.price) : '—'}</td>
+                      <td className="px-4 py-4 text-right">
+                        <div className="flex justify-end gap-1" onClick={event => event.stopPropagation()}>
+                          {group.productAlertCount > 0 && <button onClick={() => onOpenStockAlerts(mainLot)} className="rounded-lg bg-amber-100 p-2 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-300" title="Gerir alertas"><BellRing size={15} /></button>}
+                          {group.catalog && onEditProduct && <button onClick={() => onEditProduct(mainLot)} className="rounded-lg bg-blue-50 p-2 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-300" title="Abrir catálogo"><Globe size={15} /></button>}
+                          <button onClick={() => onEdit(mainLot)} className="rounded-lg bg-slate-100 p-2 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200" title="Editar lote"><Edit2 size={15} /></button>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {isOpen && (
+                      <tr className="bg-slate-50/70 dark:bg-slate-950/20">
+                        <td colSpan={8} className="p-4">
+                          <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+                            <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-700 md:flex-row md:items-center md:justify-between">
+                              <div>
+                                <div className="font-black text-slate-900 dark:text-white">Lotes e unidades</div>
+                                <div className="text-xs text-slate-500 dark:text-slate-400">Fornecedor, custo, rastreabilidade e histórico pertencem ao lote — não ao catálogo.</div>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {group.catalog && <button onClick={() => onCreateVariant(mainLot)} className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 dark:border-violet-900/50 dark:bg-violet-900/20 dark:text-violet-300"><Tag size={13} className="mr-1 inline" /> Variante</button>}
+                                <button onClick={() => onAddNew()} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-300"><Plus size={13} className="mr-1 inline" /> Novo lote</button>
+                                {group.lots.length > 1 && <button onClick={() => onDeleteGroup(group.key, group.lots)} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300"><Trash2 size={13} className="mr-1 inline" /> Apagar grupo</button>}
+                              </div>
+                            </div>
+
+                            <div className="divide-y divide-slate-100 dark:divide-slate-700">
+                              {group.lots.map(lot => {
+                                const metrics = getLotStockMetrics(lot, reservations, now);
+                                const unitCount = (lot.units || []).length;
+                                const catalogPrice = group.catalog?.price ?? 0;
+                                const netUnitCost = Math.max(0, Number(lot.purchasePrice || 0) - (Number(lot.cashbackValue || 0) / Math.max(1, Number(lot.quantityBought || unitCount || 1))));
+                                const estimatedMargin = catalogPrice ? catalogPrice - netUnitCost : 0;
+
+                                return (
+                                  <div key={lot.id} className="p-4">
+                                    <div className="grid gap-4 xl:grid-cols-[minmax(260px,1fr)_auto_auto] xl:items-start">
+                                      <div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="font-black text-slate-900 dark:text-white">{lot.variant ? `${lot.name} · ${lot.variant}` : lot.name}</span>
+                                          {lot.supplierName && <span className="rounded bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-300">{lot.supplierName}</span>}
+                                          {lot.cashbackStatus === 'PENDING' && lot.cashbackValue > 0 && <span className="rounded bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">Cashback pendente {currency(lot.cashbackValue)}</span>}
+                                        </div>
+                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                          <Metric label="Físico" value={metrics.physical} tone="blue" />
+                                          <Metric label="Reservado" value={metrics.reserved} tone={metrics.reserved ? 'amber' : 'slate'} />
+                                          <Metric label="Disponível" value={metrics.available} tone={metrics.available ? 'green' : 'red'} />
+                                          <Metric label="Vendido" value={metrics.sold} />
+                                          {metrics.returned > 0 && <Metric label="Devolvido" value={metrics.returned} tone="blue" />}
+                                          {metrics.defective > 0 && <Metric label="Defeituoso" value={metrics.defective} tone="red" />}
+                                        </div>
+                                        <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                                          Compra: <strong>{currency(lot.purchasePrice)}</strong> · Custo líquido: <strong>{currency(netUnitCost)}</strong> · Margem estimada: <strong className={estimatedMargin >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>{currency(estimatedMargin)}</strong>
+                                        </div>
+                                      </div>
+
+                                      <div className="min-w-[230px] rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+                                        <div className="mb-2 text-[11px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">Unidades / etiquetas</div>
+                                        {unitCount === 0 ? (
+                                          <div className="text-xs text-slate-500 dark:text-slate-400">Este lote é controlado por quantidade. Adiciona S/N ou etiquetas no editor do lote.</div>
+                                        ) : (
+                                          <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
+                                            {(lot.units || []).map(unit => {
+                                              const editing = unitEdit?.lotId === lot.id && unitEdit.unitId === unit.id;
+                                              return (
+                                                <div key={unit.id} className="group flex items-center justify-between gap-2 rounded bg-white px-2 py-1.5 text-[11px] shadow-sm dark:bg-slate-800">
+                                                  {editing ? (
+                                                    <input value={unitEdit.value} onChange={event => setUnitEdit(current => current ? { ...current, value: event.target.value } : current)} onKeyDown={event => { if (event.key === 'Enter') saveUnitCode(); if (event.key === 'Escape') setUnitEdit(null); }} className="min-w-0 flex-1 rounded border border-blue-400 bg-white px-1 py-0.5 font-mono outline-none dark:bg-slate-900" autoFocus />
+                                                  ) : (
+                                                    <div className="min-w-0">
+                                                      <div className="truncate font-mono text-slate-700 dark:text-slate-200" title={unitCode(unit)}>{unitCode(unit)}</div>
+                                                      {unit.barcode && <div className="truncate text-[10px] text-slate-400">EAN: {unit.barcode}</div>}
+                                                    </div>
+                                                  )}
+                                                  <div className="flex shrink-0 items-center gap-1">
+                                                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${unitStatusClass[unit.status] || unitStatusClass.AVAILABLE}`}>{unitStatusLabel[unit.status] || unit.status}</span>
+                                                    {editing ? (
+                                                      <button onClick={saveUnitCode} disabled={savingUnit} className="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50" title="Guardar">{savingUnit ? <Loader2 size={12} className="animate-spin" /> : '✓'}</button>
+                                                    ) : (
+                                                      <>
+                                                        <button onClick={() => setUnitEdit({ lotId: lot.id, unitId: unit.id, value: unit.serialNumber || unit.id })} className="rounded p-1 text-blue-600 opacity-0 transition group-hover:opacity-100 hover:bg-blue-50" title="Editar S/N"><Edit2 size={12} /></button>
+                                                        <button onClick={() => copyToClipboard(unitCode(unit))} className="rounded p-1 text-slate-500 opacity-0 transition group-hover:opacity-100 hover:bg-slate-100 dark:hover:bg-slate-700" title="Copiar"><Copy size={12} /></button>
+                                                      </>
+                                                    )}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+
+                                      <div className="flex gap-1 xl:flex-col">
+                                        <button onClick={() => onSale(lot)} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white hover:bg-emerald-700" title="Registar venda / associar S/N"><ClipboardList size={14} className="mr-1 inline" /> Venda</button>
+                                        <button onClick={() => onEdit(lot)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"><Edit2 size={14} className="mr-1 inline" /> Editar</button>
+                                        <button onClick={() => onDelete(lot.id)} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-100 dark:border-red-900/50 dark:bg-red-900/20 dark:text-red-300"><Trash2 size={14} className="mr-1 inline" /> Lote</button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+
+              {groups.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-14 text-center">
+                    <Search className="mx-auto mb-3 text-slate-300" size={28} />
+                    <div className="font-bold text-slate-700 dark:text-slate-200">Não encontrámos stock com estes filtros.</div>
+                    <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">Pesquisa por nome, fornecedor, S/N, EAN ou etiqueta interna.</div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {reservations.some(reservation => isReservationActive(reservation, now)) && (
+          <div className="flex items-start gap-2 border-t border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300">
+            <Info size={15} className="mt-0.5 shrink-0" />
+            <span>As reservas ativas são descontadas uma única vez do stock disponível. Encomendas já finalizadas não são descontadas novamente nesta tabela.</span>
+          </div>
         )}
+      </section>
     </div>
   );
 };
