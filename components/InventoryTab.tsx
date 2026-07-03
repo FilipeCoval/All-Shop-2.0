@@ -48,6 +48,47 @@ interface InventoryTabProps {
 const formatCurrency = (value: number) => 
   new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
 
+
+type StockSummary = { physical: number; reserved: number; available: number; sold: number; processing: number; };
+
+const reservationExpiresAt = (value: unknown): number => {
+  if (typeof value === 'number') return value;
+  if (value && typeof (value as any).toMillis === 'function') return (value as any).toMillis();
+  if (value && typeof (value as any).toDate === 'function') return (value as any).toDate().getTime();
+  if (value && typeof (value as any).seconds === 'number') return (value as any).seconds * 1000;
+  return 0;
+};
+
+const lotStock = (lot: InventoryProduct) => {
+  if (Array.isArray(lot.units) && lot.units.length > 0) {
+    const sold = lot.units.filter(unit => unit.status === 'SOLD').length;
+    return { physical: Math.max(0, lot.units.length - sold), sold };
+  }
+  const bought = Math.max(0, Number(lot.quantityBought) || 0);
+  const sold = Math.max(0, Number(lot.quantitySold) || 0);
+  return { physical: Math.max(0, bought - sold), sold };
+};
+
+const summarizeProductStock = (lots: InventoryProduct[], reservations: StockReservation[], pendingOrders: Order[]): StockSummary => {
+  const productId = lots[0]?.publicProductId;
+  const physical = lots.reduce((total, lot) => total + lotStock(lot).physical, 0);
+  const sold = lots.reduce((total, lot) => total + lotStock(lot).sold, 0);
+  const now = Date.now();
+  const reserved = productId === undefined || productId === null ? 0 : reservations
+    .filter(reservation => String(reservation.productId) === String(productId) && reservationExpiresAt(reservation.expiresAt) > now)
+    .reduce((total, reservation) => total + Math.max(0, Number(reservation.quantity) || 0), 0);
+
+  // O checkout seguro já desconta stock quando a encomenda passa a Processamento.
+  // Por isso, encomendas pendentes são contexto, não um segundo desconto de stock.
+  const processing = productId === undefined || productId === null ? 0 : pendingOrders.reduce((total, order) => total + (Array.isArray(order.items)
+    ? order.items.reduce((subtotal, item: any) => String(item?.productId) === String(productId)
+      ? subtotal + Math.max(0, Number(item?.quantity) || 1)
+      : subtotal, 0)
+    : 0), 0);
+
+  return { physical, reserved: Math.min(physical, reserved), available: Math.max(0, physical - reserved), sold, processing };
+};
+
 const InventoryTab: React.FC<InventoryTabProps> = ({
   products, catalogProducts, pendingOrders, reservations, stats, onlineUsersCount, stockAlerts,
   onEdit, onEditProduct, onCreateVariant, onDeleteGroup, onSale, onDelete,
@@ -120,50 +161,13 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
   }, [products]);
 
   const filteredProducts = products.filter(p => {
-    console.log("Filtering product:", p.name, "isPrivate:", p.isPrivate);
     const matchesSearch = (p.name || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
-    // Calcular stock real para o filtro ser mais preciso que o campo status
-    let physicalQty = (p.quantityBought || 0) - (p.quantitySold || 0);
-    if (p.units && Array.isArray(p.units) && p.units.length > 0) {
-        physicalQty = p.units.filter(u => u.status === 'AVAILABLE').length;
-    }
-    
-    // Calcular stock pendente especificamente para esta variante/produto
-    let pendingForThis = 0;
-    pendingOrders.forEach(order => {
-        if (order.items && Array.isArray(order.items)) {
-            order.items.forEach(item => {
-                if (typeof item === 'object' && item !== null) {
-                    const orderItem = item as any;
-                    if (orderItem.productId === p.publicProductId) {
-                        const itemVariant = (orderItem.selectedVariant || '').trim().toLowerCase();
-                        const batchVariant = (p.variant || '').trim().toLowerCase();
-                        if (batchVariant === '' || itemVariant === batchVariant) {
-                            pendingForThis += (orderItem.quantity || 1);
-                        }
-                    }
-                }
-            });
-        }
-    });
-
-    const reservationsForThis = reservations
-        .filter(r => r.productId === p.publicProductId && (!p.variant || r.variantName === p.variant))
-        .reduce((sum, r) => sum + r.quantity, 0);
-
-    const effectiveAvailableQty = Math.max(0, physicalQty - pendingForThis - reservationsForThis);
-
-    let matchesStatus = true;
-    if (statusFilter === 'IN_STOCK') matchesStatus = effectiveAvailableQty > 0;
-    if (statusFilter === 'SOLD') matchesStatus = effectiveAvailableQty <= 0;
-    
-    let matchesCashback = true;
-    if (cashbackFilter !== 'ALL') matchesCashback = p.cashbackStatus === cashbackFilter;
-
-    let matchesSupplier = true;
-    if (supplierFilter !== 'ALL') matchesSupplier = p.supplierName === supplierFilter;
-
+    const summary = summarizeProductStock([p], reservations, pendingOrders);
+    const matchesStatus = statusFilter === 'ALL'
+      || (statusFilter === 'IN_STOCK' && summary.available > 0)
+      || (statusFilter === 'SOLD' && summary.available <= 0);
+    const matchesCashback = cashbackFilter === 'ALL' || p.cashbackStatus === cashbackFilter;
+    const matchesSupplier = supplierFilter === 'ALL' || p.supplierName === supplierFilter;
     return matchesSearch && matchesStatus && matchesCashback && matchesSupplier;
   });
 
@@ -176,6 +180,21 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
     });
     return Object.entries(groups).sort(([, itemsA], [, itemsB]) => (itemsA[0]?.name || '').localeCompare(itemsB[0]?.name || ''));
   }, [filteredProducts]);
+
+  const dashboardStockSummary = useMemo(() => {
+    const groups = new Map<string, InventoryProduct[]>();
+    products.forEach(product => {
+      const key = product.publicProductId !== undefined && product.publicProductId !== null ? String(product.publicProductId) : `local-${product.id}`;
+      groups.set(key, [...(groups.get(key) || []), product]);
+    });
+    return [...groups.values()].reduce<StockSummary>((total, lots) => {
+      const stock = summarizeProductStock(lots, reservations, pendingOrders);
+      return {
+        physical: total.physical + stock.physical, reserved: total.reserved + stock.reserved,
+        available: total.available + stock.available, sold: total.sold + stock.sold, processing: total.processing + stock.processing,
+      };
+    }, { physical: 0, reserved: 0, available: 0, sold: 0, processing: 0 });
+  }, [products, reservations, pendingOrders]);
 
   const toggleGroup = (groupId: string) => {
     setExpandedGroups(prev => prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId]);
@@ -208,30 +227,12 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
         </div>
         
         <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden transition-colors">
-            <div className="bg-gray-50 dark:bg-slate-700 px-4 py-3 border-b border-gray-200 dark:border-slate-600 flex gap-4 text-xs font-medium text-gray-500 dark:text-gray-300 transition-colors">
-                <span>Total: {products.length}</span>
-                <span className="w-px h-4 bg-gray-300 dark:bg-slate-500"></span>
-                <span className="text-green-600 dark:text-green-400">
-                    Disponíveis: {products.filter(p => {
-                        let phys = Math.max(0, (Number(p.quantityBought) || 0) - (Number(p.quantitySold) || 0));
-                        if (p.units && Array.isArray(p.units) && p.units.length > 0) phys = p.units.filter(u => u.status === 'AVAILABLE').length;
-                        const pend = pendingOrders.filter(o => o.items && Array.isArray(o.items) && o.items.some((i: any) => String(i.productId) === String(p.publicProductId))).reduce((sum, o) => {
-                            return sum + o.items.filter((i: any) => String(i.productId) === String(p.publicProductId)).reduce((s: number, i: any) => s + (Number(i.quantity) || 1), 0);
-                        }, 0);
-                        return (phys - pend) > 0;
-                    }).length}
-                </span>
-                <span className="w-px h-4 bg-gray-300 dark:bg-slate-500"></span>
-                <span className="text-red-600 dark:text-red-400">
-                    Esgotados: {products.filter(p => {
-                        let phys = Math.max(0, (Number(p.quantityBought) || 0) - (Number(p.quantitySold) || 0));
-                        if (p.units && Array.isArray(p.units) && p.units.length > 0) phys = p.units.filter(u => u.status === 'AVAILABLE').length;
-                        const pend = pendingOrders.filter(o => o.items && Array.isArray(o.items) && o.items.some((i: any) => String(i.productId) === String(p.publicProductId))).reduce((sum, o) => {
-                            return sum + o.items.filter((i: any) => String(i.productId) === String(p.publicProductId)).reduce((s: number, i: any) => s + (Number(i.quantity) || 1), 0);
-                        }, 0);
-                        return (phys - pend) <= 0;
-                    }).length}
-                </span>
+            <div className="bg-gray-50 dark:bg-slate-700 px-4 py-3 border-b border-gray-200 dark:border-slate-600 grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs font-medium transition-colors">
+                <div className="text-gray-500 dark:text-gray-300"><span className="block uppercase text-[10px] text-gray-400">Lotes</span><strong className="text-gray-900 dark:text-white">{products.length}</strong></div>
+                <div className="text-blue-600 dark:text-blue-400"><span className="block uppercase text-[10px] text-gray-400">Físico</span><strong>{dashboardStockSummary.physical} un.</strong></div>
+                <div className="text-amber-600 dark:text-amber-400"><span className="block uppercase text-[10px] text-gray-400">Reservado</span><strong>{dashboardStockSummary.reserved} un.</strong></div>
+                <div className="text-green-600 dark:text-green-400"><span className="block uppercase text-[10px] text-gray-400">Disponível</span><strong>{dashboardStockSummary.available} un.</strong></div>
+                <div className="text-slate-600 dark:text-slate-300"><span className="block uppercase text-[10px] text-gray-400">Vendido</span><strong>{dashboardStockSummary.sold} un.</strong></div>
             </div>
             <div className="p-4 border-b border-gray-200 dark:border-slate-700 flex flex-col lg:flex-row justify-between items-center gap-4 transition-colors">
                 <div className="flex flex-wrap gap-2 w-full lg:w-auto">
@@ -285,8 +286,11 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                         <tr>
                             <th className="px-6 py-3 w-10"></th>
                             <th className="px-6 py-3">Produto (Loja)</th>
-                            <th className="px-4 py-3 text-center">Stock Total</th>
-                            <th className="px-4 py-3 text-center">Estado Geral</th>
+                            <th className="px-3 py-3 text-center">Físico</th>
+                            <th className="px-3 py-3 text-center hidden lg:table-cell">Reservado</th>
+                            <th className="px-3 py-3 text-center">Disponível</th>
+                            <th className="px-3 py-3 text-center hidden xl:table-cell">Vendido</th>
+                            <th className="px-3 py-3 text-center">Estado</th>
                             <th className="px-4 py-3 text-right">Preço Loja</th>
                             <th className="px-4 py-3 text-right">Ações</th>
                         </tr>
@@ -299,47 +303,16 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                             // Fetch catalog product as source of truth for stock
                             const catalogProd = catalogProducts?.find(p => String(p.id) === String(mainItem.publicProductId));
                             
-                            // O stock exibido no topo (agregado) deve refletir SEMPRE a soma dos lotes (database of reality para o inventário físico)
-                            let totalPhysicalStock = 0;
-                            items.forEach(i => {
-                                let b = Number(i.quantityBought) || 0;
-                                let s = Number(i.quantitySold) || 0;
-                                if (i.units && Array.isArray(i.units) && i.units.length > 0) {
-                                    b = i.units.length;
-                                    s = i.units.filter(u => u.status === 'SOLD').length;
-                                }
-                                totalPhysicalStock += Math.max(0, b - s);
-                            });
+                            // Uma única leitura de stock: físico, reservas de carrinho e disponível.
+                            const stockSummary = summarizeProductStock(items, reservations, pendingOrders);
+                            const totalPhysicalStock = stockSummary.physical;
+                            const activeReservationsCount = stockSummary.reserved;
+                            const availableStock = stockSummary.available;
+                            const soldStock = stockSummary.sold;
+                            const pendingInOrders = stockSummary.processing;
+                            const catalogAvailableStock = Number(catalogProd?.stock);
+                            const hasStockMismatch = Number.isFinite(catalogAvailableStock) && catalogAvailableStock !== availableStock;
 
-                            // Calcular reservas de stock em tempo real
-                            const nowTime = Date.now();
-                            const activeReservationsCount = (reservations || [])
-                                .filter(r => {
-                                    if (String(r.productId) !== String(mainItem.publicProductId)) return false;
-                                    const rawExp = r.expiresAt as any;
-                                    const exp = !rawExp ? 0 : (typeof rawExp === 'number' ? rawExp : (typeof rawExp.toMillis === 'function' ? rawExp.toMillis() : (typeof rawExp.toDate === 'function' ? rawExp.toDate().getTime() : (rawExp.seconds !== undefined ? rawExp.seconds * 1000 : Number(rawExp)))));
-                                    return !isNaN(exp) && exp > nowTime;
-                                })
-                                .reduce((sum, r) => sum + (r.quantity || 0), 0);
-
-                            // Calcular stock pendente em encomendas por processar/enviar
-                            let pendingInOrders = 0;
-                            pendingOrders.forEach(order => {
-                                if (order.items && Array.isArray(order.items)) {
-                                    order.items.forEach(item => {
-                                        if (typeof item === 'object' && item !== null) {
-                                            const orderItem = item as any;
-                                            if (String(orderItem.productId) === String(mainItem.publicProductId)) {
-                                                pendingInOrders += (Number(orderItem.quantity) || 1);
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-
-                            // O stock disponível é o físico subtraído pelas reservas nos lotes (carrinhos) e ordens pendentes
-                            const availableStock = Math.max(0, totalPhysicalStock - activeReservationsCount - pendingInOrders);
-                            
                             const alertsCount = mainItem.publicProductId 
                                 ? stockAlerts.filter(a => a.productId === mainItem.publicProductId).length
                                 : 0;
@@ -382,43 +355,31 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-4 text-center">
-                                            <div className="flex flex-col items-center">
-                                                <span className={`font-bold px-2 py-1 rounded text-sm ${totalPhysicalStock > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
-                                                    {totalPhysicalStock} un. {(pendingInOrders > 0 || activeReservationsCount > 0) && <span className="font-normal text-xs opacity-75">(Disp: {availableStock})</span>}
-                                                </span>
-                                                {pendingInOrders > 0 && (
-                                                    <button 
-                                                       onClick={(e) => {
-                                                           e.stopPropagation();
-                                                           const ordersReserving: any[] = [];
-                                                           pendingOrders.forEach(o => {
-                                                               const item = o.items.find((i: any) => String(i.productId) === String(mainItem.publicProductId));
-                                                               if (item && typeof item === 'object') {
-                                                                   ordersReserving.push({
-                                                                       id: o.id,
-                                                                       customer: o.shippingInfo?.name || 'N/A',
-                                                                       qty: (item as any).quantity || 1
-                                                                   });
-                                                               }
-                                                           });
-                                                           setSelectedReservationProduct({ name: mainItem.name, orders: ordersReserving });
-                                                       }}
-                                                       className="text-[10px] text-orange-600 dark:text-orange-400 font-bold mt-1 hover:underline flex items-center gap-0.5"
-                                                    >
-                                                        ({totalPhysicalStock} físico - {pendingInOrders} pend.)
-                                                        <Info size={10} />
-                                                    </button>
-                                                )}
+                                        <td className="px-3 py-4 text-center">
+                                            <span className={`font-bold px-2 py-1 rounded text-sm ${totalPhysicalStock > 0 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>{totalPhysicalStock}</span>
+                                        </td>
+                                        <td className="px-3 py-4 text-center hidden lg:table-cell">
+                                            <span className={`font-bold px-2 py-1 rounded text-sm ${activeReservationsCount > 0 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' : 'text-gray-400 dark:text-gray-500'}`}>{activeReservationsCount}</span>
+                                        </td>
+                                        <td className="px-3 py-4 text-center">
+                                            <div className="flex flex-col items-center gap-1">
+                                                <span className={`font-bold px-2 py-1 rounded text-sm ${availableStock > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>{availableStock}</span>
+                                                {hasStockMismatch && <button onClick={(event) => { event.stopPropagation(); onSyncStock(); }} className="text-[9px] font-bold text-orange-600 dark:text-orange-400 hover:underline" title={`A loja mostra ${catalogAvailableStock}; o inventário calcula ${availableStock}. Clique para sincronizar.`}>Sincronizar</button>}
                                             </div>
                                         </td>
+                                        <td className="px-3 py-4 text-center hidden xl:table-cell"><span className="font-bold text-gray-600 dark:text-gray-300">{soldStock}</span></td>
+
                                         <td className="px-4 py-4 text-center">
                                             {mainItem.comingSoon ? (
                                                 <span className="text-purple-600 dark:text-purple-400 font-bold text-xs uppercase bg-purple-100 dark:bg-purple-900/30 px-2 py-1 rounded">Em Breve</span>
                                             ) : (
-                                                <span className={`text-xs font-bold uppercase ${availableStock > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
-                                                    {availableStock > 0 ? 'Disponível' : 'Esgotado'}
-                                                </span>
+                                                <div className="flex flex-col items-center gap-1">
+                                                    <span className={`text-xs font-bold uppercase ${availableStock > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
+                                                        {availableStock > 0 ? 'Disponível' : 'Esgotado'}
+                                                    </span>
+                                                    {activeReservationsCount > 0 && <span className="text-[9px] text-amber-600 dark:text-amber-400">{activeReservationsCount} em reserva</span>}
+                                                    {pendingInOrders > 0 && <span className="text-[9px] text-slate-500 dark:text-slate-400">{pendingInOrders} em processamento</span>}
+                                                </div>
                                             )}
                                         </td>
                                         <td className="px-4 py-4 text-right font-medium text-gray-900 dark:text-white">
@@ -470,13 +431,13 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                             {items.map(p => { 
                                                                 let qtyBought = p.quantityBought || 0;
                                                                 let qtySold = p.quantitySold || 0;
-                                                                let batchStock = Math.max(0, qtyBought - qtySold);
-
                                                                 if (p.units && Array.isArray(p.units) && p.units.length > 0) {
                                                                     qtyBought = p.units.length;
                                                                     qtySold = p.units.filter(u => u.status === 'SOLD').length;
-                                                                    batchStock = p.units.filter(u => u.status === 'AVAILABLE').length;
                                                                 }
+                                                                const batchPhysical = Math.max(0, qtyBought - qtySold);
+                                                                const batchReserved = Math.min(batchPhysical, Math.max(0, Number((p as any).reserved || 0)));
+                                                                const batchStock = Math.max(0, batchPhysical - batchReserved);
 
                                                                 const salePrice = p.salePrice || p.targetSalePrice || 0; 
                                                                 const purchasePrice = p.purchasePrice || 0; 
@@ -526,7 +487,8 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                                             ) : <span className="text-gray-400 dark:text-gray-500 text-xs">-</span>}
                                                                         </td>
                                                                         <td className="px-4 py-3 text-center">
-                                                                            <div className="flex justify-center text-[10px] mb-1 font-medium text-gray-600 dark:text-gray-300"><span>{batchStock}/{Math.max(qtyBought, 1)} un.</span></div>
+                                                                            <div className="flex justify-center text-[10px] mb-1 font-medium text-gray-600 dark:text-gray-300"><span>{batchStock} disponível / {batchPhysical} físico</span></div>
+                                                                            {batchReserved > 0 && <div className="text-[9px] text-amber-600 dark:text-amber-400 mb-1">{batchReserved} reservado</div>}
                                                                             <div className="w-20 bg-gray-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden mx-auto">
                                                                                 <div 
                                                                                     className={`h-full rounded-full ${ qtyBought > 0 && (qtySold / Math.max(qtyBought, 1)) >= 1 ? 'bg-gray-400 dark:bg-gray-600' : 'bg-blue-500 dark:bg-blue-400'}`} 
