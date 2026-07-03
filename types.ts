@@ -286,6 +286,8 @@ export interface ProductUnit {
   reservedUntil?: string;
   soldAt?: string;
   soldToOrder?: string;
+  soldToCustomerName?: string;
+  soldToCustomerEmail?: string;
   returnedAt?: string;
   defectiveAt?: string;
 }

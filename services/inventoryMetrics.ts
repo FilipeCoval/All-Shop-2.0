@@ -141,6 +141,16 @@ export const getProductStockMetrics = (
 export const unitMatchesSearch = (unit: ProductUnit, term: string) => {
   const normalizedTerm = normalize(term);
   if (!normalizedTerm) return true;
-  return [unit.id, unit.serialNumber, unit.barcode, unit.internalLabel]
-    .some(value => normalize(value).includes(normalizedTerm));
+  return [
+    unit.id,
+    unit.serialNumber,
+    unit.barcode,
+    unit.internalLabel,
+    unit.soldToOrder,
+    unit.soldToCustomerName,
+    unit.soldToCustomerEmail,
+  ].some(value => normalize(value).includes(normalizedTerm));
 };
+
+export const lotUnidentifiedUnitCount = (lot: InventoryProduct) =>
+  (lot.units || []).filter(unit => !String(unit.serialNumber || unit.barcode || unit.internalLabel || unit.id || '').trim()).length;

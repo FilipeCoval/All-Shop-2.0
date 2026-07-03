@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Barcode,
@@ -32,6 +32,7 @@ import {
   getLotStockMetrics,
   getProductStockMetrics,
   isReservationActive,
+  lotUnidentifiedUnitCount,
   unitMatchesSearch,
 } from '../services/inventoryMetrics';
 
@@ -72,6 +73,7 @@ interface InventoryTabProps {
 }
 
 type StockFilter = 'ALL' | 'AVAILABLE' | 'LOW' | 'OUT' | 'TRACKED';
+type UnitFilter = 'ALL' | 'AVAILABLE' | 'RESERVED' | 'SOLD' | 'RETURNED' | 'DEFECTIVE' | 'IN_TRANSIT' | 'UNIDENTIFIED';
 type UnitEdit = { lotId: string; unitId: string; value: string } | null;
 
 const currency = (value: number) =>
@@ -152,6 +154,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
   onSearchChange,
 }) => {
   const [stockFilter, setStockFilter] = useState<StockFilter>('ALL');
+  const [unitFilter, setUnitFilter] = useState<UnitFilter>('ALL');
   const [supplierFilter, setSupplierFilter] = useState('ALL');
   const [expanded, setExpanded] = useState<string[]>([]);
   const [unitEdit, setUnitEdit] = useState<UnitEdit>(null);
@@ -200,13 +203,19 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
         const matchesSupplier =
           supplierFilter === 'ALL' || lots.some(lot => lot.supplierName === supplierFilter);
 
+        const matchesUnit = unitFilter === 'ALL' || lots.some(lot => {
+          const units = lot.units || [];
+          if (unitFilter === 'UNIDENTIFIED') return units.length === 0 || lotUnidentifiedUnitCount(lot) > 0;
+          return units.some(unit => unit.status === unitFilter);
+        });
+
         const matchesAlerts = !showOnlyAlerts || productAlertCount > 0;
 
-        return { key, lots, metrics, catalog, productAlertCount, matchesSearch, matchesStock, matchesSupplier, matchesAlerts };
+        return { key, lots, metrics, catalog, productAlertCount, matchesSearch, matchesStock, matchesSupplier, matchesUnit, matchesAlerts };
       })
-      .filter(group => group.matchesSearch && group.matchesStock && group.matchesSupplier && group.matchesAlerts)
+      .filter(group => group.matchesSearch && group.matchesStock && group.matchesSupplier && group.matchesUnit && group.matchesAlerts)
       .sort((a, b) => a.lots[0].name.localeCompare(b.lots[0].name, 'pt-PT'));
-  }, [products, reservations, catalogProducts, searchTerm, stockFilter, supplierFilter, stockAlerts, showOnlyAlerts, now]);
+  }, [products, reservations, catalogProducts, searchTerm, stockFilter, unitFilter, supplierFilter, stockAlerts, showOnlyAlerts, now]);
 
   const totals = useMemo(() => groups.reduce(
     (sum, group) => ({
@@ -223,6 +232,16 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
   const toggleGroup = (key: string) => {
     setExpanded(current => current.includes(key) ? current.filter(item => item !== key) : [...current, key]);
   };
+
+  const expandAll = () => setExpanded(groups.map(group => group.key));
+  const collapseAll = () => setExpanded([]);
+
+  useEffect(() => {
+    const term = normalise(searchTerm);
+    if (!term) return;
+    const matching = groups.filter(group => group.matchesSearch).map(group => group.key);
+    if (matching.length) setExpanded(current => Array.from(new Set([...current, ...matching])));
+  }, [searchTerm, groups]);
 
   const saveUnitCode = async () => {
     if (!unitEdit) return;
@@ -299,7 +318,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
               <input
                 value={searchTerm}
                 onChange={event => onSearchChange(event.target.value)}
-                placeholder="Pesquisar nome, S/N, EAN, código interno, lote ou fornecedor…"
+                placeholder="Pesquisar produto, S/N, EAN, etiqueta, encomenda, cliente ou fornecedor…"
                 className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-900 dark:text-white dark:focus:ring-blue-950"
               />
             </div>
@@ -322,10 +341,22 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
               <option value="OUT">Esgotado</option>
               <option value="TRACKED">Com unidades/SN</option>
             </select>
+            <select value={unitFilter} onChange={event => setUnitFilter(event.target.value as UnitFilter)} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-gray-200" title="Filtrar por estado da unidade">
+              <option value="ALL">Todas unidades</option>
+              <option value="AVAILABLE">Unidades disponíveis</option>
+              <option value="RESERVED">Unidades reservadas</option>
+              <option value="SOLD">Unidades vendidas</option>
+              <option value="RETURNED">Unidades devolvidas</option>
+              <option value="DEFECTIVE">Unidades defeituosas</option>
+              <option value="IN_TRANSIT">Unidades em trânsito</option>
+              <option value="UNIDENTIFIED">Sem identificação</option>
+            </select>
             <select value={supplierFilter} onChange={event => setSupplierFilter(event.target.value)} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-gray-200">
               <option value="ALL">Todos fornecedores</option>
               {suppliers.map(supplier => <option key={supplier} value={supplier}>{supplier}</option>)}
             </select>
+            <button onClick={expandAll} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-gray-200" title="Abrir todos os produtos">Abrir</button>
+            <button onClick={collapseAll} className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-50 dark:border-slate-600 dark:bg-slate-900 dark:text-gray-200" title="Fechar todos os produtos">Fechar</button>
             <button onClick={() => setShowOnlyAlerts(value => !value)} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${showOnlyAlerts ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'border-gray-300 text-gray-600 dark:border-slate-600 dark:text-gray-300'}`}>
               <BellRing size={14} className="mr-1 inline" /> Alertas
             </button>
@@ -436,6 +467,8 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                           <Metric label="Vendido" value={metrics.sold} />
                                           {metrics.returned > 0 && <Metric label="Devolvido" value={metrics.returned} tone="blue" />}
                                           {metrics.defective > 0 && <Metric label="Defeituoso" value={metrics.defective} tone="red" />}
+                                          {metrics.inTransit > 0 && <Metric label="Em trânsito" value={metrics.inTransit} tone="blue" />}
+                                          {unitCount === 0 && <span className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-500 dark:bg-slate-700 dark:text-slate-300">Sem unidades identificadas</span>}
                                         </div>
                                         <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                                           Compra: <strong>{currency(lot.purchasePrice)}</strong> · Custo líquido: <strong>{currency(netUnitCost)}</strong> · Margem estimada: <strong className={estimatedMargin >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>{currency(estimatedMargin)}</strong>
@@ -451,13 +484,15 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                             {(lot.units || []).map(unit => {
                                               const editing = unitEdit?.lotId === lot.id && unitEdit.unitId === unit.id;
                                               return (
-                                                <div key={unit.id} className="group flex items-center justify-between gap-2 rounded bg-white px-2 py-1.5 text-[11px] shadow-sm dark:bg-slate-800">
+                                                <div key={unit.id} className={`group flex items-center justify-between gap-2 rounded px-2 py-1.5 text-[11px] shadow-sm dark:bg-slate-800 ${normalise(searchTerm) && unitMatchesSearch(unit, searchTerm) ? 'bg-amber-50 ring-1 ring-amber-300 dark:bg-amber-900/20 dark:ring-amber-700' : 'bg-white'}`}>
                                                   {editing ? (
                                                     <input value={unitEdit.value} onChange={event => setUnitEdit(current => current ? { ...current, value: event.target.value } : current)} onKeyDown={event => { if (event.key === 'Enter') saveUnitCode(); if (event.key === 'Escape') setUnitEdit(null); }} className="min-w-0 flex-1 rounded border border-blue-400 bg-white px-1 py-0.5 font-mono outline-none dark:bg-slate-900" autoFocus />
                                                   ) : (
                                                     <div className="min-w-0">
                                                       <div className="truncate font-mono text-slate-700 dark:text-slate-200" title={unitCode(unit)}>{unitCode(unit)}</div>
                                                       {unit.barcode && <div className="truncate text-[10px] text-slate-400">EAN: {unit.barcode}</div>}
+                                                      {unit.soldToOrder && <div className="truncate text-[10px] font-semibold text-violet-600 dark:text-violet-300" title={`Encomenda ${unit.soldToOrder}`}>Encomenda: {unit.soldToOrder}</div>}
+                                                      {unit.soldToCustomerName && <div className="truncate text-[10px] text-slate-500 dark:text-slate-400">Cliente: {unit.soldToCustomerName}</div>}
                                                     </div>
                                                   )}
                                                   <div className="flex shrink-0 items-center gap-1">
@@ -501,7 +536,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                   <td colSpan={8} className="px-6 py-14 text-center">
                     <Search className="mx-auto mb-3 text-slate-300" size={28} />
                     <div className="font-bold text-slate-700 dark:text-slate-200">Não encontrámos stock com estes filtros.</div>
-                    <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">Pesquisa por nome, fornecedor, S/N, EAN ou etiqueta interna.</div>
+                    <div className="mt-1 text-sm text-slate-500 dark:text-slate-400">Pesquisa por produto, fornecedor, S/N, EAN, etiqueta interna, encomenda ou cliente.</div>
                   </td>
                 </tr>
               )}
