@@ -265,7 +265,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16}/>
                     </div>
         
-                    <button onClick={onSyncStock} disabled={isSyncingStock} className="bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-1" title="Sincronizar Stock da Loja">
+                    <button onClick={onSyncStock} disabled={isSyncingStock} className="bg-blue-500 text-white px-3 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-1" title="Atualizar stock da loja a partir dos lotes">
                         {isSyncingStock ? <Loader2 size={18} className="animate-spin" /> : <RefreshCw size={18} />}
                     </button>
                     <button onClick={() => onOpenScanner('search')} className="bg-gray-700 dark:bg-slate-600 text-white px-3 py-2 rounded-lg hover:bg-gray-900 dark:hover:bg-slate-500 transition-colors" title="Escanear Código de Barras">
@@ -364,7 +364,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                         <td className="px-3 py-4 text-center">
                                             <div className="flex flex-col items-center gap-1">
                                                 <span className={`font-bold px-2 py-1 rounded text-sm ${availableStock > 0 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>{availableStock}</span>
-                                                {hasStockMismatch && <button onClick={(event) => { event.stopPropagation(); onSyncStock(); }} className="text-[9px] font-bold text-orange-600 dark:text-orange-400 hover:underline" title={`A loja mostra ${catalogAvailableStock}; o inventário calcula ${availableStock}. Clique para sincronizar.`}>Sincronizar</button>}
+                                                {hasStockMismatch && <button onClick={(event) => { event.stopPropagation(); onSyncStock(); }} className="text-[9px] font-bold text-orange-600 dark:text-orange-400 hover:underline" title={`A loja mostra ${catalogAvailableStock}; os lotes calculam ${availableStock}. Clique para atualizar a loja a partir dos lotes.`}>Atualizar loja</button>}
                                             </div>
                                         </td>
                                         <td className="px-3 py-4 text-center hidden xl:table-cell"><span className="font-bold text-gray-600 dark:text-gray-300">{soldStock}</span></td>
