@@ -78,7 +78,9 @@ export const useInventory = (isAdmin: boolean = false) => {
     return () => unsubscribe();
   }, [isAdmin]);
 
-  // --- FUNÇÃO DE SINCRONIZAÇÃO AUTOMÁTICA (Forward Sync: Inventory Lotes -> Public Catalog) ---
+  // --- SINCRONIZAÇÃO DE STOCK (Lotes -> Catálogo) ---
+  // IMPORTANTE: o lote nunca altera nome, preço, descrição, imagens ou promoções do catálogo.
+  // O catálogo público é a fonte única desses dados; daqui sincronizamos apenas stock/variantes.
   const refreshPublicProductStock = async (publicIdRaw: number | string) => {
       try {
           const publicId = Number(publicIdRaw);
@@ -151,42 +153,39 @@ export const useInventory = (isAdmin: boolean = false) => {
 
   const addProduct = async (product: Omit<InventoryProduct, 'id'>) => {
     try {
-      // 1. Adicionar ao Inventário (Privado)
+      // O lote guarda apenas dados de compra/rastreabilidade. Mantemos campos antigos por
+      // compatibilidade com lotes existentes, mas não os usamos para substituir o catálogo.
       const docRef = await addDoc(collection(modularDb, 'products_inventory'), product as any);
-      
-      const publicId = product.publicProductId !== undefined && product.publicProductId !== null 
-        ? Number(product.publicProductId) 
-        : Date.now();
-      
-      // 2. Atualizar ou Criar Produto Público
-      if (!product.isPrivate) {
-          const publicProduct = mapToPublicProduct(product, publicId);
-          // Ensure the id field is explicitly present
-          publicProduct.id = publicId;
-          const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
 
-          if (product.publicProductId !== undefined && product.publicProductId !== null) {
-              // If publicProductId exists, ensure the document exists and has the 'id' field
-              await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct, { merge: true });
-          } else {
-              // If it's a new product, create it
-              await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct);
-              await updateDoc(docRef, { publicProductId: publicId });
-          }
+      const hasPublicProduct = product.publicProductId !== undefined && product.publicProductId !== null;
+      const publicId = hasPublicProduct ? Number(product.publicProductId) : Date.now();
 
-          // 3. SINCRONIZAÇÃO AUTOMÁTICA DE STOCK
-          await refreshPublicProductStock(publicId);
-      } else {
-          // If it is private, mark it as private in products_public
-          const publicProduct = mapToPublicProduct(product, publicId);
-          publicProduct.id = publicId;
-          publicProduct.isPrivate = true;
-          const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
-
-          await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct);
-          await updateDoc(docRef, { publicProductId: publicId });
+      if (product.isPrivate) {
+        // Lotes privados não criam nem alteram produtos públicos.
+        if (!hasPublicProduct) {
+          await updateDoc(docRef, { publicProductId: null });
+        }
+        return;
       }
 
+      const publicRef = doc(modularDb, 'products_public', publicId.toString());
+      const publicSnap = await getDoc(publicRef);
+
+      if (!publicSnap.exists()) {
+        // Compatibilidade: se ainda criares o primeiro lote sem criar catálogo antes,
+        // criamos um catálogo-base uma única vez. Depois o catálogo passa a ser editado
+        // exclusivamente pela aba Catálogo.
+        const publicProduct = mapToPublicProduct(product, publicId);
+        publicProduct.id = publicId;
+        const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
+        await setDoc(publicRef, cleanPublicProduct);
+      }
+
+      if (!hasPublicProduct) {
+        await updateDoc(docRef, { publicProductId: publicId });
+      }
+
+      await refreshPublicProductStock(publicId);
     } catch (error) {
       console.error("Erro ao adicionar produto:", error);
       throw error;
@@ -195,34 +194,15 @@ export const useInventory = (isAdmin: boolean = false) => {
 
   const updateProduct = async (id: string, updates: Partial<InventoryProduct>) => {
     try {
-      // 1. Atualizar Inventário
       await updateDoc(doc(modularDb, 'products_inventory', id), updates as any);
 
-      // 2. Obter dados atualizados para sincronizar info pública
+      // O lote só pode provocar recálculo de stock. Nunca pode sobrescrever layout,
+      // preço, imagens, descrição, promoção ou privacidade do produto público.
       const docSnap = await getDoc(doc(modularDb, 'products_inventory', id));
-      const currentData = docSnap.data() as InventoryProduct;
-      
+      const currentData = docSnap.data() as InventoryProduct | undefined;
       if (currentData && currentData.publicProductId !== undefined && currentData.publicProductId !== null) {
-          const publicId = Number(currentData.publicProductId);
-          
-          if (currentData.isPrivate) {
-              // Mark as private instead of deleting
-              await updateDoc(doc(modularDb, 'products_public', publicId.toString()), { isPrivate: true });
-          } else {
-              // Ensure added/updated
-              const publicProduct = mapToPublicProduct(currentData, publicId);
-              publicProduct.id = publicId;
-              publicProduct.isPrivate = false;
-              const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
-
-              await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct, { merge: true });
-
-              // 3. SINCRONIZAÇÃO AUTOMÁTICA DE STOCK
-              // Recalcula a soma de todos os lotes
-              await refreshPublicProductStock(publicId);
-          }
+        await refreshPublicProductStock(currentData.publicProductId);
       }
-
     } catch (error) {
       console.error("Erro ao atualizar produto:", error);
       throw error;
@@ -232,24 +212,14 @@ export const useInventory = (isAdmin: boolean = false) => {
   const deleteProduct = async (id: string) => {
     try {
       const docSnap = await getDoc(doc(modularDb, 'products_inventory', id));
-      const data = docSnap.data() as InventoryProduct;
+      const data = docSnap.exists() ? docSnap.data() as InventoryProduct : null;
 
-      // 1. Apagar do Inventário
       await deleteDoc(doc(modularDb, 'products_inventory', id));
 
-      // 2. Se tinha ID público, recalcular stock (ou apagar se for o último)
+      // Apagar um lote não apaga o produto público. O produto mantém-se no catálogo,
+      // apenas passa a stock 0 quando já não houver lotes.
       if (data && data.publicProductId !== undefined && data.publicProductId !== null) {
-          const publicId = Number(data.publicProductId);
-          
-          const remQ = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId));
-          const remainingInventory = await getDocs(remQ);
-              
-          if (remainingInventory.empty) {
-              await deleteDoc(doc(modularDb, 'products_public', publicId.toString()));
-          } else {
-              // Ainda existem outros lotes, recalcula o total
-              await refreshPublicProductStock(publicId);
-          }
+        await refreshPublicProductStock(data.publicProductId);
       }
     } catch (error) {
       console.error("Erro ao apagar produto:", error);
