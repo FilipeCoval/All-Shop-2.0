@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   LayoutDashboard, TrendingUp, DollarSign, Package, AlertCircle, 
   Plus, Search, Edit2, Trash2, X, Sparkles, Link as LinkIcon,
-  History, ShoppingCart, User as UserIcon, MapPin, BarChart2, TicketPercent, ToggleLeft, ToggleRight, Save, Bell, Truck, Globe, FileText, CheckCircle, Copy, Bot, Send, Users, Eye, AlertTriangle, Camera, Zap, ZapOff, QrCode, Home, ArrowLeft, RefreshCw, ClipboardEdit, MinusCircle, Calendar, Info, Database, UploadCloud, Tag, Image as ImageIcon, AlignLeft, ListPlus, ArrowRight as ArrowRightIcon, Layers, Lock, Unlock, CalendarClock, Upload, Loader2, ChevronDown, ChevronRight, ShieldAlert, XCircle, Mail, ScanBarcode, ShieldCheck, ZoomIn, BrainCircuit, Wifi, WifiOff, ExternalLink, Key as KeyIcon, Coins, Combine, Printer, Headphones, Wallet, AtSign, Scale, Calculator, Store, Settings, Megaphone, Smartphone, Timer, Volume2, VolumeX, BellRing, Wand2, Star, Menu
+  History, ShoppingCart, User as UserIcon, MapPin, BarChart2, TicketPercent, ToggleLeft, ToggleRight, Save, Bell, Truck, Globe, FileText, CheckCircle, Copy, Bot, Send, Users, Eye, AlertTriangle, Camera, Zap, ZapOff, QrCode, Home, ArrowLeft, RefreshCw, ClipboardEdit, MinusCircle, Calendar, Info, Database, UploadCloud, Tag, Image as ImageIcon, AlignLeft, ListPlus, ArrowRight as ArrowRightIcon, Layers, Lock, Unlock, CalendarClock, Upload, Loader2, ChevronDown, ChevronRight, ShieldAlert, XCircle, Mail, ScanBarcode, ShieldCheck, ZoomIn, BrainCircuit, Wifi, WifiOff, ExternalLink, Key as KeyIcon, Coins, Combine, Printer, Headphones, Wallet, AtSign, Calculator, Store, Settings, Megaphone, Smartphone, Volume2, VolumeX, BellRing, Wand2, Star, Menu
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useInventory } from '../hooks/useInventory';
@@ -176,46 +176,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   // Manual Order Modal State
   const [isManualOrderModalOpen, setIsManualOrderModalOpen] = useState(false);
   
-  const handleSyncPublicStore = async () => {
-    if (!window.confirm("Esta ação irá reconstruir todos os produtos públicos com base no seu Gestor de Inventário. Deseja continuar?")) return;
-    
-    setSyncStatus({ current: 'Sincronizando loja com o inventário...', progress: 10 });
-    try {
-        const invQ = await getDocs(collection(modularDb, 'products_inventory'));
-        const publicIds = new Set<number>();
-        
-        invQ.docs.forEach(d => {
-            const data = d.data();
-            if (data.publicProductId) {
-                publicIds.add(Number(data.publicProductId));
-            }
-        });
-        
-        let i = 0;
-        for (const pid of Array.from(publicIds)) {
-            // Re-trigger stock sync, which will also recreate missing products because of our previous fix
-            await updateDoc(doc(modularDb, 'products_inventory', invQ.docs[0].id), { _lastSync: Date.now() }); // dummy update to force refresh
-            const pIdNum = Number(pid);
-            if (!isNaN(pIdNum)) {
-               const pds = await getDocs(query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', pIdNum)));
-               if (!pds.empty) {
-                   await updateProduct(pds.docs[0].id, { _lastSync: Date.now() } as any); // This triggers refreshPublicProductStock internally!
-               }
-            }
-            i++;
-            setSyncStatus({ current: `A reconstruir produto ${i}/${publicIds.size}`, progress: 10 + Math.round((i / publicIds.size) * 80) });
-        }
-        
-        setSyncStatus({ current: 'Loja Sincronizada com Sucesso!', progress: 100 });
-        setTimeout(() => setSyncStatus(null), 3000);
-        window.location.reload();
-    } catch (e) {
-        console.error("Erro na sincronização:", e);
-        alert("Erro ao sincronizar loja.");
-        setSyncStatus(null);
-    }
-  };
-
   const handleSyncAllData = async () => {
     if (!isSupabaseEnabled()) {
         alert("O Supabase não está configurado. Adicione as chaves VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY nos segredos antes de sincronizar.");
@@ -327,6 +287,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   });
 
   const selectedPublicProductVariants = useMemo(() => { if (!formData.publicProductId) return []; const prod = publicProductsList.find(p => p.id === Number(formData.publicProductId)); return prod?.variants || []; }, [formData.publicProductId, publicProductsList]);
+  const linkedCatalogProductForForm = useMemo(() => {
+    if (!formData.publicProductId || formData.isPrivate) return undefined;
+    return publicProductsList.find(product => String(product.id) === String(formData.publicProductId));
+  }, [formData.publicProductId, formData.isPrivate, publicProductsList]);
   const [saleForm, setSaleForm] = useState({ quantity: '1', unitPrice: '', shippingCost: '', date: new Date().toISOString().split('T')[0], notes: '', supplierName: '', supplierOrderId: '' });
   const pendingOrders = useMemo(() => allOrders.filter(o => {
     const isCancelled = ['Cancelado', 'Devolvido', 'Reclamação'].includes(o.status);
@@ -606,7 +570,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
         : undefined;
       const currentSalePrice = linkedCatalogProduct
         ? Number(linkedCatalogProduct.price || 0)
-        : (formData.salePrice ? Number(formData.salePrice) : 0);
+        : Number(existingProduct?.salePrice || 0);
       let productStatus: ProductStatus = 'IN_STOCK'; 
       if (currentSold >= qBought && qBought > 0) productStatus = 'SOLD'; 
       else if (currentSold > 0) productStatus = 'PARTIAL'; 
@@ -627,10 +591,11 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
         quantitySold: currentSold,
         salesHistory: (existingProduct && Array.isArray(existingProduct.salesHistory)) ? existingProduct.salesHistory : [],
         purchasePrice: Number(formData.purchasePrice) || 0,
-        targetSalePrice: linkedCatalogProduct ? Number(linkedCatalogProduct.price || 0) : (formData.targetSalePrice ? Number(formData.targetSalePrice) : null),
+        // Campos antigos são preservados apenas para histórico/compatibilidade. Não são editáveis no lote.
+        targetSalePrice: linkedCatalogProduct ? Number(linkedCatalogProduct.price || 0) : (existingProduct?.targetSalePrice ?? null),
         salePrice: currentSalePrice,
-        originalPrice: linkedCatalogProduct ? (linkedCatalogProduct.originalPrice || null) : (formData.originalPrice ? Number(formData.originalPrice) : null),
-        promoEndsAt: linkedCatalogProduct ? (linkedCatalogProduct.promoEndsAt || null) : (formData.promoEndsAt || null),
+        originalPrice: linkedCatalogProduct ? (linkedCatalogProduct.originalPrice || null) : (existingProduct?.originalPrice ?? null),
+        promoEndsAt: linkedCatalogProduct ? (linkedCatalogProduct.promoEndsAt || null) : (existingProduct?.promoEndsAt ?? null),
         cashbackValue: Number(formData.cashbackValue) || 0,
         cashbackStatus: formData.cashbackStatus,
         cashbackPlatform: formData.cashbackPlatform,
@@ -638,13 +603,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
         cashbackExpectedDate: formData.cashbackExpectedDate,
         units: modalUnits,
         status: productStatus,
-        badges: linkedCatalogProduct?.badges || formData.badges,
-        images: linkedCatalogProduct?.images || formData.images,
-        features: linkedCatalogProduct?.features || formData.features,
-        comingSoon: linkedCatalogProduct?.comingSoon || formData.comingSoon,
+        badges: linkedCatalogProduct?.badges || existingProduct?.badges || [],
+        images: linkedCatalogProduct?.images || existingProduct?.images || [],
+        features: linkedCatalogProduct?.features || existingProduct?.features || [],
+        comingSoon: linkedCatalogProduct?.comingSoon || existingProduct?.comingSoon || false,
         isPrivate: formData.isPrivate,
-        weight: linkedCatalogProduct?.weight || (formData.weight ? parseFloat(formData.weight) : 0),
-        specs: linkedCatalogProduct?.specs || formData.specs
+        weight: linkedCatalogProduct?.weight || existingProduct?.weight || 0,
+        specs: linkedCatalogProduct?.specs || existingProduct?.specs || {}
       }; 
       Object.keys(payload).forEach(key => payload[key] === undefined && delete payload[key]); 
       
@@ -711,7 +676,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
           await batch.commit(); 
       } catch (e) { alert("Erro ao apagar grupo."); } 
   };
-  const openSaleModal = (product: InventoryProduct) => { setSelectedProductForSale(product); setSaleForm({ quantity: '1', unitPrice: product.salePrice ? product.salePrice.toString() : product.targetSalePrice ? product.targetSalePrice.toString() : '', shippingCost: '', date: new Date().toISOString().split('T')[0], notes: '', supplierName: product.supplierName || '', supplierOrderId: product.supplierOrderId || '' }); setSelectedUnitsForSale([]); setLinkedOrderId(''); setSelectedOrderForSaleDetails(null); setOrderMismatchWarning(null); setSecurityCheckPassed(false); setVerificationCode(''); setIsSaleModalOpen(true); };
+  const openSaleModal = (product: InventoryProduct) => {
+    const catalogProduct = publicProductsList.find(publicProduct => String(publicProduct.id) === String(product.publicProductId));
+    const catalogVariant = catalogProduct?.variants?.find(variant => String(variant.name || '').trim().toLowerCase() === String(product.variant || '').trim().toLowerCase());
+    const currentCatalogPrice = Number((catalogVariant as any)?.price ?? catalogProduct?.price ?? product.salePrice ?? product.targetSalePrice ?? 0);
+    setSelectedProductForSale(product);
+    setSaleForm({ quantity: '1', unitPrice: currentCatalogPrice > 0 ? currentCatalogPrice.toString() : '', shippingCost: '', date: new Date().toISOString().split('T')[0], notes: '', supplierName: product.supplierName || '', supplierOrderId: product.supplierOrderId || '' });
+    setSelectedUnitsForSale([]); setLinkedOrderId(''); setSelectedOrderForSaleDetails(null); setOrderMismatchWarning(null); setSecurityCheckPassed(false); setVerificationCode(''); setIsSaleModalOpen(true);
+  };
   const handleDeleteSale = async (saleId: string, isOnline: boolean = false) => { 
     if(!editingId || !window.confirm("Anular venda e repor stock?")) return; 
     
@@ -931,127 +903,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
     });
   };
 
-
-  const syncInventoryFromPublicProduct = async (publicId: number) => {
-    try {
-      const pubRef = doc(modularDb, 'products_public', publicId.toString());
-      const pubSnap = await getDoc(pubRef);
-      if (!pubSnap.exists()) return;
-      const pub = pubSnap.data() as Product;
-
-      const inventoryQuery = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', Number(publicId)));
-      const inventorySnap = await getDocs(inventoryQuery);
-      const lots = inventorySnap.docs.map(d => ({ id: d.id, ref: d.ref, data: d.data() as InventoryProduct }));
-
-      const batch = writeBatch(modularDb);
-      let totalUpdated = 0;
-      const normalizeVName = (n: string) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
-
-      if (pub.variants && pub.variants.length > 0) {
-        for (const variant of pub.variants) {
-          const vName = variant.name;
-          const targetStock = Number(variant.stock) || 0;
-          console.log(`[Sync] Checando variante: "${vName}", targetStock: ${targetStock}`);
-          const matchingLots = lots.filter(l => {
-            const lotV = l.data.variant || '';
-            const match = normalizeVName(lotV) === normalizeVName(vName);
-            if (match) console.log(`[Sync] Lote ${l.id} deu match com variante ${vName} (lotVariant: "${lotV}")`);
-            return match;
-          });
-
-          if (matchingLots.length > 0) {
-            const firstLot = matchingLots[0];
-            const sold = Number(firstLot.data.quantitySold) || 0;
-            const newBought = targetStock + sold;
-            if (firstLot.data.quantityBought !== newBought) {
-              batch.update(firstLot.ref, { quantityBought: newBought });
-              totalUpdated++;
-            }
-            for (let i = 1; i < matchingLots.length; i++) {
-              const otherLot = matchingLots[i];
-              const otherSold = Number(otherLot.data.quantitySold) || 0;
-              if (otherLot.data.quantityBought !== otherSold) {
-                batch.update(otherLot.ref, { quantityBought: otherSold });
-                totalUpdated++;
-              }
-            }
-          } else {
-            const newDocRef = doc(collection(modularDb, 'products_inventory'));
-            const newLot: Omit<InventoryProduct, 'id'> = {
-              publicProductId: pub.id,
-              variant: vName,
-              quantityBought: targetStock,
-              quantitySold: 0,
-              name: pub.name,
-              category: pub.category || '',
-              purchasePrice: 0,
-              salePrice: variant.price || pub.price || 0,
-              purchaseDate: new Date().toISOString().split('T')[0],
-              description: `Lote automático sincronizado para variante ${vName}`,
-              status: targetStock > 0 ? 'IN_STOCK' : 'SOLD',
-              cashbackValue: 0,
-              cashbackStatus: 'NONE',
-            };
-            batch.set(newDocRef, newLot);
-            totalUpdated++;
-          }
-        }
-        const publicVariantNames = pub.variants.map((v: any) => normalizeVName(v.name));
-        const obsoleteLots = lots.filter(l => l.data.variant && !publicVariantNames.includes(normalizeVName(l.data.variant)));
-        for (const obs of obsoleteLots) {
-          const sold = Number(obs.data.quantitySold) || 0;
-          if (obs.data.quantityBought !== sold) {
-            batch.update(obs.ref, { quantityBought: sold });
-            totalUpdated++;
-          }
-        }
-      } else {
-        const targetStock = Number(pub.stock) || 0;
-        if (lots.length > 0) {
-          const firstLot = lots[0];
-          const sold = Number(firstLot.data.quantitySold) || 0;
-          const newBought = targetStock + sold;
-          if (firstLot.data.quantityBought !== newBought) {
-            batch.update(firstLot.ref, { quantityBought: newBought });
-            totalUpdated++;
-          }
-          for (let i = 1; i < lots.length; i++) {
-            const otherLot = lots[i];
-            const otherSold = Number(otherLot.data.quantitySold) || 0;
-            if (otherLot.data.quantityBought !== otherSold) {
-              batch.update(otherLot.ref, { quantityBought: otherSold });
-              totalUpdated++;
-            }
-          }
-        } else {
-          const newDocRef = doc(collection(modularDb, 'products_inventory'));
-          const newLot: Omit<InventoryProduct, 'id'> = {
-            publicProductId: pub.id,
-            variant: '',
-            quantityBought: targetStock,
-            quantitySold: 0,
-            name: pub.name,
-            category: pub.category || '',
-            purchasePrice: 0,
-            salePrice: pub.price || 0,
-            purchaseDate: new Date().toISOString().split('T')[0],
-            description: `Lote automático sincronizado para ${pub.name}`,
-            status: targetStock > 0 ? 'IN_STOCK' : 'SOLD',
-            cashbackValue: 0,
-            cashbackStatus: 'NONE',
-          };
-          batch.set(newDocRef, newLot);
-          totalUpdated++;
-        }
-      }
-      if (totalUpdated > 0) {
-        await batch.commit();
-        console.log(`[local sync] Sincronizados ${totalUpdated} itens no inventário para produto ${publicId}`);
-      }
-    } catch (err) {
-      console.error("Erro na sincronização local de inventário:", err);
-    }
-  };
 
   const handleSyncPublicStock = async () => {
     if (publicProductsList.length === 0) {
@@ -1820,14 +1671,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
                     </div>
                     <div className="flex flex-col gap-2">
                         <button 
-                            onClick={handleSyncPublicStore}
-                            disabled={isSyncingAll}
-                            className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-purple-200 dark:shadow-none"
-                        >
-                            <UploadCloud size={20} />
-                            Construir Loja a partir do Inventário
-                        </button>
-                        <button 
                             onClick={handleSyncAllData}
                             disabled={isSyncingAll}
                             className="flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-bold rounded-xl transition-all shadow-lg shadow-indigo-200 dark:shadow-none"
@@ -2318,8 +2161,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
             // Sync to Supabase
             supabaseSync.saveProduct(cleanProduct);
 
-            // Sync down to Inventory so they are synchronized perfectly
-            await syncInventoryFromPublicProduct(id);
+            // O catálogo não altera lotes. O inventário apenas envia o stock calculado para a loja.
 
             setPublicProductsList(prev => {
               const exists = prev.find(p => p.id === id);
@@ -2652,50 +2494,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               </div>
           </div>
       </div>
-      {/* Preço, promoções e peso pertencem ao Catálogo quando o lote está associado. */}
-      {(!formData.publicProductId || formData.isPrivate) && (<>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-6 border-gray-100">
-          <div>
-              <label className="block text-xs font-bold text-green-700 uppercase mb-1 bg-green-50 w-fit px-1 rounded">Preço Venda (Loja)</label>
-              <div className="relative"><span className="absolute left-3 top-3 text-green-600 font-bold">€</span><input type="number" step="0.01" className="w-full pl-8 p-3 border-2 border-green-400 rounded-lg font-bold text-green-800" value={formData.salePrice} onChange={e => setFormData({...formData, salePrice: e.target.value})} placeholder="Valor Final" /></div>
-              <p className="text-[10px] text-gray-500 mt-1">Este é o preço que aparecerá no site.</p>
-          </div>
-          <div>
-              <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Preço Original (Riscado)</label>
-              <div className="relative"><span className="absolute left-3 top-3 text-gray-400">€</span><input type="number" step="0.01" className="w-full pl-8 p-3 border border-gray-300 rounded-lg text-gray-500" value={formData.originalPrice} onChange={e => setFormData({...formData, originalPrice: e.target.value})} placeholder="Ex: 49.90" /></div>
-              <p className="text-[10px] text-gray-500 mt-1">Se preenchido, aparecerá riscado ao lado do preço de venda.</p>
-          </div>
-          <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-red-500 uppercase mb-1 flex items-center gap-1"><Timer size={14}/> Fim da Promoção (Countdown)</label>
-              <input type="datetime-local" className="w-full p-3 border border-gray-300 rounded-lg" value={formData.promoEndsAt} onChange={e => setFormData({...formData, promoEndsAt: e.target.value})} />
-              <p className="text-[10px] text-gray-500 mt-1">Define uma data para mostrar um contador decrescente na página do produto.</p>
-          </div>
+      {/* Dados de venda pertencem sempre ao Catálogo. O lote só guarda custos, origem, unidades e rastreabilidade. */}
+      <div className="rounded-xl border border-blue-100 dark:border-blue-900/50 bg-blue-50/60 dark:bg-blue-900/10 p-4 text-sm">
+          {linkedCatalogProductForForm ? (
+            <div className="flex flex-col gap-1">
+              <p className="font-bold text-blue-900 dark:text-blue-200">Dados de venda geridos no Catálogo</p>
+              <p className="text-blue-700 dark:text-blue-300">Preço atual: <strong>{formatCurrency(Number(linkedCatalogProductForForm.price || 0))}</strong>{formData.variant ? ` · Variante: ${formData.variant}` : ''}.</p>
+              <p className="text-xs text-blue-700/80 dark:text-blue-300/80">Promoções, preço riscado, peso, imagens, descrição e limites por encomenda são editados apenas no Catálogo.</p>
+              <button type="button" onClick={() => { if (linkedCatalogProductForForm) { setEditingStoreProduct(linkedCatalogProductForForm); setIsCatalogModalOpen(true); } }} className="mt-2 w-fit text-xs font-bold text-blue-700 dark:text-blue-300 hover:underline">Abrir catálogo deste produto →</button>
+            </div>
+          ) : (
+            <div>
+              <p className="font-bold text-blue-900 dark:text-blue-200">Lote privado / ainda sem catálogo público</p>
+              <p className="mt-1 text-xs text-blue-700 dark:text-blue-300">Este lote não define preços nem promoções da loja. Quando estiver pronto para vender online, cria ou liga primeiro o produto no Catálogo.</p>
+            </div>
+          )}
       </div>
-      {/* (Fim Seção Promoções) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-100 dark:border-slate-800">
-          <div>
-              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Preço Alvo (Estimado)</label>
-              <div className="relative">
-                  <span className="absolute left-3 top-3 text-gray-400">€</span>
-                  <input type="number" step="0.01" className="w-full pl-8 p-3 border border-gray-300 dark:border-slate-600 rounded-lg text-gray-500 dark:text-gray-400 bg-white dark:bg-slate-800" value={formData.targetSalePrice} onChange={e => setFormData({...formData, targetSalePrice: e.target.value})} />
-              </div>
-          </div>
-      </div>
-
-      <div className="border-t pt-4 border-gray-100 dark:border-slate-800">
-          <h4 className="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2 mb-3">
-              <Scale size={16} /> Logística & Peso
-          </h4>
-          <div>
-              <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-1">Peso Unitário (kg)</label>
-              <div className="relative">
-                  <span className="absolute left-3 top-3 text-gray-400 text-xs font-bold">KG</span>
-                  <input type="number" step="0.001" className="w-full pl-10 p-3 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-gray-900 dark:text-white" value={formData.weight} onChange={e => setFormData({...formData, weight: e.target.value})} placeholder="Ex: 0.350" />
-              </div>
-              <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Essencial para calcular portes de envio automáticos no futuro.</p>
-          </div>
-      </div>
-      </>)}
       <div className="border-t pt-4 border-gray-100 dark:border-slate-800">
           <h4 className="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2 mb-3">
                <ScanBarcode size={16} /> Gestão de Unidades (S/N)
