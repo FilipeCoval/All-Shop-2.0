@@ -1,53 +1,61 @@
-
 rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    
-    // Funções auxiliares
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
     function isAdmin() {
-      return request.auth != null && request.auth.token.email in [
-        "filipe_coval_90@hotmail.com", 
+      return isAuthenticated() && request.auth.token.email in [
+        "filipe_coval_90@hotmail.com",
+        "filipecoval90@gmail.com",
         "mcpoleca@gmail.com",
-        "filipe@teste.com",
-        "filipecoval90@gmail.com"
+        "filipe@teste.com"
       ];
     }
 
-    // Regra global de leitura: Todos podem ver as imagens
+    function isImageUpload() {
+      return request.resource != null
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Public product/category/review/profile images can be viewed by visitors.
     match /{allPaths=**} {
       allow read: if true;
     }
 
-    // Imagens de Categorias da Loja (Carrossel)
     match /categories/{imageId} {
-      allow write: if isAdmin();
+      allow write: if isAdmin() && isImageUpload();
     }
 
-    // Imagens de Produtos (Dashboard): Apenas Admin pode escrever.
     match /products/{imageId} {
-      allow write: if isAdmin();
+      allow write: if isAdmin() && isImageUpload();
     }
 
-    // Imagens de Produtos Públicos (Nova aba Catálogo): Qualquer utilizador autenticado pode escrever.
+    // Product catalog images are admin-only. Customers cannot upload into product folders.
     match /products_public/{imageId} {
-      allow write: if request.auth != null;
+      allow write: if isAdmin() && isImageUpload();
     }
 
-    // Imagens de Avaliações (ReviewSection): Qualquer utilizador pode escrever.
+    // Existing app path has no user ID in it, so ownership cannot be verified here.
+    // This still removes anonymous uploads and restricts uploads to image files below 5 MB.
     match /reviews/{imageId} {
-      allow write: if true;
+      allow write: if isAuthenticated() && isImageUpload();
     }
 
-    // Regra para Pedidos de Produtos
-    match /requests/{allPaths=**} {
-      allow write: if request.auth != null;
+    match /requests/{userId}/{imageId} {
+      allow write: if isAuthenticated()
+        && request.auth.uid == userId
+        && isImageUpload();
     }
 
-    // NOVA REGRA: Fotos de Perfil
-    // Permite que um utilizador autenticado escreva/atualize a sua própria foto.
     match /profile_pictures/{userId} {
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow write: if isAuthenticated()
+        && request.auth.uid == userId
+        && isImageUpload();
     }
   }
 }
