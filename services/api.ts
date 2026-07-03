@@ -16,7 +16,7 @@ const requestHeaders = async () => {
 const parseResponse = async (response: Response) => {
   const body = await response.json().catch(() => ({}));
   if (!response.ok || body?.success === false) {
-    throw new Error(body?.error || 'O servidor não conseguiu concluir o pedido.');
+    throw new Error(body?.error || 'O servidor n├úo conseguiu concluir o pedido.');
   }
   return body;
 };
@@ -46,6 +46,53 @@ export async function finalizeOrder(order: any, guestToken?: string) {
       guestToken,
       order,
     }),
+  });
+  return parseResponse(response);
+}
+
+export async function syncCurrentUser() {
+  const response = await fetch('/api/sync-user', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({}),
+  });
+  return parseResponse(response);
+}
+
+export async function trackOrder(orderId: string, email: string) {
+  const response = await fetch('/api/track-order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderId, email }),
+  });
+  return parseResponse(response);
+}
+
+export async function requestOrderAction(input: {
+  action: 'cancel_order' | 'cancel_item' | 'request_return';
+  orderId: string;
+  reason: string;
+  productId?: number;
+  quantity?: number;
+}) {
+  const response = await fetch('/api/update-order', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify(input),
+  });
+  return parseResponse(response);
+}
+
+export async function reviewOrderRequest(input: {
+  orderId: string;
+  requestKind: 'cancellation' | 'return';
+  decision: 'approve' | 'reject';
+  reviewNote?: string;
+}) {
+  const response = await fetch('/api/update-order', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({ action: 'review_request', ...input }),
   });
   return parseResponse(response);
 }

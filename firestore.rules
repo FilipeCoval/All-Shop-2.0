@@ -8,38 +8,27 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email == "filipe_coval_90@hotmail.com" ||
-        request.auth.token.email == "filipecoval90@gmail.com" ||
-        request.auth.token.email == "mcpoleca@gmail.com" ||
-        request.auth.token.email == "filipe@teste.com"
-      );
+      return isAuthenticated() && request.auth.token.email in [
+        "filipe_coval_90@hotmail.com",
+        "filipecoval90@gmail.com",
+        "mcpoleca@gmail.com",
+        "filipe@teste.com"
+      ];
     }
 
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    function isOwnerByEmail(email) {
-      return isAuthenticated()
-        && request.auth.token.email != null
-        && email == request.auth.token.email;
-    }
-
-    // Bloqueia tudo por defeito
+    // Everything is closed unless a collection below explicitly allows it.
     match /{document=**} {
       allow read, write: if isAdmin();
     }
 
-    // Produtos públicos
+    // Public catalog. Checkout/stock is handled by Vercel server APIs.
     match /products_public/{productId} {
       allow read: if true;
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin()
-        || (
-          // O cliente/guest pode atualizar o stock ao finalizar compras
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'variants'])
-        );
+      allow write: if isAdmin();
     }
 
     match /store_categories/{categoryId} {
@@ -47,6 +36,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Kept readable for the current coupon UI. Only admins/server can change coupons.
     match /coupons/{couponId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -54,146 +44,74 @@ service cloud.firestore {
 
     match /reviews/{reviewId} {
       allow read: if true;
-      allow create: if isAuthenticated();
-      allow update, delete: if isAdmin()
-        || (
-          isAuthenticated()
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
+      allow update: if isAdmin()
+        || (isAuthenticated()
           && resource.data.userId == request.auth.uid
-        );
+          && request.resource.data.userId == resource.data.userId);
+      allow delete: if isAdmin()
+        || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
 
-    // Perfil do cliente
+    // Customer profile. We intentionally keep normal profile updates available
+    // until loyalty/referral updates are moved to server APIs in a later phase.
+    // It does block role/admin escalation.
     match /users/{userId} {
       allow read: if isAdmin() || isOwner(userId);
-
-      allow create: if isAdmin() || isOwner(userId);
-
+      allow create: if isAdmin()
+        || (isOwner(userId)
+          && request.resource.data.get('role', 'Cliente') == 'Cliente'
+          && request.resource.data.get('isAdmin', false) == false);
       allow update: if isAdmin()
-        || (
-          isOwner(userId)
-
-          // impede user de se tornar admin (acesso robusto usando .get para evitar erros se os campos não existirem)
+        || (isOwner(userId)
           && request.resource.data.get('role', 'Cliente') == resource.data.get('role', 'Cliente')
-          && request.resource.data.get('isAdmin', false) == resource.data.get('isAdmin', false)
-        );
-
+          && request.resource.data.get('isAdmin', false) == resource.data.get('isAdmin', false));
       allow delete: if isAdmin();
     }
 
-    // Presença online
-    match /online_users/{userId} {
-      allow read: if isAdmin() || isOwner(userId);
-      allow create, update: if isOwner(userId);
-      allow delete: if isAdmin() || isOwner(userId);
+    // Presence documents are never public. The app may only maintain its own presence.
+    match /online_users/{sessionId} {
+      allow read: if isAdmin();
+      allow create, update: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if isAdmin()
+        || (isAuthenticated() && resource.data.userId == request.auth.uid);
     }
 
-    // Encomendas
+    // CRITICAL: public browser access is now closed.
+    // Checkout, tracking, customer orders and cancel/return requests use Vercel APIs
+    // with Firebase Admin, which bypasses Firestore Rules.
     match /orders/{orderId} {
-      allow create: if true;
-
-      // Permite a qualquer pessoa ler uma encomenda específica pelo seu ID único (ex: consulta de estado da encomenda ou checkout)
-      allow get: if true;
-
-      // Permite listar/pesquisar apenas se for Admin, ou se a query filtrar pelas encomendas do próprio utilizador
-      allow list: if isAdmin()
-        || (
-          isAuthenticated()
-          && (
-            resource.data.userId == request.auth.uid
-            || resource.data.shippingInfo.email == request.auth.token.email
-            || resource.data.customerEmail == request.auth.token.email
-            || resource.data.email == request.auth.token.email
-          )
-        );
-
-      // Permite ao admin gerir todas as encomendas.
-      // Permite a atualização da encomenda do próprio cliente/guest caso esteja no estado 'Pendente' (ex: checkout ou adoção de encomenda guest).
-      allow update: if isAdmin()
-        || (
-          resource.data.get('status', 'Pendente') == 'Pendente'
-          && (
-            resource.data.get('userId', null) == null
-            || (isAuthenticated() && resource.data.get('userId', null) == request.auth.uid)
-          )
-        );
-
-      allow delete: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
-    // Tickets de suporte
+    match /stock_reservations/{reservationId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /products_inventory/{itemId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Support tickets: signed-in customers can create and access only their own tickets.
     match /support_tickets/{ticketId} {
-      allow create: if true;
-
-      allow read: if isAdmin()
-        || (
-          isAuthenticated()
-          && resource.data.userId == request.auth.uid
-        )
-        || (
-          isAuthenticated()
-          && resource.data.email == request.auth.token.email
-        );
-
-      allow update: if isAdmin()
-        || (
-          isAuthenticated()
-          && resource.data.userId == request.auth.uid
-        )
-        || (
-          isAuthenticated()
-          && resource.data.email == request.auth.token.email
-        );
-
+      allow create: if isAuthenticated()
+        && request.resource.data.userId == request.auth.uid;
+      allow read, update: if isAdmin()
+        || (isAuthenticated() && resource.data.userId == request.auth.uid);
       allow delete: if isAdmin();
     }
 
-    // Pedidos de produtos
+    // Product requests may be submitted publicly, but are never readable publicly.
     match /product_requests/{requestId} {
-      allow create: if true;
-
-      allow read: if isAdmin()
-        || (
-          isAuthenticated()
-          && resource.data.userId == request.auth.uid
-        )
-        || (
-          isAuthenticated()
-          && resource.data.email == request.auth.token.email
-        );
-
-      allow update: if isAdmin()
-        || (
-          isAuthenticated()
-          && resource.data.userId == request.auth.uid
-        )
-        || (
-          isAuthenticated()
-          && resource.data.email == request.auth.token.email
-        );
-
-      allow delete: if isAdmin();
-    }
-
-    // Newsletter
-    match /newsletter_subscriptions/{itemId} {
       allow create: if true;
       allow read, update, delete: if isAdmin();
     }
 
-    // Reservas de stock/carrinho
-    match /stock_reservations/{reservationId} {
-      allow read, create, update, delete: if true;
-    }
-
-    // Área privada/admin
-    match /products_inventory/{itemId} {
-      allow read: if true; // Permite ao checkout consultar o lote/variante correspondente
-      allow create, delete: if isAdmin();
-      allow update: if isAdmin()
-        || (
-          // O cliente pode atualizar as quantidades vendidas e reservadas no checkout
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['quantitySold', 'reserved'])
-        );
+    match /newsletter_subscriptions/{itemId} {
+      allow create: if true;
+      allow read, update, delete: if isAdmin();
     }
 
     match /import_shipments/{itemId} {
@@ -203,6 +121,10 @@ service cloud.firestore {
     match /stock_alerts/{itemId} {
       allow read, write: if isAdmin();
     }
+
+    // Created by the server-side chat limiter only.
+    match /ai_chat_limits/{itemId} {
+      allow read, write: if isAdmin();
+    }
   }
 }
-

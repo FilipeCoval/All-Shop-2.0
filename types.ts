@@ -65,11 +65,29 @@ export interface Order {
   stockDeducted?: boolean;
   cancellationReason?: string;
   statusHistory?: StatusHistory[];
-  returnRequest?: {
-      date: string;
-      reason: string;
+  cancellationRequest?: {
       status: 'Pendente' | 'Aprovado' | 'Rejeitado';
+      type: 'TOTAL' | 'PARCIAL';
+      reason: string;
+      requestedAt: string;
+      requestedByUserId?: string;
+      reviewedAt?: string;
+      reviewedByUserId?: string;
+      reviewNote?: string;
+      items?: Array<{ productId: number; quantity: number; selectedVariant?: string }>;
   };
+  returnRequest?: {
+      status: 'Pendente' | 'Aprovado' | 'Rejeitado';
+      reason: string;
+      requestedAt?: string;
+      date?: string; // Retrocompatibilidade com pedidos antigos
+      requestedByUserId?: string;
+      reviewedAt?: string;
+      reviewedByUserId?: string;
+      reviewNote?: string;
+  };
+  stockRestoredAt?: string;
+  stockRestoredItems?: Array<{ productId: number; quantity: number; selectedVariant?: string }>;
   // Fulfillment Fields
   fulfilledAt?: string | null;
   fulfilledBy?: string | null;
