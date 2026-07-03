@@ -7,6 +7,7 @@ import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { modularDb } from '../services/firebaseConfig';
 import { InventoryProduct, Order, Product, StockReservation } from '../types';
 import KpiCard from './KpiCard';
+import { getGroupMetrics, getLotMetrics, matchesInventorySearch } from '../services/inventoryMetrics';
 
 interface InventoryTabProps {
   products: InventoryProduct[];
@@ -121,13 +122,11 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
 
   const filteredProducts = products.filter(p => {
     console.log("Filtering product:", p.name, "isPrivate:", p.isPrivate);
-    const matchesSearch = (p.name || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = matchesInventorySearch(p, searchTerm);
     
     // Calcular stock real para o filtro ser mais preciso que o campo status
-    let physicalQty = (p.quantityBought || 0) - (p.quantitySold || 0);
-    if (p.units && Array.isArray(p.units) && p.units.length > 0) {
-        physicalQty = p.units.filter(u => u.status === 'AVAILABLE').length;
-    }
+    const lotMetrics = getLotMetrics(p);
+    const physicalQty = lotMetrics.available;
     
     // Calcular stock pendente especificamente para esta variante/produto
     let pendingForThis = 0;
@@ -256,7 +255,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                     <div className="relative flex-1">
                         <input 
                             type="text" 
-                            placeholder="Pesquisar ou escanear..." 
+                            placeholder="Nome, fornecedor, S/N, EAN ou etiqueta..." 
                             value={searchTerm} 
                             onChange={(e) => onSearchChange(e.target.value)} 
                             className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-gray-900 dark:text-white transition-colors" 

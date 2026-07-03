@@ -1,46 +1,48 @@
-
 import { useState, useEffect } from 'react';
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from 'firebase/firestore';
 import { modularDb } from '../services/firebaseConfig';
-import { collection, doc, query, where, getDocs, getDoc, addDoc, updateDoc, deleteDoc, setDoc, onSnapshot, writeBatch } from 'firebase/firestore';
-import { InventoryProduct, Product, ProductVariant, Order, CashbackStatus } from '../types';
-import { calculateAvailableStock } from '../services/stockService';
+import { InventoryProduct, Product } from '../types';
 import { supabaseSync } from '../services/supabaseSync';
+import { getLotMetrics, reservationExpiryMs } from '../services/inventoryMetrics';
 
-// Função auxiliar para mapear Produto de Inventário -> Produto Público (Base)
-const mapToPublicProduct = (inv: Omit<InventoryProduct, 'id'> | InventoryProduct, publicIdRaw: number | string): Product => {
-  const publicId = Number(publicIdRaw);
-  
-  const product: Product = {
-      id: publicId,
-      name: inv.name,
-      category: inv.category,
-      price: inv.salePrice || 0, 
-      originalPrice: inv.originalPrice, // Mapeado
-      promoEndsAt: inv.promoEndsAt,     // Mapeado
-      image: '', 
-      description: inv.description || `Produto ${inv.name}`,
-      stock: 0, // Será calculado pelo refreshPublicProductStock
-      features: inv.features || [],
-      comingSoon: inv.comingSoon || false,
-      badges: inv.badges || [],
-      images: [],
-      variantLabel: 'Opção',
-      weight: inv.weight || 0,
-      specs: inv.specs || {},
-      isPrivate: inv.isPrivate || false
-  };
+const placeholderImage = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300"%3E%3Crect width="300" height="300" fill="%23e2e8f0"/%3E%3C/svg%3E';
 
-  if (inv.images && inv.images.length > 0) {
-      product.images = inv.images;
-      product.image = inv.images[0];
-  } else {
-      product.image = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300"%3E%3Crect width="300" height="300" fill="%23e2e8f0"/%3E%3C/svg%3E';
-      delete (product as any).images;
-      delete (product as any).image;
-  }
+const createCatalogProductFromFirstLot = (
+  lot: Omit<InventoryProduct, 'id'> | InventoryProduct,
+  publicId: number,
+): Product => ({
+  id: publicId,
+  name: lot.name,
+  category: lot.category,
+  price: Number(lot.salePrice || lot.targetSalePrice || 0),
+  originalPrice: lot.originalPrice,
+  promoEndsAt: lot.promoEndsAt,
+  image: lot.images?.[0] || placeholderImage,
+  images: lot.images?.length ? lot.images : undefined,
+  description: lot.description || `Produto ${lot.name}`,
+  stock: 0,
+  features: lot.features || [],
+  comingSoon: Boolean(lot.comingSoon),
+  badges: lot.badges || [],
+  variantLabel: 'Opção',
+  weight: Number(lot.weight || 0),
+  specs: lot.specs || {},
+  isPrivate: Boolean(lot.isPrivate),
+});
 
-  return product;
-};
+const normaliseVariant = (value: unknown) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
 export const useInventory = (isAdmin: boolean = false) => {
   const [products, setProducts] = useState<InventoryProduct[]>([]);
@@ -49,213 +51,157 @@ export const useInventory = (isAdmin: boolean = false) => {
 
   useEffect(() => {
     if (!isAdmin) {
+      setProducts([]);
       setLoading(false);
       return;
     }
 
-    const unsubscribe = onSnapshot(
+    return onSnapshot(
       collection(modularDb, 'products_inventory'),
       (snapshot) => {
-        const items: InventoryProduct[] = [];
-        snapshot.forEach((d) => {
-          items.push({ id: d.id, ...d.data() } as InventoryProduct);
-        });
-        setProducts(items);
+        setProducts(snapshot.docs.map(snapshotDoc => ({
+          id: snapshotDoc.id,
+          ...snapshotDoc.data(),
+        } as InventoryProduct)));
         setLoading(false);
         setError(null);
       },
-      (err) => {
-        console.warn("Firestore Access Restricted:", err.message);
-        if (err.code === 'permission-denied') {
-            setError('permission-denied');
-        } else {
-            setError(err.message);
-        }
+      (snapshotError) => {
+        console.warn('Firestore inventory listener:', snapshotError.message);
+        setError(snapshotError.code === 'permission-denied' ? 'permission-denied' : snapshotError.message);
         setLoading(false);
-      }
+      },
     );
-
-    return () => unsubscribe();
   }, [isAdmin]);
 
-  // --- FUNÇÃO DE SINCRONIZAÇÃO AUTOMÁTICA (Forward Sync: Inventory Lotes -> Public Catalog) ---
+  /**
+   * Lotes são a fonte de verdade. Esta função só atualiza o stock exibido
+   * no catálogo; nunca altera preço, texto, fotos, peso ou promoções.
+   */
   const refreshPublicProductStock = async (publicIdRaw: number | string) => {
-      try {
-          const publicId = Number(publicIdRaw);
-          if (isNaN(publicId)) return;
+    const publicId = Number(publicIdRaw);
+    if (!Number.isFinite(publicId)) return;
 
-          const publicRef = doc(modularDb, 'products_public', publicId.toString());
-          const publicSnap = await getDoc(publicRef);
-          if (!publicSnap.exists()) {
-              console.log("No public product found during automatic stock refresh:", publicId);
-              return;
-          }
-          const pub = publicSnap.data() as Product;
+    const publicRef = doc(modularDb, 'products_public', String(publicId));
+    const publicSnap = await getDoc(publicRef);
+    if (!publicSnap.exists()) return;
 
-          // Align public product stock & variants to match inventory batches (Forward Sync)
-          const inventoryQuery = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId));
-          const inventorySnap = await getDocs(inventoryQuery);
-          const lots = inventorySnap.docs.map(d => ({ id: d.id, ref: d.ref, data: d.data() as InventoryProduct }));
-          
-          let totalPhysical = 0;
-          const variantStocks: Record<string, number> = {};
-          
-          const normalizeVName = (n: string) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const publicProduct = publicSnap.data() as Product;
+    const lotsSnap = await getDocs(
+      query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId)),
+    );
+    const lots = lotsSnap.docs.map(snapshotDoc => ({
+      id: snapshotDoc.id,
+      ...snapshotDoc.data(),
+    } as InventoryProduct));
 
-          lots.forEach(l => {
-              let qty = Math.max(0, (l.data.quantityBought || 0) - (l.data.quantitySold || 0));
-              if (l.data.units && Array.isArray(l.data.units) && l.data.units.length > 0) {
-                  const b = l.data.units.length;
-                  const s = l.data.units.filter((u: any) => u.status === 'SOLD').length;
-                  qty = Math.max(0, b - s);
-              }
-              totalPhysical += qty;
-              
-              const vNameRaw = l.data.variant || '';
-              if (vNameRaw) {
-                  const vKey = normalizeVName(vNameRaw);
-                  variantStocks[vKey] = (variantStocks[vKey] || 0) + qty;
-              }
-          });
+    const reservationsSnap = await getDocs(collection(modularDb, 'stock_reservations'));
+    const activeReservations = reservationsSnap.docs
+      .map(snapshotDoc => snapshotDoc.data() as any)
+      .filter(reservation => (
+        String(reservation.productId) === String(publicId)
+        && reservationExpiryMs(reservation.expiresAt) > Date.now()
+      ));
 
-          let variantsUpdated = false;
-          const updatedVariants = pub.variants ? [...pub.variants] : [];
-          
-          for (let i = 0; i < updatedVariants.length; i++) {
-              const v = updatedVariants[i];
-              const vKey = normalizeVName(v.name);
-              const realVariantStock = variantStocks[vKey] || 0;
-              if (v.stock !== realVariantStock) {
-                  updatedVariants[i] = { ...v, stock: realVariantStock };
-                  variantsUpdated = true;
-              }
-          }
+    let physical = 0;
+    let cartReserved = 0;
+    const stockByVariant: Record<string, number> = {};
 
-          if (pub.stock !== totalPhysical || variantsUpdated) {
-              const updatePayload: any = { stock: totalPhysical };
-              if (variantsUpdated) {
-                  updatePayload.variants = updatedVariants;
-              }
-              await updateDoc(publicRef, updatePayload);
-              console.log(`[Sync] Produto ${pub.id} atualizado: Stock mudou para ${totalPhysical}, Variantes atualizadas: ${variantsUpdated}`);
-              
-              // Ensure we optionally update supabase if a sync function is defined
-              if (typeof supabaseSync !== 'undefined' && supabaseSync.saveProduct) {
-                  supabaseSync.saveProduct({ ...pub, ...updatePayload });
-              }
-          }
-      } catch (err) {
-          console.error("Erro na sincronização auto-sync de inventário:", err);
+    lots.forEach(lot => {
+      const lotMetrics = getLotMetrics(lot);
+      physical += lotMetrics.available;
+
+      const variantKey = normaliseVariant(lot.variant);
+      if (variantKey) {
+        stockByVariant[variantKey] = (stockByVariant[variantKey] || 0) + lotMetrics.available;
       }
+    });
+
+    activeReservations.forEach(reservation => {
+      const quantity = Math.max(0, Number(reservation.quantity) || 0);
+      cartReserved += quantity;
+      const variantKey = normaliseVariant(reservation.variantName);
+      if (variantKey && stockByVariant[variantKey] !== undefined) {
+        stockByVariant[variantKey] = Math.max(0, stockByVariant[variantKey] - quantity);
+      }
+    });
+
+    const updatePayload: Partial<Product> = {
+      stock: Math.max(0, physical - cartReserved),
+    };
+
+    if (Array.isArray(publicProduct.variants)) {
+      updatePayload.variants = publicProduct.variants.map(variant => ({
+        ...variant,
+        stock: stockByVariant[normaliseVariant(variant.name)] ?? 0,
+      }));
+    }
+
+    await updateDoc(publicRef, updatePayload as Record<string, unknown>);
+
+    if (typeof supabaseSync?.saveProduct === 'function') {
+      void supabaseSync.saveProduct({ ...publicProduct, ...updatePayload });
+    }
   };
 
-  const addProduct = async (product: Omit<InventoryProduct, 'id'>) => {
-    try {
-      // 1. Adicionar ao Inventário (Privado)
-      const docRef = await addDoc(collection(modularDb, 'products_inventory'), product as any);
-      
-      const publicId = product.publicProductId !== undefined && product.publicProductId !== null 
-        ? Number(product.publicProductId) 
-        : Date.now();
-      
-      // 2. Atualizar ou Criar Produto Público
-      if (!product.isPrivate) {
-          const publicProduct = mapToPublicProduct(product, publicId);
-          // Ensure the id field is explicitly present
-          publicProduct.id = publicId;
-          const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
+  const addProduct = async (lot: Omit<InventoryProduct, 'id'>) => {
+    const newLotRef = await addDoc(collection(modularDb, 'products_inventory'), lot as Record<string, unknown>);
 
-          if (product.publicProductId !== undefined && product.publicProductId !== null) {
-              // If publicProductId exists, ensure the document exists and has the 'id' field
-              await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct, { merge: true });
-          } else {
-              // If it's a new product, create it
-              await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct);
-              await updateDoc(docRef, { publicProductId: publicId });
-          }
+    const hasLinkedCatalogProduct = lot.publicProductId !== undefined && lot.publicProductId !== null;
+    if (hasLinkedCatalogProduct) {
+      await refreshPublicProductStock(Number(lot.publicProductId));
+      return;
+    }
 
-          // 3. SINCRONIZAÇÃO AUTOMÁTICA DE STOCK
-          await refreshPublicProductStock(publicId);
-      } else {
-          // If it is private, mark it as private in products_public
-          const publicProduct = mapToPublicProduct(product, publicId);
-          publicProduct.id = publicId;
-          publicProduct.isPrivate = true;
-          const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
-
-          await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct);
-          await updateDoc(docRef, { publicProductId: publicId });
-      }
-
-    } catch (error) {
-      console.error("Erro ao adicionar produto:", error);
-      throw error;
+    // Só a criação do primeiro lote pode criar um produto público novo.
+    // Editar/adicionar lotes ligados nunca pode sobrescrever o catálogo.
+    if (!lot.isPrivate) {
+      const publicId = Date.now();
+      const catalogProduct = createCatalogProductFromFirstLot(lot, publicId);
+      await setDoc(doc(modularDb, 'products_public', String(publicId)), catalogProduct);
+      await updateDoc(newLotRef, { publicProductId: publicId });
+      await refreshPublicProductStock(publicId);
     }
   };
 
   const updateProduct = async (id: string, updates: Partial<InventoryProduct>) => {
-    try {
-      // 1. Atualizar Inventário
-      await updateDoc(doc(modularDb, 'products_inventory', id), updates as any);
+    const lotRef = doc(modularDb, 'products_inventory', id);
+    const beforeSnap = await getDoc(lotRef);
+    if (!beforeSnap.exists()) throw new Error('Lote não encontrado.');
 
-      // 2. Obter dados atualizados para sincronizar info pública
-      const docSnap = await getDoc(doc(modularDb, 'products_inventory', id));
-      const currentData = docSnap.data() as InventoryProduct;
-      
-      if (currentData && currentData.publicProductId !== undefined && currentData.publicProductId !== null) {
-          const publicId = Number(currentData.publicProductId);
-          
-          if (currentData.isPrivate) {
-              // Mark as private instead of deleting
-              await updateDoc(doc(modularDb, 'products_public', publicId.toString()), { isPrivate: true });
-          } else {
-              // Ensure added/updated
-              const publicProduct = mapToPublicProduct(currentData, publicId);
-              publicProduct.id = publicId;
-              publicProduct.isPrivate = false;
-              const cleanPublicProduct = JSON.parse(JSON.stringify(publicProduct));
+    const before = beforeSnap.data() as InventoryProduct;
+    await updateDoc(lotRef, updates as Record<string, unknown>);
 
-              await setDoc(doc(modularDb, 'products_public', publicId.toString()), cleanPublicProduct, { merge: true });
+    const linkedIds = new Set<number>();
+    if (before.publicProductId !== undefined && before.publicProductId !== null) linkedIds.add(Number(before.publicProductId));
+    if (updates.publicProductId !== undefined && updates.publicProductId !== null) linkedIds.add(Number(updates.publicProductId));
 
-              // 3. SINCRONIZAÇÃO AUTOMÁTICA DE STOCK
-              // Recalcula a soma de todos os lotes
-              await refreshPublicProductStock(publicId);
-          }
-      }
-
-    } catch (error) {
-      console.error("Erro ao atualizar produto:", error);
-      throw error;
-    }
+    await Promise.all([...linkedIds]
+      .filter(Number.isFinite)
+      .map(publicId => refreshPublicProductStock(publicId)));
   };
 
   const deleteProduct = async (id: string) => {
-    try {
-      const docSnap = await getDoc(doc(modularDb, 'products_inventory', id));
-      const data = docSnap.data() as InventoryProduct;
+    const lotRef = doc(modularDb, 'products_inventory', id);
+    const lotSnap = await getDoc(lotRef);
+    if (!lotSnap.exists()) return;
 
-      // 1. Apagar do Inventário
-      await deleteDoc(doc(modularDb, 'products_inventory', id));
+    const lot = lotSnap.data() as InventoryProduct;
+    await deleteDoc(lotRef);
 
-      // 2. Se tinha ID público, recalcular stock (ou apagar se for o último)
-      if (data && data.publicProductId !== undefined && data.publicProductId !== null) {
-          const publicId = Number(data.publicProductId);
-          
-          const remQ = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', publicId));
-          const remainingInventory = await getDocs(remQ);
-              
-          if (remainingInventory.empty) {
-              await deleteDoc(doc(modularDb, 'products_public', publicId.toString()));
-          } else {
-              // Ainda existem outros lotes, recalcula o total
-              await refreshPublicProductStock(publicId);
-          }
-      }
-    } catch (error) {
-      console.error("Erro ao apagar produto:", error);
-      throw error;
+    // Nunca apagar o produto do catálogo ao apagar um lote. Apenas atualizar stock.
+    if (lot.publicProductId !== undefined && lot.publicProductId !== null) {
+      await refreshPublicProductStock(Number(lot.publicProductId));
     }
   };
 
-  return { products, loading, error, addProduct, updateProduct, deleteProduct };
+  return {
+    products,
+    loading,
+    error,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    refreshPublicProductStock,
+  };
 };

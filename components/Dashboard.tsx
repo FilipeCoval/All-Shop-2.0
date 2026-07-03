@@ -2658,6 +2658,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               </div>
           </div>
       </div>
+      {formData.publicProductId ? (
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 dark:border-indigo-900/40 dark:bg-indigo-950/20 p-4 text-sm text-indigo-900 dark:text-indigo-200">
+              <div className="flex items-center gap-2 font-bold"><Globe size={16} /> Dados comerciais no Catálogo</div>
+              <p className="mt-1 text-xs leading-relaxed">
+                  Preço, promoção, peso, imagens e descrição são geridos apenas no produto da loja.
+                  Este lote guarda apenas origem, custo, cashback, unidades e rastreabilidade.
+              </p>
+          </div>
+      ) : (
+          <>
       {/* SEÇÃO DE PROMOÇÕES (NOVA) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 border-t pt-6 border-gray-100">
           <div>
@@ -2700,6 +2710,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
               <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">Essencial para calcular portes de envio automáticos no futuro.</p>
           </div>
       </div>
+          </>
+      )}
       <div className="border-t pt-4 border-gray-100 dark:border-slate-800">
           <h4 className="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2 mb-3">
                <ScanBarcode size={16} /> Gestão de Unidades (S/N)

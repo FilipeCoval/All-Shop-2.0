@@ -260,13 +260,24 @@ export interface InventoryProduct {
 }
 
 export interface ProductUnit {
+  /**
+   * Identificador principal da unidade. Pode ser S/N, EAN/código de barras
+   * ou código interno quando o artigo não tem serial do fabricante.
+   */
   id: string;
-  status: 'AVAILABLE' | 'SOLD' | 'RESERVED';
+  status: 'AVAILABLE' | 'SOLD' | 'RESERVED' | 'DEFECTIVE' | 'RETURNED' | 'IN_TRANSIT';
   addedAt: string;
+  serialNumber?: string;
+  barcode?: string;
+  ean?: string;
+  internalCode?: string;
+  labelCode?: string;
   reservedBy?: string; // sessionId ou userId
   reservedUntil?: string;
   soldAt?: string;
   soldToOrder?: string;
+  soldToCustomer?: string;
+  notes?: string;
 }
 
 export interface StockReservation {
