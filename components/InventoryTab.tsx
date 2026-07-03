@@ -319,9 +319,9 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
 
                             return (
                                 <React.Fragment key={groupId}>
-                                    <tr className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${isExpanded ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
+                                    <tr onClick={() => toggleGroup(groupId)} className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${isExpanded ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
                                         <td className="px-6 py-4">
-                                            <button onClick={() => toggleGroup(groupId)} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-500 dark:text-gray-400 transition-colors">
+                                            <button onClick={(event) => { event.stopPropagation(); toggleGroup(groupId); }} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-slate-600 text-gray-500 dark:text-gray-400 transition-colors">
                                                 {isExpanded ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
                                             </button>
                                         </td>
@@ -397,13 +397,8 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                     </button>
                                                 )}
                                                 
-                                                {onEditProduct && mainItem.publicProductId && (
-                                                    <button onClick={(e) => { e.stopPropagation(); onEditProduct(mainItem); }} className="flex items-center gap-1 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 hover:bg-purple-100 dark:hover:bg-purple-900/40 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-sm" title="Atalho focado: Editar Imagens, Descrição e Modo Em Breve no Catálogo">
-                                                        <Globe size={14} /> Atalho Catálogo
-                                                    </button>
-                                                )}
-                                                <button onClick={(e) => { e.stopPropagation(); onCreateVariant(mainItem); }} className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors" title="Adicionar um novo lote ou opção (variante) a este produto">
-                                                    <Layers size={14} /> + Lote
+                                                <button onClick={(e) => { e.stopPropagation(); onCreateVariant(mainItem); }} className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors" title="Adicionar um novo lote ou variante">
+                                                    <Layers size={14} /> <span className="hidden xl:inline">Novo lote</span>
                                                 </button>
                                                 <button onClick={(e) => { e.stopPropagation(); onDeleteGroup(groupId, items); }} className="p-1.5 text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="Apagar todos os lotes deste produto">
                                                     <Trash2 size={16} />
@@ -413,17 +408,34 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                     </tr>
                                     {isExpanded && (
                                         <tr className="bg-gray-50/50 dark:bg-slate-800/50 border-b border-gray-200 dark:border-slate-700 transition-colors">
-                                            <td colSpan={6} className="px-4 py-4">
+                                            <td colSpan={9} className="px-4 py-4">
                                                 <div className="bg-white dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden shadow-sm ml-10 transition-colors">
+                                                    <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                                        <div>
+                                                            <div className="font-bold text-sm text-gray-900 dark:text-white">Lotes, unidades e rastreabilidade</div>
+                                                            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                                                                {items.length} lote(s) · Preço da loja: <strong className="text-gray-700 dark:text-gray-200">{formatCurrency(catalogProd?.price ?? mainItem.salePrice ?? mainItem.targetSalePrice ?? 0)}</strong>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            {onEditProduct && mainItem.publicProductId && (
+                                                                <button onClick={(event) => { event.stopPropagation(); onEditProduct(mainItem); }} className="flex items-center gap-1 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors" title="Editar preço, imagens, descrição e promoções do catálogo">
+                                                                    <Globe size={14} /> Catálogo
+                                                                </button>
+                                                            )}
+                                                            <button onClick={(event) => { event.stopPropagation(); onCreateVariant(mainItem); }} className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors">
+                                                                <Plus size={14} /> Lote
+                                                            </button>
+                                                        </div>
+                                                    </div>
                                                     <table className="w-full text-xs">
                                                         <thead className="bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-gray-400 uppercase transition-colors">
                                                             <tr>
                                                                 <th className="px-4 py-2 text-left">Lote / Variante</th>
                                                                 <th className="px-4 py-2 text-left">Origem</th>
-                                                                <th className="px-4 py-2 text-center">Stock</th>
-                                                                <th className="px-4 py-2 text-right">Compra</th>
-                                                                <th className="px-4 py-2 text-right">Venda (Estimada)</th>
-                                                                <th className="px-4 py-2 text-center">Lucro Unitário</th>
+                                                                <th className="px-4 py-2 text-center">Unidades</th>
+                                                                <th className="px-4 py-2 text-right">Custo unit.</th>
+                                                                <th className="px-4 py-2 text-center">Margem estimada</th>
                                                                 <th className="px-4 py-2 text-right">Ações</th>
                                                             </tr>
                                                         </thead>
@@ -439,7 +451,7 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                                 const batchReserved = Math.min(batchPhysical, Math.max(0, Number((p as any).reserved || 0)));
                                                                 const batchStock = Math.max(0, batchPhysical - batchReserved);
 
-                                                                const salePrice = p.salePrice || p.targetSalePrice || 0; 
+                                                                const salePrice = Number(catalogProd?.price ?? p.salePrice ?? p.targetSalePrice ?? 0); 
                                                                 const purchasePrice = p.purchasePrice || 0; 
                                                                 const cashbackValue = (p.cashbackValue || 0) / (qtyBought || 1); 
                                                                 const finalProfit = salePrice - purchasePrice + cashbackValue; 
@@ -582,10 +594,9 @@ const InventoryTab: React.FC<InventoryTabProps> = ({
                                                                             )}
                                                                         </td>
                                                                         <td className="px-4 py-3 text-right text-gray-900 dark:text-white">{formatCurrency(p.purchasePrice)}</td>
-                                                                        <td className="px-4 py-3 text-right text-gray-500 dark:text-gray-400">{p.targetSalePrice ? formatCurrency(p.targetSalePrice) : '-'}</td>
                                                                         <td className="px-4 py-3 text-center">
                                                                             {salePrice > 0 ? (
-                                                                                <div title={`Cálculo: Venda (${formatCurrency(salePrice)}) - Compra (${formatCurrency(purchasePrice)}) ${cashbackValue > 0 ? `+ Cashback (${formatCurrency(cashbackValue)})` : ''}`}>
+                                                                                <div title={`Cálculo: preço da loja (${formatCurrency(salePrice)}) - custo (${formatCurrency(purchasePrice)}) ${cashbackValue > 0 ? `+ Cashback (${formatCurrency(cashbackValue)})` : ''}`}>
                                                                                     <div className={`font-bold text-sm ${profitColor}`}>
                                                                                         {finalProfit >= 0 ? '+' : ''}{formatCurrency(finalProfit)}
                                                                                     </div>
