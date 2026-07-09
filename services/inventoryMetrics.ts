@@ -15,16 +15,16 @@ export const isReservationActive = (reservation: StockReservation, now = Date.no
   reservationExpiry(reservation.expiresAt) > now;
 
 const unitCounts = (lot: InventoryProduct) => {
-  const units = Array.isArray(lot.units) ? lot.units : [];
+  const units: any[] = Array.isArray(lot.units) ? lot.units as any[] : [];
   return {
     units,
-    available: units.filter(unit => unit.status === 'AVAILABLE').length,
-    reserved: units.filter(unit => unit.status === 'RESERVED').length,
-    sold: units.filter(unit => unit.status === 'SOLD').length,
-    returned: units.filter(unit => unit.status === 'RETURNED').length,
-    defective: units.filter(unit => unit.status === 'DEFECTIVE').length,
-    inTransit: units.filter(unit => unit.status === 'IN_TRANSIT').length,
-    physical: units.filter(unit => ['AVAILABLE', 'RESERVED', 'RETURNED', 'DEFECTIVE'].includes(unit.status)).length,
+    available: units.filter(unit => String(unit.status) === 'AVAILABLE').length,
+    reserved: units.filter(unit => String(unit.status) === 'RESERVED').length,
+    sold: units.filter(unit => String(unit.status) === 'SOLD').length,
+    returned: units.filter(unit => String(unit.status) === 'RETURNED').length,
+    defective: units.filter(unit => String(unit.status) === 'DEFECTIVE').length,
+    inTransit: units.filter(unit => String(unit.status) === 'IN_TRANSIT').length,
+    physical: units.filter(unit => ['AVAILABLE', 'RESERVED', 'RETURNED', 'DEFECTIVE'].includes(String(unit.status))).length,
   };
 };
 
@@ -67,7 +67,7 @@ export const lotReservedQuantity = (
 ) => {
   const counts = unitCounts(lot);
   const unitReservations = (lot.units || []).filter(unit =>
-    unit.status === 'RESERVED' && (!unit.reservedUntil || new Date(unit.reservedUntil).getTime() > now),
+    String(unit.status) === 'RESERVED' && (!unit.reservedUntil || new Date(unit.reservedUntil).getTime() > now),
   ).length;
 
   const cartReservations = reservations
@@ -145,17 +145,21 @@ export const getProductStockMetrics = (
 
 export const unitMatchesSearch = (unit: ProductUnit, term: string) => {
   const normalizedTerm = normalize(term);
+  const unitData = unit as any;
   if (!normalizedTerm) return true;
   return [
-    unit.id,
-    unit.serialNumber,
-    unit.barcode,
-    unit.internalLabel,
-    unit.soldToOrder,
-    unit.soldToCustomerName,
-    unit.soldToCustomerEmail,
+    unitData.id,
+    unitData.serialNumber,
+    unitData.barcode,
+    unitData.internalLabel,
+    unitData.soldToOrder,
+    unitData.soldToCustomerName,
+    unitData.soldToCustomerEmail,
   ].some(value => normalize(value).includes(normalizedTerm));
 };
 
 export const lotUnidentifiedUnitCount = (lot: InventoryProduct) =>
-  (lot.units || []).filter(unit => !String(unit.serialNumber || unit.barcode || unit.internalLabel || unit.id || '').trim()).length;
+  (lot.units || []).filter(unit => {
+    const unitData = unit as any;
+    return !String(unitData.serialNumber || unitData.barcode || unitData.internalLabel || unitData.id || '').trim();
+  }).length;
