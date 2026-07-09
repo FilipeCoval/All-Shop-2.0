@@ -98,16 +98,24 @@ export default async function handler(req: Request, res: Response) {
     const identity = await getRequestIdentity(req, req.body?.guestToken);
     const requestedItems = parseItems(req.body?.items);
     const shippingInfo = validateShippingInfo(req.body?.shippingInfo ?? req.body?.order?.shippingInfo);
+    const mode = req.body?.mode === 'pending' ? 'pending' : 'finalize';
+    const isPendingMode = mode === 'pending';
 
     const result = await firestore.runTransaction(async (transaction) => {
       const orderRef = firestore.collection('orders').doc(orderId);
       const existingOrder = await transaction.get(orderRef);
-      if (existingOrder.exists) {
-        const existing = existingOrder.data() || {};
-        if (existing.userId && existing.userId !== identity.userId) {
+      const existingData = existingOrder.exists ? (existingOrder.data() || {}) : null;
+      if (existingData) {
+        const existingEmail = normaliseEmail(existingData?.shippingInfo?.email || existingData?.customerEmail || existingData?.email || '');
+        if (existingData.userId && existingData.userId !== identity.userId) {
           throw new Error('Este número de encomenda já está em utilização. Volte ao carrinho e tente novamente.');
         }
-        return { order: { id: orderId, ...existing }, alreadyFinalized: true };
+        if (!existingData.userId && existingEmail && existingEmail !== shippingInfo.email) {
+          throw new Error('Este número de encomenda já está em utilização. Volte ao carrinho e tente novamente.');
+        }
+        if (isPendingMode || existingData.stockDeducted === true) {
+          return { order: { id: orderId, ...existingData }, alreadyFinalized: existingData.stockDeducted === true };
+        }
       }
 
       const productContexts = new Map<number, any>();
@@ -219,7 +227,9 @@ export default async function handler(req: Request, res: Response) {
         if (!userSnapshot.exists || Number(userSnapshot.data()?.freebieQuota || 0) < requestedFreebies) {
           throw new Error('Não tem ofertas disponíveis para adicionar a esta encomenda.');
         }
-        transaction.update(freebieUserRef, { freebieQuota: Number(userSnapshot.data()?.freebieQuota || 0) - requestedFreebies });
+        if (!isPendingMode) {
+          transaction.update(freebieUserRef, { freebieQuota: Number(userSnapshot.data()?.freebieQuota || 0) - requestedFreebies });
+        }
       }
 
       let discountValue = 0;
@@ -243,53 +253,65 @@ export default async function handler(req: Request, res: Response) {
         if (coupon.maxDiscount) discountValue = Math.min(discountValue, Number(coupon.maxDiscount));
         discountValue = roundMoney(Math.max(0, Math.min(discountValue, couponBase)));
         couponCode = requestedCouponCode;
-        const nextUsageCount = Number(coupon.usageCount || 0) + 1;
-        transaction.update(couponDoc.ref, {
-          usageCount: nextUsageCount,
-          ...(coupon.maxUsages && nextUsageCount >= Number(coupon.maxUsages) ? { isActive: false } : {}),
-        });
+        if (!isPendingMode) {
+          const nextUsageCount = Number(coupon.usageCount || 0) + 1;
+          transaction.update(couponDoc.ref, {
+            usageCount: nextUsageCount,
+            ...(coupon.maxUsages && nextUsageCount >= Number(coupon.maxUsages) ? { isActive: false } : {}),
+          });
+        }
       }
 
       const shippingCost = calculateShipping(roundMoney(subtotal - discountValue), shippingInfo);
       const total = roundMoney(subtotal - discountValue + shippingCost);
 
-      for (const [productId, plan] of salePlans.entries()) {
-        const context = productContexts.get(productId);
-        for (const batch of context.inventorySnapshot.docs) {
-          const soldNow = plan.saleByBatch.get(batch.id) || 0;
-          if (soldNow > 0) {
-            transaction.update(batch.ref, { quantitySold: Number(batch.data().quantitySold || 0) + soldNow });
+      if (!isPendingMode) {
+        for (const [productId, plan] of salePlans.entries()) {
+          const context = productContexts.get(productId);
+          for (const batch of context.inventorySnapshot.docs) {
+            const soldNow = plan.saleByBatch.get(batch.id) || 0;
+            if (soldNow > 0) {
+              transaction.update(batch.ref, { quantitySold: Number(batch.data().quantitySold || 0) + soldNow });
+            }
           }
+          for (const reservationId of [...new Set(plan.reservationIdsToDelete)]) {
+            const reservationRef = firestore.collection('stock_reservations').doc(reservationId);
+            transaction.delete(reservationRef);
+          }
+          syncInventoryReservedSummary(transaction, context.inventorySnapshot.docs, plan.remainingReservations);
+          syncPublicProductStock(transaction, context.publicSnapshot, context.publicRef, context.inventorySnapshot.docs, plan.remainingReservations, plan.saleByBatch);
         }
-        for (const reservationId of [...new Set(plan.reservationIdsToDelete)]) {
-          const reservationRef = firestore.collection('stock_reservations').doc(reservationId);
-          transaction.delete(reservationRef);
-        }
-        syncInventoryReservedSummary(transaction, context.inventorySnapshot.docs, plan.remainingReservations);
-        syncPublicProductStock(transaction, context.publicSnapshot, context.publicRef, context.inventorySnapshot.docs, plan.remainingReservations, plan.saleByBatch);
       }
 
+      const nowIso = new Date().toISOString();
+      const previousHistory = Array.isArray(existingData?.statusHistory) ? existingData.statusHistory : [];
       const responseOrder = {
         id: orderId,
-        date: new Date().toISOString(),
+        date: existingData?.date || nowIso,
         total,
-        status: 'Processamento',
-        statusHistory: [{ status: 'Processamento', date: new Date().toISOString(), notes: 'Pedido confirmado pelo cliente.' }],
+        status: isPendingMode ? 'Pendente' : 'Processamento',
+        statusHistory: isPendingMode
+          ? (previousHistory.length > 0 ? previousHistory : [{ status: 'Pendente', date: nowIso, notes: 'Pedido registado ao avançar para WhatsApp/Telegram.' }])
+          : [
+              ...previousHistory.filter((entry: any) => entry?.status !== 'Processamento'),
+              { status: 'Processamento', date: nowIso, notes: 'Pedido confirmado pelo cliente.' }
+            ],
         items: canonicalItems,
-        userId: identity.userId,
+        userId: identity.userId || existingData?.userId || null,
         shippingInfo,
-        stockDeducted: true,
+        stockDeducted: !isPendingMode,
         storeShippingCost: 5.4,
+        ...(req.body?.guestToken && !identity.userId ? { guestToken: String(req.body.guestToken).slice(0, 120) } : {}),
         ...(discountValue > 0 ? { discountValue } : {}),
         ...(couponCode ? { couponCode } : {}),
         schemaVersion: 2,
       };
       transaction.set(orderRef, {
         ...responseOrder,
-        createdAt: FieldValue.serverTimestamp(),
+        ...(existingData ? {} : { createdAt: FieldValue.serverTimestamp() }),
         updatedAt: FieldValue.serverTimestamp(),
-      });
-      return { order: responseOrder, alreadyFinalized: false };
+      }, { merge: true });
+      return { order: responseOrder, alreadyFinalized: !isPendingMode };
     });
 
     return res.status(200).json({ success: true, ...result });

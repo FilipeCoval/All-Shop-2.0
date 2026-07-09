@@ -35,7 +35,7 @@ export async function reserveStock(
   return parseResponse(response);
 }
 
-export async function finalizeOrder(order: any, guestToken?: string) {
+export async function finalizeOrder(order: any, guestToken?: string, options?: { mode?: 'pending' | 'finalize' }) {
   const response = await fetch('/api/finalize-order', {
     method: 'POST',
     headers: await requestHeaders(),
@@ -45,6 +45,7 @@ export async function finalizeOrder(order: any, guestToken?: string) {
       shippingInfo: order?.shippingInfo,
       guestToken,
       order,
+      mode: options?.mode || 'finalize',
     }),
   });
   return parseResponse(response);

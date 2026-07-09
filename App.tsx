@@ -580,39 +580,44 @@ const App: React.FC = () => {
   };
 
   const handleCheckout = async (newOrder: Order, isAutoSave: boolean = false): Promise<boolean> => {
-      // A encomenda só é criada quando o cliente confirma que enviou o pedido.
-      // Mantemos o argumento para compatibilidade, mas não gravamos rascunhos que prendem stock.
-      if (isAutoSave) return true;
-
+      // isAutoSave agora significa: gravar a encomenda como Pendente assim que o cliente avança para WhatsApp/Telegram.
+      // Isto permite ao admin ver o pedido e ao cliente vê-lo na Área de Cliente, mesmo que não carregue em "Já enviei".
       try {
           const cleanOrder = JSON.parse(JSON.stringify({
               ...newOrder,
               id: String(newOrder.id || '').trim().replace(/^#+/, ''),
           }));
-          const response = await finalizeOrder(cleanOrder, localStorage.getItem('guestToken') || undefined);
+          const response = await finalizeOrder(
+              cleanOrder,
+              localStorage.getItem('guestToken') || undefined,
+              { mode: isAutoSave ? 'pending' : 'finalize' }
+          );
           const savedOrder = (response?.order || cleanOrder) as Order;
 
           setOrders(prev => {
               const exists = prev.some(order => order.id === savedOrder.id);
               return exists ? prev.map(order => order.id === savedOrder.id ? savedOrder : order) : [savedOrder, ...prev];
           });
-          setCartItems([]);
 
-          try {
-              await notifyNewOrder(savedOrder, user ? user.name : savedOrder.shippingInfo.name);
-              supabaseSync.saveOrder(savedOrder);
-              await fetch('/api/send-push', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      target: 'admins',
-                      title: 'Nova Encomenda! 💰',
-                      body: `Pedido ${savedOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(savedOrder.total)} recebido de ${savedOrder.shippingInfo.name}.`,
-                      link: 'https://www.all-shop.net/#dashboard'
-                  })
-              });
-          } catch (backgroundError) {
-              console.error('Tarefas posteriores ao checkout falharam:', backgroundError);
+          if (!isAutoSave) {
+              setCartItems([]);
+
+              try {
+                  await notifyNewOrder(savedOrder, user ? user.name : savedOrder.shippingInfo.name);
+                  supabaseSync.saveOrder(savedOrder);
+                  await fetch('/api/send-push', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                          target: 'admins',
+                          title: 'Nova Encomenda! 💰',
+                          body: `Pedido ${savedOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(savedOrder.total)} recebido de ${savedOrder.shippingInfo.name}.`,
+                          link: 'https://www.all-shop.net/#dashboard'
+                      })
+                  });
+              } catch (backgroundError) {
+                  console.error('Tarefas posteriores ao checkout falharam:', backgroundError);
+              }
           }
           return true;
       } catch (error: any) {
