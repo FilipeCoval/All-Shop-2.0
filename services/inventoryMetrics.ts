@@ -15,17 +15,12 @@ export const isReservationActive = (reservation: StockReservation, now = Date.no
   reservationExpiry(reservation.expiresAt) > now;
 
 export const lotPhysicalQuantity = (lot: InventoryProduct) => {
-  const units = Array.isArray(lot.units) ? lot.units : [];
-  if (units.length) {
-    // Físico = unidades que estão no armazém; trânsito é mostrado à parte.
-    return units.filter(unit => ['AVAILABLE', 'RESERVED', 'RETURNED', 'DEFECTIVE'].includes(unit.status)).length;
-  }
-  return Math.max(0, Number(lot.quantityBought || 0) - Number(lot.quantitySold || 0));
+  const bought = Math.max(0, Number(lot.quantityBought || 0));
+  const sold = Math.max(0, Number(lot.quantitySold || 0));
+  return Math.max(0, bought - sold);
 };
 
 export const lotSoldQuantity = (lot: InventoryProduct) => {
-  const units = Array.isArray(lot.units) ? lot.units : [];
-  if (units.length) return units.filter(unit => unit.status === 'SOLD').length;
   return Math.max(0, Number(lot.quantitySold || 0));
 };
 
