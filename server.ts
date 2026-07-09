@@ -16,6 +16,7 @@ import updateOrderHandler from './api/update-order.ts';
 import syncUserHandler from './api/sync-user.ts';
 import sitemapHandler from './api/sitemap.ts';
 import chatHandler from './api/chat.ts';
+import trackOrderHandler from './api/track-order.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -110,6 +111,14 @@ async function startServer() {
         await chatHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: 'Erro interno no assistente.' });
+    }
+  });
+
+  app.all('/api/track-order', async (req, res) => {
+    try {
+        await trackOrderHandler(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Erro interno no rastreio.' });
     }
   });
 

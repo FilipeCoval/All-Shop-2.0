@@ -358,13 +358,19 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
     msg += `Portes: ${shippingCost === 0 ? 'Grátis' : formatCurrency(shippingCost)}\n`;
     msg += `Total Final: *${formatCurrency(finalTotal)}*`;
     
+    // Gravar já a encomenda como Pendente antes de mostrar o tutorial.
+    // Assim o admin vê o pedido mesmo que o cliente abra o WhatsApp/Telegram e não volte ao site.
+    const savedPending = await onCheckout(newOrder, true);
+    if (!savedPending) {
+        setIsFinalizing(false);
+        return;
+    }
+
     setPendingOrder(newOrder);
     setFinalMessage(msg);
     setSelectedPlatform(platform);
     setCheckoutStep('tutorial');
     setIsFinalizing(false);
-    
-    // A encomenda ainda não é gravada: o stock mantém-se reservado até o cliente confirmar.
   };
 
   const handleConfirmSent = async (isAutoSave: boolean = false) => {

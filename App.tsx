@@ -56,7 +56,7 @@ import ProductComparator from './components/ProductComparator';
 import { ADMIN_EMAILS, STORE_NAME, LOYALTY_TIERS, LOGO_URL, INITIAL_PRODUCTS } from './constants';
 import { Product, CartItem, User, Order, Review, ProductVariant, UserTier, PointHistory, OrderItem } from './types';
 import {   auth, db, messaging , modularDb } from './services/firebaseConfig';
-import { doc, getDoc, setDoc, updateDoc, writeBatch, runTransaction, arrayUnion, collection, query, where, getDocs, onSnapshot, serverTimestamp, deleteDoc, or } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, onSnapshot } from 'firebase/firestore';
 
 import { useStock } from './hooks/useStock'; 
 import { usePublicProducts } from './hooks/usePublicProducts';
@@ -64,7 +64,7 @@ import { notifyNewOrder } from './services/telegramNotifier';
 import { supabaseSync } from './services/supabaseSync';
 import LoyaltyPage from './components/LoyaltyPage';
 import { trackVisit } from './services/analyticsService';
-import { reserveStock, finalizeOrder } from './services/api';
+import { reserveStock, finalizeOrder, syncCurrentUser } from './services/api';
 
 // LAZY LOADING DO DASHBOARD
 // O código do Dashboard (gráficos, tabelas grandes, scanners) só é baixado se o utilizador for admin e clicar na rota.
@@ -334,87 +334,25 @@ const App: React.FC = () => {
                     await setDoc(userDocRef, basicUser);
                 }
 
-                // Sincronizar o histórico e pontos no lado do cliente
-                try {
-                    const uid = firebaseUser.uid;
-                    const email = firebaseUser.email;
-                    
-                    const q1 = query(collection(modularDb, 'orders'), where('userId', '==', uid));
-                    const ordersSnap1 = await getDocs(q1);
-                    const q2 = query(collection(modularDb, 'orders'), where('shippingInfo.email', '==', email.toLowerCase()), where('userId', '==', null));
-                    const ordersSnap2 = await getDocs(q2);
-
-                    const allOrdersLocal: any[] = [];
-                    ordersSnap1.forEach(d => allOrdersLocal.push({ id: d.id, ...d.data() }));
-                    ordersSnap2.forEach(d => allOrdersLocal.push({ id: d.id, ...d.data() }));
-
-                    const historicalTotalSpent = allOrdersLocal.filter(o => o.status !== 'Cancelado').reduce((sum, o) => sum + (o.total || 0), 0);
-                    
-                    let correctTier = 'Bronze';
-                    if (historicalTotalSpent >= LOYALTY_TIERS.GOLD.threshold) correctTier = 'Ouro';
-                    else if (historicalTotalSpent >= LOYALTY_TIERS.SILVER.threshold) correctTier = 'Prata';
-
-                    let missingPoints = 0;
-                    const newHistoryItems: any[] = [];
-                    const ordersToAwardPoints = allOrdersLocal.filter(o => o.status === 'Entregue' && !o.pointsAwarded);
-                    const tierMap = { 'Bronze': 'BRONZE', 'Prata': 'SILVER', 'Ouro': 'GOLD' } as const;
-
-                    const batch = writeBatch(modularDb);
-
-                    if (ordersToAwardPoints.length > 0) {
-                        const multiplier = LOYALTY_TIERS[tierMap[correctTier as keyof typeof tierMap]].multiplier;
-                        ordersToAwardPoints.forEach(o => {
-                            const pts = Math.floor((o.total || 0) * multiplier);
-                            if (pts > 0) {
-                                missingPoints += pts;
-                                newHistoryItems.push({
-                                    id: `sync-${o.id}`,
-                                    date: new Date().toISOString(),
-                                    amount: pts,
-                                    reason: `Compra #${o.id.slice(-6)} (Sinc. Nível ${correctTier})`,
-                                    orderId: o.id
-                                });
-                            }
-                            batch.update(doc(modularDb, 'orders', o.id), { pointsAwarded: true });
-                        });
+                // Encomendas, adoção de pedidos de convidado e pontos são sincronizados
+                // no servidor. O browser deixa de escrever diretamente em orders.
+                const refreshOrders = async () => {
+                    try {
+                        const response = await syncCurrentUser();
+                        const safeOrders = Array.isArray(response?.orders) ? response.orders as Order[] : [];
+                        setOrders(safeOrders);
+                    } catch (e) {
+                        console.error('Não foi possível sincronizar encomendas da conta:', e);
+                        setOrders([]);
                     }
+                };
+                await refreshOrders();
 
-                    // Adopt guest orders
-                    ordersSnap2.forEach(d => {
-                        batch.update(doc(modularDb, 'orders', d.id), { userId: uid });
-                    });
+                const ordersRefreshInterval = window.setInterval(() => {
+                    refreshOrders();
+                }, 60_000);
+                ordersUnsubscribe = () => window.clearInterval(ordersRefreshInterval);
 
-                    // Update user
-                    const uDocRef = doc(modularDb, 'users', uid);
-                    const uDoc = await getDoc(uDocRef);
-                    if (uDoc.exists()) {
-                        const uData = uDoc.data();
-                        const userUpdateData: any = {};
-                        let needsUpdate = false;
-
-                        if (Number((uData.totalSpent || 0).toFixed(2)) !== Number(historicalTotalSpent.toFixed(2))) {
-                            userUpdateData.totalSpent = historicalTotalSpent;
-                            needsUpdate = true;
-                        }
-                        if ((uData.tier || 'Bronze') !== correctTier) {
-                            userUpdateData.tier = correctTier;
-                            needsUpdate = true;
-                        }
-                        if (missingPoints > 0) {
-                            userUpdateData.loyaltyPoints = (uData.loyaltyPoints || 0) + missingPoints;
-                            userUpdateData.pointsHistory = [...newHistoryItems, ...(uData.pointsHistory || [])];
-                            needsUpdate = true;
-                        }
-
-                        if (needsUpdate || ordersSnap2.size > 0 || ordersToAwardPoints.length > 0) {
-                            if (needsUpdate) batch.update(uDocRef, userUpdateData);
-                            await batch.commit();
-                        }
-                    }
-                } catch (e) {
-                    console.error("Failed to sync user data locally", e);
-                }
-                
                 userUnsubscribe = onSnapshot(userDocRef, (docSnap) => {
                     if (docSnap.exists()) {
                         const userData = docSnap.data() as User;
@@ -428,43 +366,6 @@ const App: React.FC = () => {
                     console.error("Erro ao escutar dados do utilizador:", error);
                 });
                 
-                const handleOrdersUpdate = (snap: any, type: 'uid' | 'email') => {
-                    const fetched = snap.docs.map((doc: any) => ({id: doc.id, ...doc.data() } as Order));
-                    setOrders(prev => {
-                        const newOrders = [...prev];
-                        // Remove old orders of this type (this is purely for syncing from streams)
-                        // Actually, it's safer to just maintain two lists.
-                        return newOrders; // Too complex for a single state if not careful.
-                    });
-                };
-
-                let ordersById: Order[] = [];
-                let ordersByEmail: Order[] = [];
-
-                const updateCombinedOrders = () => {
-                    const combined = [...ordersById, ...ordersByEmail];
-                    const unique = Array.from(new Map(combined.map(o => [o.id, o])).values());
-                    unique.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-                    setOrders(unique);
-                };
-
-                const unsubUid = onSnapshot(query(collection(modularDb, "orders"), where("userId", "==", firebaseUser.uid)), (snap) => {
-                    ordersById = snap.docs.map(doc => ({id: doc.id, ...doc.data() } as Order));
-                    updateCombinedOrders();
-                }, (error) => console.error("Erro UID:", error));
-
-                let unsubEmail = () => {};
-                if (firebaseUser.email) {
-                    unsubEmail = onSnapshot(query(collection(modularDb, "orders"), where("shippingInfo.email", "==", firebaseUser.email)), (snap) => {
-                        ordersByEmail = snap.docs.map(doc => ({id: doc.id, ...doc.data() } as Order));
-                        updateCombinedOrders();
-                    }, (error) => console.error("Erro Email:", error));
-                }
-
-                ordersUnsubscribe = () => {
-                    unsubUid();
-                    unsubEmail();
-                };
 
             } catch (error) {
                 console.error("Erro crítico durante a autenticação/sincronização do utilizador:", error);
@@ -679,39 +580,44 @@ const App: React.FC = () => {
   };
 
   const handleCheckout = async (newOrder: Order, isAutoSave: boolean = false): Promise<boolean> => {
-      // A encomenda só é criada quando o cliente confirma que enviou o pedido.
-      // Mantemos o argumento para compatibilidade, mas não gravamos rascunhos que prendem stock.
-      if (isAutoSave) return true;
-
+      // isAutoSave agora significa: gravar a encomenda como Pendente assim que o cliente avança para WhatsApp/Telegram.
+      // Isto permite ao admin ver o pedido e ao cliente vê-lo na Área de Cliente, mesmo que não carregue em "Já enviei".
       try {
           const cleanOrder = JSON.parse(JSON.stringify({
               ...newOrder,
               id: String(newOrder.id || '').trim().replace(/^#+/, ''),
           }));
-          const response = await finalizeOrder(cleanOrder, localStorage.getItem('guestToken') || undefined);
+          const response = await finalizeOrder(
+              cleanOrder,
+              localStorage.getItem('guestToken') || undefined,
+              { mode: isAutoSave ? 'pending' : 'finalize' }
+          );
           const savedOrder = (response?.order || cleanOrder) as Order;
 
           setOrders(prev => {
               const exists = prev.some(order => order.id === savedOrder.id);
               return exists ? prev.map(order => order.id === savedOrder.id ? savedOrder : order) : [savedOrder, ...prev];
           });
-          setCartItems([]);
 
-          try {
-              await notifyNewOrder(savedOrder, user ? user.name : savedOrder.shippingInfo.name);
-              supabaseSync.saveOrder(savedOrder);
-              await fetch('/api/send-push', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      target: 'admins',
-                      title: 'Nova Encomenda! 💰',
-                      body: `Pedido ${savedOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(savedOrder.total)} recebido de ${savedOrder.shippingInfo.name}.`,
-                      link: 'https://www.all-shop.net/#dashboard'
-                  })
-              });
-          } catch (backgroundError) {
-              console.error('Tarefas posteriores ao checkout falharam:', backgroundError);
+          if (!isAutoSave) {
+              setCartItems([]);
+
+              try {
+                  await notifyNewOrder(savedOrder, user ? user.name : savedOrder.shippingInfo.name);
+                  supabaseSync.saveOrder(savedOrder);
+                  await fetch('/api/send-push', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                          target: 'admins',
+                          title: 'Nova Encomenda! 💰',
+                          body: `Pedido ${savedOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(savedOrder.total)} recebido de ${savedOrder.shippingInfo.name}.`,
+                          link: 'https://www.all-shop.net/#dashboard'
+                      })
+                  });
+              } catch (backgroundError) {
+                  console.error('Tarefas posteriores ao checkout falharam:', backgroundError);
+              }
           }
           return true;
       } catch (error: any) {
