@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { CartItem, UserCheckoutInfo, Order, Coupon, User, Product, ProductVariant } from '../types';
 import { X, Trash2, Check, Loader2, ChevronLeft, User as UserIcon, Clock, Tag, AlertCircle, Store, Truck, MapPin, Smartphone, Landmark, Banknote, Sparkles, PartyPopper, Info, Gift } from 'lucide-react';
-import { SELLER_PHONE } from '../constants';
+import { SELLER_PHONE, TELEGRAM_LINK } from '../constants';
 import { modularDb } from '../services/firebaseConfig';
 import { collection, query, where, getDocs, limit, doc, updateDoc } from 'firebase/firestore';
 import OrderTutorial from './OrderTutorial';
@@ -674,7 +674,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
               <OrderTutorial 
                   message={finalMessage} 
                   platform={selectedPlatform} 
-                  actionUrl={selectedPlatform === 'wa' ? `https://wa.me/${SELLER_PHONE}?text=${encodeURIComponent(finalMessage)}` : `https://telegram.me/share/url?url=${encodeURIComponent('https://www.all-shop.net')}&text=${encodeURIComponent(finalMessage)}`}
+                  actionUrl={selectedPlatform === 'wa' ? `https://wa.me/${SELLER_PHONE}?text=${encodeURIComponent(finalMessage)}` : TELEGRAM_LINK}
                   onComplete={handleConfirmSent}
                   isLoading={isFinalizing}
               />

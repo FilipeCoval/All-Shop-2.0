@@ -25,39 +25,45 @@ const OrderTutorial: React.FC<OrderTutorialProps> = ({ message, platform, action
     return () => clearInterval(interval);
   }, []);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(message);
-    setCopied(true);
+  const copyOrderMessage = async (): Promise<boolean> => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(message);
+        return true;
+      }
+
+      const textarea = document.createElement('textarea');
+      textarea.value = message;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copiedSuccessfully = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return copiedSuccessfully;
+    } catch (error) {
+      console.error('Não foi possível copiar automaticamente a mensagem do pedido:', error);
+      return false;
+    }
+  };
+
+  const handleCopy = async () => {
+    const copiedSuccessfully = await copyOrderMessage();
+    setCopied(copiedSuccessfully);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleOpenApp = () => {
-    if (platform === 'wa') {
-      window.open(actionUrl, '_blank', 'noopener,noreferrer');
-      return;
-    }
+  const handleOpenApp = async () => {
+    // O Telegram não permite preencher diretamente uma mensagem num grupo privado
+    // através de um link de convite. Copiamos primeiro o pedido e abrimos logo o
+    // grupo correto, sem recorrer ao menu genérico de partilha do dispositivo.
+    const copiedSuccessfully = await copyOrderMessage();
+    setCopied(copiedSuccessfully);
 
-    // Tenta abrir diretamente a app Telegram. Se o protocolo tg:// não
-    // estiver disponível, abre o fallback HTTPS em telegram.me, que evita
-    // depender do domínio curto t.me.
-    const deepLink = `tg://msg_url?url=${encodeURIComponent('https://www.all-shop.net')}&text=${encodeURIComponent(message)}`;
-    const fallbackTimer = window.setTimeout(() => {
-      window.location.href = actionUrl;
-    }, 900);
-
-    const cancelFallback = () => {
-      window.clearTimeout(fallbackTimer);
-      window.removeEventListener('pagehide', cancelFallback);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) cancelFallback();
-    };
-
-    window.addEventListener('pagehide', cancelFallback, { once: true });
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.location.href = deepLink;
+    // Usar navegação direta é mais fiável em telemóveis/PWA do que window.open,
+    // que pode ser bloqueado depois de uma operação assíncrona de clipboard.
+    window.location.href = actionUrl;
   };
 
   return (
@@ -189,7 +195,7 @@ const OrderTutorial: React.FC<OrderTutorialProps> = ({ message, platform, action
                 className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-white transition-all ${platformColor} hover:opacity-90 shadow-lg shadow-blue-500/20`}
             >
                 <ExternalLink size={18} />
-                Abrir App
+                {platform === 'tg' ? 'Abrir Telegram' : 'Abrir WhatsApp'}
             </button>
         </div>
 
