@@ -32,7 +32,32 @@ const OrderTutorial: React.FC<OrderTutorialProps> = ({ message, platform, action
   };
 
   const handleOpenApp = () => {
-    window.open(actionUrl, '_blank');
+    if (platform === 'wa') {
+      window.open(actionUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // Tenta abrir diretamente a app Telegram. Se o protocolo tg:// não
+    // estiver disponível, abre o fallback HTTPS em telegram.me, que evita
+    // depender do domínio curto t.me.
+    const deepLink = `tg://msg_url?url=${encodeURIComponent('https://www.all-shop.net')}&text=${encodeURIComponent(message)}`;
+    const fallbackTimer = window.setTimeout(() => {
+      window.location.href = actionUrl;
+    }, 900);
+
+    const cancelFallback = () => {
+      window.clearTimeout(fallbackTimer);
+      window.removeEventListener('pagehide', cancelFallback);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) cancelFallback();
+    };
+
+    window.addEventListener('pagehide', cancelFallback, { once: true });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.location.href = deepLink;
   };
 
   return (
