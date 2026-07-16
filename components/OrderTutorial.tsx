@@ -54,16 +54,39 @@ const OrderTutorial: React.FC<OrderTutorialProps> = ({ message, platform, action
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleOpenApp = async () => {
-    // O Telegram não permite preencher diretamente uma mensagem num grupo privado
-    // através de um link de convite. Copiamos primeiro o pedido e abrimos logo o
-    // grupo correto, sem recorrer ao menu genérico de partilha do dispositivo.
-    const copiedSuccessfully = await copyOrderMessage();
-    setCopied(copiedSuccessfully);
+  const handleOpenApp = () => {
+    // Copiar de forma síncrona mantém o gesto do utilizador ativo. Isto permite
+    // abrir o Telegram noutra janela/app sem substituir a página atual da loja.
+    let copiedSuccessfully = false;
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = message;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+      copiedSuccessfully = document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch (error) {
+      console.error('Não foi possível copiar automaticamente a mensagem do pedido:', error);
+    }
 
-    // Usar navegação direta é mais fiável em telemóveis/PWA do que window.open,
-    // que pode ser bloqueado depois de uma operação assíncrona de clipboard.
-    window.location.href = actionUrl;
+    setCopied(copiedSuccessfully);
+    setStep(2);
+
+    // Abrir separadamente preserva o checkout no navegador. Quando o cliente
+    // regressa do Telegram, continua no botão "Já enviei o pedido".
+    const appLink = document.createElement('a');
+    appLink.href = actionUrl;
+    appLink.target = '_blank';
+    appLink.rel = 'noopener noreferrer';
+    document.body.appendChild(appLink);
+    appLink.click();
+    document.body.removeChild(appLink);
   };
 
   return (
