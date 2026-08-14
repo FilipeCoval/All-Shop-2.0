@@ -8,7 +8,7 @@ interface OrdersTabProps {
   orders: Order[];
   inventoryProducts: InventoryProduct[];
   isAdmin: boolean;
-  onStatusChange: (orderId: string, newStatus: string) => void;
+  onStatusChange: (orderId: string, newStatus: string) => Promise<void>;
   onDeleteOrder: (orderId: string) => void;
   onViewDetails: (order: Order) => void;
   onOpenManualOrder: () => void;
@@ -26,6 +26,7 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
   const [chartTimeframe, setChartTimeframe] = useState<'7d' | '30d' | '1y'>('7d');
   const [searchTerm, setSearchTerm] = useState('');
   const [reviewingRequest, setReviewingRequest] = useState<string | null>(null);
+  const [updatingStatusOrderId, setUpdatingStatusOrderId] = useState<string | null>(null);
 
   const filteredOrders = useMemo(() => {
     if (!searchTerm) return orders;
@@ -72,6 +73,19 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
       alert(error instanceof Error ? error.message : 'Não foi possível atualizar o pedido.');
     } finally {
       setReviewingRequest(null);
+    }
+  };
+
+  const handleStatusChange = async (order: Order, newStatus: string) => {
+    if (order.status === newStatus) return;
+    setUpdatingStatusOrderId(order.id);
+    try {
+      await onStatusChange(order.id, newStatus);
+    } catch (error) {
+      console.error('Erro ao alterar estado da encomenda:', error);
+      alert(error instanceof Error ? error.message : 'Não foi possível alterar o estado da encomenda.');
+    } finally {
+      setUpdatingStatusOrderId(null);
     }
   };
 
@@ -252,7 +266,9 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
                                 <td className="px-6 py-4">
                                     <select 
                                         value={order.status} 
-                                        onChange={(e) => onStatusChange(order.id, e.target.value)} 
+                                        onChange={(e) => void handleStatusChange(order, e.target.value)}
+                                        disabled={updatingStatusOrderId === order.id}
+                                        aria-label={`Estado da encomenda ${order.id}`}
                                         className={`text-xs font-bold px-2 py-1 rounded-full border-none cursor-pointer outline-none ${
                                             order.status === 'Entregue' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 
                                             order.status === 'Enviado' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' : 
@@ -261,7 +277,7 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
                                             ['Devolvido', 'Reclamação'].includes(order.status) ? 'bg-red-200 dark:bg-red-900/40 text-red-900 dark:text-red-200' :
                                             order.status === 'Levantamento em Loja' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' : 
                                             'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'
-                                        }`}
+                                        } disabled:cursor-wait disabled:opacity-60`}
                                     >
                                         <option value="Pendente">Pendente</option>
                                         <option value="Processamento">Processamento</option>

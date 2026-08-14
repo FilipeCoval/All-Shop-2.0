@@ -95,3 +95,12 @@ export async function reviewOrderRequest(input: {
   });
   return parseResponse(response);
 }
+
+export async function setOrderStatus(orderId: string, status: string) {
+  const response = await fetch('/api/update-order', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({ action: 'set_status', orderId, status }),
+  });
+  return parseResponse(response);
+}

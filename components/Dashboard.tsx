@@ -36,7 +36,7 @@ import CategoriesTab from './CategoriesTab';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 import { notifyNewOrder } from '../services/telegramNotifier';
 import { supabaseSync } from '../services/supabaseSync';
-import { reviewOrderRequest } from '../services/api';
+import { reviewOrderRequest, setOrderStatus } from '../services/api';
 import { isSupabaseEnabled } from '../services/supabaseConfig';
 import OrderXRayModal from './OrderXRayModal';
 import RequestsTab from './RequestsTab';
@@ -1107,236 +1107,32 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
     }
   };
 
-  const handleOrderStatusChange = async (orderId: string, newStatus: string) => { 
-      try { 
-          const orderRef = doc(modularDb, 'orders', orderId); 
-          const orderSnap = await getDoc(orderRef); 
-          if(!orderSnap.exists()) return; 
-          const currentOrder = orderSnap.data() as Order; 
-          const updates: any = { 
-              status: newStatus, 
-              statusHistory: arrayUnion({ 
-                  status: newStatus, 
-                  date: new Date().toISOString(), 
-                  notes: 'Estado alterado via Backoffice' 
-              }) 
-          }; 
+  const handleOrderStatusChange = async (orderId: string, newStatus: string) => {
+      const currentOrder = allOrders.find(order => order.id === orderId);
+      if (!currentOrder || currentOrder.status === newStatus) return;
 
-          // Se voltarem a mudar o estado para um estado não expedido, repomos fulfillmentStatus para null para permitir re-expedir se necessário
-          if (['Pendente', 'Processamento', 'Pago'].includes(newStatus)) {
-              updates.fulfillmentStatus = null;
-          } 
+      if (newStatus === 'Cancelado' && !window.confirm(
+          `Cancelar a encomenda ${orderId}? O stock vendido será reposto uma única vez.`,
+      )) return;
 
-          // Safe parsing of total to avoid NaN database writes on old orders
-          const orderTotal = typeof currentOrder.total === 'number'
-              ? currentOrder.total
-              : parseFloat(currentOrder.total as any) || 0;
+      const result = await setOrderStatus(orderId, newStatus);
+      const updatedOrder = result?.order as Order | undefined;
+      const mergedOrder = { ...currentOrder, ...(updatedOrder || {}), status: newStatus as Order['status'] };
 
-          // Prepare Matching Inventory Lots to restore stock on cancellation
-          const inventoryDocsToRead: any[] = [];
-          if (newStatus === 'Cancelado' && currentOrder.status !== 'Cancelado' && Array.isArray(currentOrder.items)) {
-              for (const item of currentOrder.items) {
-                  if (typeof item === 'object' && item !== null && item.productId) {
-                      const q = query(
-                          collection(modularDb, 'products_inventory'),
-                          where('publicProductId', '==', Number(item.productId))
-                      );
-                      const qSnap = await getDocs(q);
-                      qSnap.forEach(d => {
-                          const invData = d.data();
-                          const orderVariant = String(item.selectedVariant || '').trim().toLowerCase();
-                          const batchVariant = String(invData.variant || '').trim().toLowerCase();
-                          if (orderVariant === batchVariant) {
-                              inventoryDocsToRead.push({ ref: d.ref, id: d.id, itemQty: item.quantity, productId: item.productId });
-                          }
-                      });
-                  }
-              }
+      setAllOrders(prev => prev.map(order => order.id === orderId ? mergedOrder : order));
+      if (selectedOrderDetails?.id === orderId) setSelectedOrderDetails(mergedOrder);
+
+      if (currentOrder.status === 'Pendente' && (newStatus === 'Processamento' || newStatus === 'Pago')) {
+          try {
+              await notifyNewOrder(mergedOrder, mergedOrder.shippingInfo?.name || 'Cliente');
+          } catch (notifyError) {
+              console.error('Erro ao notificar via Telegram:', notifyError);
           }
+      }
 
-          await runTransaction(modularDb, async (transaction) => {
-              // 1. Gather all reads
-              const reads: any = { updates: [], userUpdate: null };
-
-              const invSnaps: Record<string, any> = {};
-              for (const docToRead of inventoryDocsToRead) {
-                  const snap = await transaction.get(docToRead.ref);
-                  invSnaps[docToRead.id] = snap;
-              }
-              
-              const isUserValid = typeof currentOrder.userId === 'string' && currentOrder.userId.trim() !== '';
-              if (newStatus === 'Entregue' && !currentOrder.pointsAwarded && isUserValid) { 
-                  const userRef = doc(modularDb, 'users', currentOrder.userId as string); 
-                  const userDoc = await transaction.get(userRef); 
-                  if (userDoc.exists()) { 
-                      const userData = userDoc.data() as UserType; 
-                      const tier = userData.tier || 'Bronze'; 
-                      let multiplier = 1; 
-                      if (tier === 'Prata') multiplier = LOYALTY_TIERS.SILVER.multiplier; 
-                      if (tier === 'Ouro') multiplier = LOYALTY_TIERS.GOLD.multiplier; 
-                      const pointsToAward = Math.floor(orderTotal * multiplier); 
-                      if (!isNaN(pointsToAward) && pointsToAward > 0) { 
-                          const newHistory: PointHistory = { 
-                              id: `earn-${orderId}`, 
-                              date: new Date().toISOString(), 
-                              amount: pointsToAward, 
-                              reason: `Compra #${orderId} (Nível ${tier})`, 
-                              orderId: orderId 
-                          }; 
-                          reads.userUpdate = {
-                              ref: userRef,
-                              data: {
-                                  loyaltyPoints: (userData.loyaltyPoints || 0) + pointsToAward, 
-                                  pointsHistory: [newHistory, ...(Array.isArray(userData.pointsHistory) ? userData.pointsHistory : [])] 
-                              }
-                          };
-                          updates.pointsAwarded = true; 
-                      } 
-                  } 
-              }
-
-              if (newStatus === 'Cancelado' && currentOrder.status !== 'Cancelado' && Array.isArray(currentOrder.items)) {
-                  // A. Repor o stock no lote de inventário correspondente (products_inventory)
-                  for (const docToRead of inventoryDocsToRead) {
-                      const invSnap = invSnaps[docToRead.id];
-                      if (invSnap && invSnap.exists()) {
-                          const invData = invSnap.data() as InventoryProduct;
-                          let currentQtySold = Number(invData.quantitySold || 0);
-                          let newQtySold = currentQtySold;
-
-                          if (currentOrder.stockDeducted) {
-                              newQtySold = Math.max(0, currentQtySold - docToRead.itemQty);
-                          }
-
-                          let updatedUnits = invData.units ? [...invData.units] : null;
-                          if (updatedUnits) {
-                              updatedUnits = updatedUnits.map(unit => {
-                                  if (unit.soldToOrder === orderId) {
-                                      return {
-                                          ...unit,
-                                          status: 'AVAILABLE',
-                                          soldAt: undefined,
-                                          soldToOrder: undefined
-                                      };
-                                  }
-                                  return unit;
-                              });
-                          }
-
-                          const invUpdateData: any = {
-                              quantitySold: newQtySold,
-                              status: newQtySold >= (invData.quantityBought || 0) ? 'SOLD' : (newQtySold > 0 ? 'PARTIAL' : 'AVAILABLE')
-                          };
-                          if (updatedUnits) {
-                              invUpdateData.units = updatedUnits;
-                          }
-
-                          reads.updates.push({
-                              ref: docToRead.ref,
-                              data: invUpdateData
-                          });
-                      }
-                  }
-
-                  // B. Depois, repor stock na coleção principal (products_public)
-                  for (const item of currentOrder.items) {
-                      if (typeof item !== 'object' || item === null || !item.productId) continue;
-                      const productDocRef = doc(modularDb, 'products_public', item.productId.toString());
-                      const productDoc = await transaction.get(productDocRef);
-                      if (productDoc.exists()) {
-                          const productData = productDoc.data() as Product;
-                          
-                          let updatedVariants = productData.variants;
-                          if (item.selectedVariant && productData.variants) {
-                              const vIndex = productData.variants.findIndex((v: any) => v.name === item.selectedVariant);
-                              if (vIndex !== -1) {
-                                  updatedVariants = [...productData.variants];
-                                  updatedVariants[vIndex] = {
-                                      ...updatedVariants[vIndex],
-                                      stock: (updatedVariants[vIndex].stock || 0) + item.quantity
-                                  };
-                              }
-                          }
-                          
-                          const updateData: any = { stock: (productData.stock || 0) + item.quantity };
-                          if (updatedVariants) updateData.variants = updatedVariants;
-                          
-                          reads.updates.push({
-                              ref: productDoc.ref,
-                              data: Object.fromEntries(Object.entries(updateData).filter(([_,v]) => v !== undefined))
-                          });
-                      }
-                  }
-
-                  if (currentOrder.pointsAwarded && isUserValid) {
-                      const userRef = doc(modularDb, 'users', currentOrder.userId as string);
-                      const userDoc = await transaction.get(userRef);
-                      if (userDoc.exists()) {
-                          const userData = userDoc.data() as UserType;
-                          const tier = userData.tier || 'Bronze';
-                          let multiplier = 1;
-                          if (tier === 'Prata') multiplier = LOYALTY_TIERS.SILVER.multiplier;
-                          if (tier === 'Ouro') multiplier = LOYALTY_TIERS.GOLD.multiplier;
-                          const pointsToRemove = Math.floor(orderTotal * multiplier);
-                          
-                          if (!isNaN(pointsToRemove) && pointsToRemove > 0) {
-                              const newHistory: PointHistory = {
-                                  id: `refund-${orderId}`,
-                                  date: new Date().toISOString(),
-                                  amount: -pointsToRemove,
-                                  reason: `Cancelamento da Compra #${orderId}`,
-                                  orderId: orderId
-                              };
-                              const newTotalSpent = Math.max(0, (userData.totalSpent || 0) - orderTotal);
-                              let newTier: UserTier = 'Bronze';
-                              if (newTotalSpent >= LOYALTY_TIERS.GOLD.threshold) newTier = 'Ouro';
-                              else if (newTotalSpent >= LOYALTY_TIERS.SILVER.threshold) newTier = 'Prata';
-                              
-                              reads.userUpdate = {
-                                  ref: userRef,
-                                  data: {
-                                      totalSpent: newTotalSpent,
-                                      tier: newTier,
-                                      loyaltyPoints: Math.max(0, (userData.loyaltyPoints || 0) - pointsToRemove),
-                                      pointsHistory: [newHistory, ...(Array.isArray(userData.pointsHistory) ? userData.pointsHistory : [])]
-                                  }
-                              };
-                              updates.pointsAwarded = false;
-                          }
-                      }
-                  }
-              }
-
-              // 2. Perform all writes
-              if (reads.userUpdate) transaction.update(reads.userUpdate.ref, reads.userUpdate.data);
-              for (const update of reads.updates) {
-                  transaction.update(update.ref, update.data);
-              }
-              transaction.update(orderRef, updates);
-          });
-
-          // Enviar notificação Telegram caso mude manualmente de Pendente para Processamento ou Pago
-          if (currentOrder.status === 'Pendente' && (newStatus === 'Processamento' || newStatus === 'Pago')) {
-              try {
-                  await notifyNewOrder({ ...currentOrder, status: newStatus }, currentOrder.shippingInfo?.name || 'Cliente');
-              } catch (notifyError) {
-                  console.error("Erro ao notificar via Telegram:", notifyError);
-              }
-          }
-
-          setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, ...updates } : o)); 
-          if (selectedOrderDetails?.id === orderId) { 
-              setSelectedOrderDetails(prev => prev ? { ...prev, ...updates } : null); 
-          } 
-          
-          // Sync updated order to Supabase
-          supabaseSync.saveOrder({ ...currentOrder, ...updates });
-      } catch (error) { 
-          console.error("Erro ao mudar estado:", error); 
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          alert("Erro ao atualizar estado da encomenda: " + errorMsg); 
-      } 
+      void supabaseSync.saveOrder(mergedOrder);
   };
+
   const handleReviewOrderRequest = async (
       orderId: string,
       requestKind: 'cancellation' | 'return',

@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type Firestore, type Transaction } from 'firebase-admin/firestore';
 import { db } from '../services/firebase-admin.js';
 import { getRequestIdentity } from '../services/server/request-identity.js';
 import {
@@ -13,6 +13,18 @@ import {
 
 type ClientAction = 'cancel_order' | 'cancel_item' | 'request_return';
 type ReviewDecision = 'approve' | 'reject';
+
+const ORDER_STATUSES = new Set([
+  'Pendente',
+  'Processamento',
+  'Pago',
+  'Enviado',
+  'Entregue',
+  'Cancelado',
+  'Reclamação',
+  'Devolvido',
+  'Levantamento em Loja',
+]);
 
 const FALLBACK_ADMIN_EMAILS = new Set([
   'filipe_coval_90@hotmail.com',
@@ -44,20 +56,149 @@ const orderItems = (order: Record<string, any>) => Array.isArray(order.items)
   : [];
 
 const requestItems = (request: any, order: Record<string, any>) => {
-  if (request?.type !== 'PARCIAL') {
-    return orderItems(order).map((item: any) => ({
+  const rawItems = request?.type !== 'PARCIAL'
+    ? orderItems(order).map((item: any) => ({
       productId: Number(item.productId),
       quantity: Math.max(0, Number(item.quantity || 0)),
       selectedVariant: item.selectedVariant ? String(item.selectedVariant) : '',
-    })).filter((item) => item.quantity > 0);
-  }
-  return Array.isArray(request?.items)
+    })).filter((item) => item.quantity > 0)
+    : Array.isArray(request?.items)
     ? request.items.map((item: any) => ({
       productId: Number(item.productId),
       quantity: Math.max(0, Number(item.quantity || 0)),
       selectedVariant: item.selectedVariant ? String(item.selectedVariant) : '',
     })).filter((item: any) => Number.isFinite(item.productId) && item.quantity > 0)
     : [];
+
+  const grouped = new Map<string, { productId: number; quantity: number; selectedVariant: string }>();
+  for (const item of rawItems) {
+    const selectedVariant = String(item.selectedVariant || '');
+    const key = `${item.productId}:${normaliseVariant(selectedVariant)}`;
+    const current = grouped.get(key);
+    grouped.set(key, {
+      productId: item.productId,
+      quantity: (current?.quantity || 0) + item.quantity,
+      selectedVariant,
+    });
+  }
+  return [...grouped.values()];
+};
+
+const restoreCancelledStock = async (
+  transaction: Transaction,
+  firestore: Firestore,
+  orderId: string,
+  order: Record<string, any>,
+  cancellationItems: Array<{ productId: number; quantity: number; selectedVariant?: string }>,
+) => {
+  if (order.stockDeducted !== true || order.stockRestoredAt) return [];
+
+  const contexts: Array<{
+    productId: number;
+    variantKey: string;
+    quantity: number;
+    publicRef: any;
+    publicSnapshot: any;
+    inventorySnapshots: any[];
+    reservations: any[];
+    restoreByBatch: Map<string, number>;
+  }> = [];
+
+  for (const cancelledItem of cancellationItems) {
+    const productId = Number(cancelledItem.productId);
+    const variantKey = normaliseVariant(cancelledItem.selectedVariant);
+    const publicRef = firestore.collection('products_public').doc(String(productId));
+    const publicSnapshot = await transaction.get(publicRef);
+    if (!publicSnapshot.exists) throw new Error('Um produto desta encomenda já não existe no catálogo.');
+
+    const inventoryQuery = firestore.collection('products_inventory').where('publicProductId', '==', productId);
+    const reservationsQuery = firestore.collection('stock_reservations').where('productId', '==', productId);
+    const [inventorySnapshot, reservationsSnapshot] = await Promise.all([
+      transaction.get(inventoryQuery),
+      transaction.get(reservationsQuery),
+    ]);
+
+    const matching = getMatchingBatches(inventorySnapshot.docs, variantKey);
+    let remaining = Number(cancelledItem.quantity || 0);
+    const restoreByBatch = new Map<string, number>();
+    for (const batch of matching) {
+      if (remaining <= 0) break;
+      const data = batch.data();
+      const assignedUnits = Array.isArray(data.units)
+        ? data.units.filter((unit: any) => unit?.status === 'SOLD' && unit?.soldToOrder === orderId).length
+        : 0;
+      const restorable = assignedUnits > 0
+        ? assignedUnits
+        : Math.max(0, Number(data.quantitySold || 0));
+      const restore = Math.min(remaining, restorable);
+      if (restore > 0) {
+        restoreByBatch.set(batch.id, restore);
+        remaining -= restore;
+      }
+    }
+    if (remaining > 0) {
+      throw new Error('Não foi possível repor o stock deste artigo com segurança. Verifique os lotes no inventário.');
+    }
+
+    const activeReservations = reservationsSnapshot.docs
+      .map(toReservationRecord)
+      .filter((reservation): reservation is NonNullable<typeof reservation> => !!reservation)
+      .filter((reservation) => reservation.expiresAtMs > Date.now());
+
+    contexts.push({
+      productId,
+      variantKey,
+      quantity: Number(cancelledItem.quantity || 0),
+      publicRef,
+      publicSnapshot,
+      inventorySnapshots: inventorySnapshot.docs,
+      reservations: activeReservations,
+      restoreByBatch,
+    });
+  }
+
+  const restocked: Array<{ productId: number; quantity: number; selectedVariant?: string }> = [];
+  for (const context of contexts) {
+    const stockAdjustments = new Map<string, number>();
+    for (const batch of context.inventorySnapshots) {
+      const restore = context.restoreByBatch.get(batch.id) || 0;
+      if (restore <= 0) continue;
+
+      const data = batch.data();
+      const update: Record<string, any> = {
+        quantitySold: Math.max(0, Number(data.quantitySold || 0) - restore),
+      };
+      if (Array.isArray(data.units)) {
+        let unitsToRestore = restore;
+        update.units = data.units.map((unit: any) => {
+          if (unitsToRestore > 0 && unit?.status === 'SOLD' && unit?.soldToOrder === orderId) {
+            unitsToRestore--;
+            const { soldAt: _soldAt, soldToOrder: _soldToOrder, ...availableUnit } = unit;
+            return { ...availableUnit, status: 'AVAILABLE' };
+          }
+          return unit;
+        });
+      }
+      transaction.update(batch.ref, update);
+      stockAdjustments.set(batch.id, -restore);
+    }
+
+    syncInventoryReservedSummary(transaction, context.inventorySnapshots, context.reservations, stockAdjustments);
+    syncPublicProductStock(
+      transaction,
+      context.publicSnapshot,
+      context.publicRef,
+      context.inventorySnapshots,
+      context.reservations,
+      stockAdjustments,
+    );
+    restocked.push({
+      productId: context.productId,
+      quantity: context.quantity,
+      ...(context.variantKey ? { selectedVariant: context.variantKey } : {}),
+    });
+  }
+  return restocked;
 };
 
 /**
@@ -75,6 +216,121 @@ export default async function handler(req: Request, res: Response) {
     const action = String(req.body?.action || '');
     const orderId = cleanOrderId(req.body?.orderId);
     if (!orderId) return res.status(400).json({ error: 'A encomenda é inválida.' });
+
+    // ADMIN: change an order status through a verified server route. This avoids
+    // browser-rule drift and keeps cancellation/restocking in one transaction.
+    if (action === 'set_status') {
+      if (!identity.userId || !isAdminEmail(identity.email)) {
+        return res.status(403).json({ error: 'Não tem permissão para alterar encomendas.' });
+      }
+
+      const newStatus = cleanText(req.body?.status, 60);
+      if (!ORDER_STATUSES.has(newStatus)) {
+        return res.status(400).json({ error: 'Estado de encomenda inválido.' });
+      }
+
+      const result = await firestore.runTransaction(async (transaction) => {
+        const orderRef = firestore.collection('orders').doc(orderId);
+        const orderSnapshot = await transaction.get(orderRef);
+        if (!orderSnapshot.exists) throw new Error('Encomenda não encontrada.');
+        const order = orderSnapshot.data() || {};
+        const currentStatus = String(order.status || 'Pendente');
+        if (currentStatus === newStatus) return safeOrderForOwner(orderSnapshot.id, order);
+
+        const now = new Date().toISOString();
+        const total = Math.max(0, Number(order.total || 0));
+        const userRef = typeof order.userId === 'string' && order.userId.trim()
+          ? firestore.collection('users').doc(order.userId)
+          : null;
+        const shouldReadUser = !!userRef && (
+          (newStatus === 'Entregue' && !order.pointsAwarded)
+          || (newStatus === 'Cancelado' && !!order.pointsAwarded)
+        );
+        const userSnapshot = shouldReadUser && userRef ? await transaction.get(userRef) : null;
+
+        const update: Record<string, any> = {
+          status: newStatus,
+          updatedAt: FieldValue.serverTimestamp(),
+          statusHistory: FieldValue.arrayUnion({
+            status: newStatus,
+            date: now,
+            notes: 'Estado alterado via Backoffice',
+          }),
+        };
+        if (['Pendente', 'Processamento', 'Pago'].includes(newStatus)) {
+          update.fulfillmentStatus = null;
+        }
+
+        if (newStatus === 'Cancelado' && currentStatus !== 'Cancelado') {
+          const cancellationItems = requestItems({ type: 'TOTAL' }, order);
+          if (cancellationItems.length === 0) throw new Error('Não foi possível identificar os artigos a cancelar.');
+          const restocked = await restoreCancelledStock(
+            transaction,
+            firestore,
+            orderId,
+            order,
+            cancellationItems,
+          );
+          if (order.stockDeducted === true && !order.stockRestoredAt) {
+            update.stockRestoredAt = now;
+            update.stockRestoredItems = restocked;
+          }
+          if (order.cancellationRequest?.status === 'Pendente') {
+            update.cancellationRequest = {
+              ...order.cancellationRequest,
+              status: 'Aprovado',
+              reviewedAt: now,
+              reviewedByUserId: identity.userId,
+              reviewNote: 'Cancelamento confirmado no Backoffice.',
+            };
+          }
+        }
+
+        if (userSnapshot?.exists && userRef) {
+          const user = userSnapshot.data() || {};
+          const tier = String(user.tier || 'Bronze');
+          const multiplier = tier === 'Ouro' ? 1.5 : tier === 'Prata' ? 1.25 : 1;
+          const points = Math.floor(total * multiplier);
+          if (points > 0 && newStatus === 'Entregue' && !order.pointsAwarded) {
+            transaction.update(userRef, {
+              loyaltyPoints: Math.max(0, Number(user.loyaltyPoints || 0)) + points,
+              pointsHistory: [{
+                id: `earn-${orderId}`,
+                date: now,
+                amount: points,
+                reason: `Compra #${orderId} (Nível ${tier})`,
+                orderId,
+              }, ...(Array.isArray(user.pointsHistory) ? user.pointsHistory : [])],
+            });
+            update.pointsAwarded = true;
+          } else if (points > 0 && newStatus === 'Cancelado' && order.pointsAwarded) {
+            const totalSpent = Math.max(0, Number(user.totalSpent || 0) - total);
+            transaction.update(userRef, {
+              totalSpent,
+              tier: totalSpent >= 600 ? 'Ouro' : totalSpent >= 250 ? 'Prata' : 'Bronze',
+              loyaltyPoints: Math.max(0, Number(user.loyaltyPoints || 0) - points),
+              pointsHistory: [{
+                id: `refund-${orderId}`,
+                date: now,
+                amount: -points,
+                reason: `Cancelamento da Compra #${orderId}`,
+                orderId,
+              }, ...(Array.isArray(user.pointsHistory) ? user.pointsHistory : [])],
+            });
+            update.pointsAwarded = false;
+          }
+        }
+
+        transaction.update(orderRef, update);
+        return safeOrderForOwner(orderSnapshot.id, { ...order, ...update, status: newStatus });
+      });
+
+      return res.status(200).json({
+        success: true,
+        order: result,
+        message: `Estado alterado para ${newStatus}.`,
+      });
+    }
 
     // ADMIN: approve/reject a pending customer request.
     if (action === 'review_request') {
@@ -130,104 +386,29 @@ export default async function handler(req: Request, res: Response) {
         const cancellationItems = requestItems(pendingRequest, order);
         if (cancellationItems.length === 0) throw new Error('Não foi possível identificar os artigos a cancelar.');
 
-        // Read all product/inventory/reservation documents before writing anything.
-        const contexts: Array<{
-          productId: number;
-          variantKey: string;
-          quantity: number;
-          publicRef: any;
-          publicSnapshot: any;
-          inventorySnapshots: any[];
-          reservations: any[];
-          restoreByBatch: Map<string, number>;
-        }> = [];
-
-        for (const cancelledItem of cancellationItems) {
-          const productId = Number(cancelledItem.productId);
-          const variantKey = normaliseVariant(cancelledItem.selectedVariant);
-          const publicRef = firestore.collection('products_public').doc(String(productId));
-          const publicSnapshot = await transaction.get(publicRef);
-          if (!publicSnapshot.exists) throw new Error('Um produto desta encomenda já não existe no catálogo.');
-
-          const inventoryQuery = firestore.collection('products_inventory').where('publicProductId', '==', productId);
-          const reservationsQuery = firestore.collection('stock_reservations').where('productId', '==', productId);
-          const [inventorySnapshot, reservationsSnapshot] = await Promise.all([
-            transaction.get(inventoryQuery),
-            transaction.get(reservationsQuery),
-          ]);
-
-          const matching = getMatchingBatches(inventorySnapshot.docs, variantKey);
-          let remaining = Number(cancelledItem.quantity || 0);
-          const restoreByBatch = new Map<string, number>();
-          for (const batch of matching) {
-            if (remaining <= 0) break;
-            const sold = Math.max(0, Number(batch.data().quantitySold || 0));
-            const restore = Math.min(remaining, sold);
-            if (restore > 0) {
-              restoreByBatch.set(batch.id, restore);
-              remaining -= restore;
-            }
-          }
-          if (remaining > 0 && order.stockDeducted === true) {
-            throw new Error('Não foi possível repor o stock deste artigo com segurança. Verifique os lotes no inventário.');
-          }
-
-          const activeReservations = reservationsSnapshot.docs
-            .map(toReservationRecord)
-            .filter((reservation): reservation is NonNullable<typeof reservation> => !!reservation)
-            .filter((reservation) => reservation.expiresAtMs > Date.now());
-
-          contexts.push({
-            productId,
-            variantKey,
-            quantity: Number(cancelledItem.quantity || 0),
-            publicRef,
-            publicSnapshot,
-            inventorySnapshots: inventorySnapshot.docs,
-            reservations: activeReservations,
-            restoreByBatch,
-          });
-        }
-
-        const restocked: Array<{ productId: number; quantity: number; selectedVariant?: string }> = [];
-        if (order.stockDeducted === true) {
-          for (const context of contexts) {
-            const stockAdjustments = new Map<string, number>();
-            for (const batch of context.inventorySnapshots) {
-              const restore = context.restoreByBatch.get(batch.id) || 0;
-              if (restore > 0) {
-                transaction.update(batch.ref, {
-                  quantitySold: Math.max(0, Number(batch.data().quantitySold || 0) - restore),
-                });
-                // Negative adjustment tells the summary helper that this many units
-                // are returning to available physical stock within the transaction.
-                stockAdjustments.set(batch.id, -restore);
-              }
-            }
-            syncInventoryReservedSummary(transaction, context.inventorySnapshots, context.reservations);
-            syncPublicProductStock(
-              transaction,
-              context.publicSnapshot,
-              context.publicRef,
-              context.inventorySnapshots,
-              context.reservations,
-              stockAdjustments,
-            );
-            restocked.push({
-              productId: context.productId,
-              quantity: context.quantity,
-              ...(context.variantKey ? { selectedVariant: context.variantKey } : {}),
-            });
-          }
-        }
+        const restocked = await restoreCancelledStock(
+          transaction,
+          firestore,
+          orderId,
+          order,
+          cancellationItems,
+        );
 
         if (pendingRequest.type === 'PARCIAL') {
+          const quantitiesToCancel = new Map(
+            cancellationItems.map(item => [
+              `${item.productId}:${normaliseVariant(item.selectedVariant)}`,
+              item.quantity,
+            ]),
+          );
           const remainingItems = orderItems(order).map((item: any) => {
-            const target = cancellationItems.find((cancelled: { productId: number; quantity: number; selectedVariant?: string }) =>
-              Number(cancelled.productId) === Number(item.productId)
-              && normaliseVariant(cancelled.selectedVariant) === normaliseVariant(item.selectedVariant),
-            );
-            return target ? { ...item, quantity: Math.max(0, Number(item.quantity || 0) - target.quantity) } : item;
+            const key = `${Number(item.productId)}:${normaliseVariant(item.selectedVariant)}`;
+            const pendingQuantity = quantitiesToCancel.get(key) || 0;
+            if (pendingQuantity <= 0) return item;
+            const itemQuantity = Math.max(0, Number(item.quantity || 0));
+            const cancelledQuantity = Math.min(itemQuantity, pendingQuantity);
+            quantitiesToCancel.set(key, pendingQuantity - cancelledQuantity);
+            return { ...item, quantity: itemQuantity - cancelledQuantity };
           }).filter((item: any) => Number(item.quantity || 0) > 0);
           update.items = remainingItems;
           update.status = remainingItems.length > 0 ? String(order.status || 'Processamento') : 'Cancelado';
