@@ -11,7 +11,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "tsx server.ts",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "check": "npm run lint && npm run build"
   },
   "dependencies": {
     "@google/genai": "latest",
