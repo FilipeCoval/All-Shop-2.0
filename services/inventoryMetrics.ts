@@ -73,7 +73,7 @@ export const getLotStockMetrics = (
   const reserved = Math.min(physical, lotReservedQuantity(lot, reservations, now));
   const sold = lotSoldQuantity(lot);
   const baseAvailable = units.length
-    ? units.filter(unit => unit.status === 'AVAILABLE').length
+    ? Math.min(physical, units.filter(unit => unit.status === 'AVAILABLE').length)
     : physical;
   return {
     physical,
@@ -117,7 +117,10 @@ export const getProductStockMetrics = (
   const reserved = Math.min(physical, Math.max(unitReserved, cartReserved));
   const explicitAvailable = lots.reduce((sum, lot) => {
     const units = lot.units || [];
-    return sum + (units.length ? units.filter(unit => unit.status === 'AVAILABLE').length : lotPhysicalQuantity(lot));
+    const physical = lotPhysicalQuantity(lot);
+    return sum + (units.length
+      ? Math.min(physical, units.filter(unit => unit.status === 'AVAILABLE').length)
+      : physical);
   }, 0);
   const extraReservation = Math.max(0, reserved - unitReserved);
 

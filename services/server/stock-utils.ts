@@ -35,12 +35,6 @@ export const timestampToMillis = (value: unknown): number => {
 };
 
 export const getBatchPhysical = (data: DocumentData): { bought: number; sold: number; available: number } => {
-  if (Array.isArray(data.units) && data.units.length > 0) {
-    const bought = data.units.length;
-    const sold = data.units.filter((unit: any) => unit?.status === 'SOLD').length;
-    return { bought, sold, available: Math.max(0, bought - sold) };
-  }
-
   const bought = Math.max(0, Number(data.quantityBought || 0));
   const sold = Math.max(0, Number(data.quantitySold || 0));
   return { bought, sold, available: Math.max(0, bought - sold) };

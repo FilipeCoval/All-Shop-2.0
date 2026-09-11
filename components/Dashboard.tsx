@@ -616,6 +616,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
           } else {
               await addProduct(payload); 
           }
+          if (payload.publicProductId && !payload.isPrivate) {
+              await syncPublicStockForProduct(Number(payload.publicProductId));
+          }
           setIsModalOpen(false); 
           if (payload.publicProductId && availableStock > 0 && !payload.comingSoon && !payload.isPrivate) { await checkAndProcessStockAlerts(payload.publicProductId, payload.name, availableStock); }
       } catch (err) { alert('Erro ao guardar.'); } 
@@ -1015,6 +1018,62 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
     }
   };
 
+  const syncPublicStockForProduct = async (productId: number): Promise<boolean> => {
+      const normalizeVariant = (value: unknown) => String(value || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('pt-PT');
+      const toMillis = (value: any): number => {
+        if (typeof value === 'number') return value;
+        if (value?.toMillis) return value.toMillis();
+        if (value?.toDate) return value.toDate().getTime();
+        if (typeof value?.seconds === 'number') return value.seconds * 1000;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+      const getAvailable = (lot: InventoryProduct) =>
+        Math.max(0, Number(lot.quantityBought || 0) - Number(lot.quantitySold || 0));
+
+      const [lotsSnapshot, reservationsSnapshot, publicSnapshot] = await Promise.all([
+        getDocs(query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', productId))),
+        getDocs(query(collection(modularDb, 'stock_reservations'), where('productId', '==', productId))),
+        getDoc(doc(modularDb, 'products_public', String(productId))),
+      ]);
+
+      if (!publicSnapshot.exists()) return false;
+
+      const lots = lotsSnapshot.docs.map(item => item.data() as InventoryProduct);
+      const activeReservations = reservationsSnapshot.docs
+        .map(item => item.data() as any)
+        .filter(reservation => toMillis(reservation.expiresAt) > Date.now());
+      const physicalAvailable = lots.reduce((sum, lot) => sum + getAvailable(lot), 0);
+      const reserved = activeReservations.reduce(
+        (sum, reservation) => sum + Math.max(0, Number(reservation.quantity || 0)),
+        0,
+      );
+      const available = Math.max(0, physicalAvailable - reserved);
+      const current = publicSnapshot.data() as Product;
+      const payload: Partial<Product> = { stock: available };
+
+      if (Array.isArray(current.variants) && current.variants.length > 0) {
+        payload.variants = current.variants.map(variant => {
+          const variantKey = normalizeVariant(variant.name);
+          const variantAvailable = lots
+            .filter(lot => normalizeVariant(lot.variant) === variantKey)
+            .reduce((sum, lot) => sum + getAvailable(lot), 0);
+          const variantReserved = activeReservations
+            .filter(reservation => normalizeVariant(reservation.variantName || reservation.variantKey) === variantKey)
+            .reduce((sum, reservation) => sum + Math.max(0, Number(reservation.quantity || 0)), 0);
+          return { ...variant, stock: Math.max(0, variantAvailable - variantReserved) };
+        });
+      }
+
+      const stockChanged = Number(current.stock || 0) !== available;
+      const variantsChanged = JSON.stringify(current.variants || [])
+        !== JSON.stringify(payload.variants || current.variants || []);
+      if (!stockChanged && !variantsChanged) return false;
+
+      await updateDoc(doc(modularDb, 'products_public', String(productId)), payload as any);
+      return true;
+  };
+
   const handleSyncPublicStock = async () => {
     if (!window.confirm(
       'Os lotes/unidades são a fonte de verdade.\n\n' +
@@ -1024,78 +1083,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
 
     setIsSyncingStock(true);
     try {
-      const normalizeVariant = (value: unknown) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
-      const toMillis = (value: any): number => {
-        if (typeof value === 'number') return value;
-        if (value?.toMillis) return value.toMillis();
-        if (value?.toDate) return value.toDate().getTime();
-        if (typeof value?.seconds === 'number') return value.seconds * 1000;
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? parsed : 0;
-      };
-      const getPhysical = (lot: InventoryProduct) => {
-        const units = Array.isArray(lot.units) ? lot.units : [];
-        if (units.length) {
-          return units.filter(unit => ['AVAILABLE', 'RESERVED', 'RETURNED', 'DEFECTIVE'].includes(unit.status)).length;
-        }
-        return Math.max(0, Number(lot.quantityBought || 0) - Number(lot.quantitySold || 0));
-      };
-
       let updated = 0;
-      let batch = writeBatch(modularDb);
-      let operations = 0;
-
       for (const product of publicProductsList) {
-        const productId = Number(product.id);
-        const [lotsSnapshot, reservationsSnapshot, publicSnapshot] = await Promise.all([
-          getDocs(query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', productId))),
-          getDocs(query(collection(modularDb, 'stock_reservations'), where('productId', '==', productId))),
-          getDoc(doc(modularDb, 'products_public', String(productId))),
-        ]);
-
-        if (!publicSnapshot.exists()) continue;
-        const lots = lotsSnapshot.docs.map(item => item.data() as InventoryProduct);
-        const now = Date.now();
-        const activeReservations = reservationsSnapshot.docs
-          .map(item => item.data() as any)
-          .filter(reservation => toMillis(reservation.expiresAt) > now);
-
-        const physical = lots.reduce((sum, lot) => sum + getPhysical(lot), 0);
-        const reserved = activeReservations.reduce((sum, reservation) => sum + Math.max(0, Number(reservation.quantity || 0)), 0);
-        const available = Math.max(0, physical - reserved);
-
-        const current = publicSnapshot.data() as Product;
-        const payload: Partial<Product> = { stock: available };
-
-        if (Array.isArray(current.variants) && current.variants.length > 0) {
-          payload.variants = current.variants.map(variant => {
-            const variantKey = normalizeVariant(variant.name);
-            const variantPhysical = lots
-              .filter(lot => normalizeVariant(lot.variant) === variantKey)
-              .reduce((sum, lot) => sum + getPhysical(lot), 0);
-            const variantReserved = activeReservations
-              .filter(reservation => normalizeVariant(reservation.variantName || reservation.variantKey) === variantKey)
-              .reduce((sum, reservation) => sum + Math.max(0, Number(reservation.quantity || 0)), 0);
-            return { ...variant, stock: Math.max(0, variantPhysical - variantReserved) };
-          });
-        }
-
-        const stockChanged = Number(current.stock || 0) !== available;
-        const variantsChanged = JSON.stringify(current.variants || []) !== JSON.stringify(payload.variants || current.variants || []);
-        if (!stockChanged && !variantsChanged) continue;
-
-        batch.update(doc(modularDb, 'products_public', String(productId)), payload as any);
-        operations++;
-        updated++;
-
-        if (operations >= 400) {
-          await batch.commit();
-          batch = writeBatch(modularDb);
-          operations = 0;
-        }
+        if (await syncPublicStockForProduct(Number(product.id))) updated++;
       }
-
-      if (operations > 0) await batch.commit();
       alert(updated
         ? `Loja atualizada: ${updated} produto(s) receberam o stock calculado a partir dos lotes.`
         : 'A loja já estava sincronizada com o inventário.');
@@ -1106,7 +1097,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
       setIsSyncingStock(false);
     }
   };
-
   const handleOrderStatusChange = async (orderId: string, newStatus: string) => {
       const currentOrder = allOrders.find(order => order.id === orderId);
       if (!currentOrder || currentOrder.status === newStatus) return;
