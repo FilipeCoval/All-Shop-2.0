@@ -2,6 +2,10 @@
 {
   "rewrites": [
     {
+      "source": "/admin",
+      "destination": "/admin.html"
+    },
+    {
       "source": "/product/(.*)",
       "destination": "/api/og?id=$1"
     },

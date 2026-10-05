@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, Suspense, lazy, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useMemo, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 
 class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null, errorInfo: ErrorInfo | null}> {
   constructor(props: {children: ReactNode}) {
@@ -65,10 +65,6 @@ import { supabaseSync } from './services/supabaseSync';
 import LoyaltyPage from './components/LoyaltyPage';
 import { trackVisit } from './services/analyticsService';
 import { reserveStock, finalizeOrder, syncCurrentUser } from './services/api';
-
-// LAZY LOADING DO DASHBOARD
-// O código do Dashboard (gráficos, tabelas grandes, scanners) só é baixado se o utilizador for admin e clicar na rota.
-const Dashboard = lazy(() => import('./components/Dashboard'));
 
 const App: React.FC = () => {
 
@@ -193,7 +189,12 @@ const App: React.FC = () => {
       return Math.max(0, Number(variant?.stock ?? 0));
     }
     if (!variantName && Array.isArray(product.variants) && product.variants.length > 0) {
-      return Math.max(0, product.variants.reduce((sum, variant) => sum + Math.max(0, Number(variant.stock || 0)), 0));
+      // O total do produto é publicado pelo servidor a partir dos lotes físicos.
+      // Não somamos variantes aqui porque um lote antigo sem variante pode servir
+      // de fallback e aparecer em mais do que uma opção.
+      return Number.isFinite(Number(product.stock))
+        ? Math.max(0, Number(product.stock))
+        : Math.max(0, product.variants.reduce((sum, variant) => sum + Math.max(0, Number(variant.stock || 0)), 0));
     }
     return Math.max(0, Number(product.stock || 0));
   };
@@ -645,23 +646,13 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    // --- PROTEÇÃO DO DASHBOARD (Lazy Loaded) ---
+    // A administração moderna vive num bundle isolado. Assim, os estilos e a
+    // lógica da dashboard nunca interferem com a loja ou a área de cliente 2.0.
     if (route === '#dashboard') {
-        if (!isAdmin && !authLoading) {
-            // Se não for admin e já carregou, redireciona.
-            window.location.hash = '/';
-            return null;
-        }
-        return (
-            <Suspense fallback={
-                <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
-                    <Loader2 size={48} className="animate-spin text-primary"/>
-                    <p className="text-gray-500 font-medium">A carregar Painel de Administração...</p>
-                </div>
-            }>
-                <Dashboard user={user} isAdmin={isAdmin} />
-            </Suspense>
-        );
+        // O Vercel encaminha /admin para a página isolada. Em desenvolvimento,
+        // o ficheiro HTML é aberto diretamente porque não existem rewrites.
+        window.location.replace(import.meta.env.DEV ? '/admin.html' : '/admin');
+        return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 size={42} className="animate-spin text-primary" /></div>;
     }
     
     if (route === '#account') {

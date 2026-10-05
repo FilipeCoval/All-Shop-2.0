@@ -9,10 +9,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == "filipe_coval_90@hotmail.com" ||
-        request.auth.token.email == "filipecoval90@gmail.com" ||
-        request.auth.token.email == "mcpoleca@gmail.com" ||
-        request.auth.token.email == "filipe@teste.com"
+        request.auth.uid == "l0mJV5eevUSuF7NQ6TnllQA3KFd2" ||
+        request.auth.uid == "cCreF8NjIHXhcFhQkTHLfEBuNS42" ||
+        request.auth.uid == "TR5zcBdlvBWamXT12MDjSjsGVOV2"
       );
     }
 

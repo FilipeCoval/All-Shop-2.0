@@ -38,6 +38,12 @@ export default defineConfig({
       outDir: 'dist',
       emptyOutDir: true,
       sourcemap: false,
-      chunkSizeWarningLimit: 3000
+      chunkSizeWarningLimit: 3000,
+      rollupOptions: {
+        input: {
+          loja: 'index.html',
+          admin: 'admin.html'
+        }
+      }
     }
 });

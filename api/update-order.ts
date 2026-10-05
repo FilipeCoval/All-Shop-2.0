@@ -30,7 +30,6 @@ const FALLBACK_ADMIN_EMAILS = new Set([
   'filipe_coval_90@hotmail.com',
   'filipecoval90@gmail.com',
   'mcpoleca@gmail.com',
-  'filipe@teste.com',
 ]);
 
 const cleanText = (value: unknown, max = 1200) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, max);
