@@ -1,12 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { FieldValue, type DocumentData, type DocumentReference, type QueryDocumentSnapshot, type Transaction } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
-import { ApiError, handleApiError, requireAdmin, requirePost } from '../src/server/adminAuth.js';
-import { getAdminDb } from '../src/server/firebaseAdmin.js';
-import { projectPublicStock, type LotData, type ReservationData } from '../src/server/stockProjection.js';
-import { applyPartialCancellation, calculateCancellationRefund, validateCancellationItems } from '../src/server/orderCancellation.js';
-import { activeReservedQuantity, allocateSale, normalizeVariant, toMillis } from '../src/server/checkoutCore.js';
-import { applyFulfillmentToPackages, FulfillmentError, fulfillmentItemsFromPackages, fulfillmentUnitSerial, isOrderFulfillmentComplete, planOrderFulfillment, type FulfillmentLot, type FulfillmentPackage } from '../src/server/orderFulfillment.js';
+import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
+import { getAdminDb } from '../firebaseAdmin.js';
+import { projectPublicStock, type LotData, type ReservationData } from '../stockProjection.js';
+import { applyPartialCancellation, calculateCancellationRefund, validateCancellationItems } from '../orderCancellation.js';
+import { activeReservedQuantity, allocateSale, normalizeVariant, toMillis } from '../checkoutCore.js';
+import { applyFulfillmentToPackages, FulfillmentError, fulfillmentItemsFromPackages, fulfillmentUnitSerial, isOrderFulfillmentComplete, planOrderFulfillment, type FulfillmentLot, type FulfillmentPackage } from '../orderFulfillment.js';
 
 const STATUSES = new Set(['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue', 'Cancelado', 'Reclamação', 'Devolvido', 'Levantamento em Loja']);
 const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);

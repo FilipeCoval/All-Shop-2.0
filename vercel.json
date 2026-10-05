@@ -2,6 +2,18 @@
 {
   "rewrites": [
     {
+      "source": "/api/checkout",
+      "destination": "/api/admin/legacy"
+    },
+    {
+      "source": "/api/cleanup-reservations",
+      "destination": "/api/admin/legacy"
+    },
+    {
+      "source": "/api/update-stock-summary",
+      "destination": "/api/admin/legacy"
+    },
+    {
       "source": "/admin",
       "destination": "/admin.html"
     },

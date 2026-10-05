@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { FieldValue } from 'firebase-admin/firestore';
-import { ApiError, handleApiError, requireAdmin, requirePost } from '../src/server/adminAuth.js';
-import { getAdminDb } from '../src/server/firebaseAdmin.js';
+import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
+import { getAdminDb } from '../firebaseAdmin.js';
 
 const text = (value: unknown, max = 2000) => String(value ?? '').trim().slice(0, max);
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;

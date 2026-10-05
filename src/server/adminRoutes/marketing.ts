@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
-import { allowedAdminEmails, ApiError, handleApiError, requireAdmin, requirePost } from '../src/server/adminAuth.js';
-import { getAdminDb } from '../src/server/firebaseAdmin.js';
+import { allowedAdminEmails, ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
+import { getAdminDb } from '../firebaseAdmin.js';
 
 const clean = (value: unknown, max: number) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const chunks = <T,>(items: T[], size: number) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
