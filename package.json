@@ -15,7 +15,8 @@
     "test:fulfillment": "tsx tests/orderFulfillment.test.ts",
     "test:cancellation": "tsx tests/orderCancellation.test.ts",
     "test:stock": "tsx tests/stockProjection.test.ts",
-    "test:regression": "npm run test:fulfillment && npm run test:cancellation && npm run test:stock",
+    "test:checkout": "tsx tests/checkoutCore.test.ts",
+    "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock",
     "check": "npm run lint && npm run test:regression && npm run build"
   },
   "dependencies": {

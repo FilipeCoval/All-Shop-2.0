@@ -57,6 +57,10 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const serialInputRef = useRef<HTMLInputElement>(null);
   const product = useMemo(() => products.find((item) => item.id === Number(form.publicProductId)), [products, form.publicProductId]);
+  const catalogSalePrice = useMemo(() => {
+    const selectedVariant = product?.variants?.find((variant) => normalizeUnitCode(variant.name) === normalizeUnitCode(form.variant));
+    return Math.max(0, Number(selectedVariant?.price ?? product?.price ?? 0));
+  }, [form.variant, product]);
   const variantLocked = Boolean(lot && (Number(lot.quantitySold ?? 0) > 0 || (lot.units ?? []).some((unit) => unit.status && unit.status !== 'AVAILABLE')));
   const calculation = useMemo(() => {
     const quantity = Math.max(1, Number(form.quantityBought) || 1);
@@ -65,11 +69,13 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     const cashback = ['PENDING', 'RECEIVED'].includes(form.cashbackStatus) ? Math.min(paid + extras, Math.max(0, Number(form.cashbackValue) || 0)) : 0;
     const grossUnitCost = (paid + extras) / quantity;
     const netUnitCost = Math.max(0, (paid + extras - cashback) / quantity);
-    const salePrice = Math.max(0, Number(form.salePrice) || 0);
+    // O preço da loja tem uma única fonte de verdade: o produto/variante no catálogo.
+    // O lote guarda apenas uma fotografia desse valor para relatórios históricos.
+    const salePrice = catalogSalePrice;
     const shippingPerSale = salePrice <= 0 ? 0 : salePrice >= 50 ? 5.4 : 0.41;
     const predictedProfit = salePrice - netUnitCost - shippingPerSale;
     return { quantity, paid, extras, cashback, grossUnitCost, netUnitCost, salePrice, shippingPerSale, predictedProfit, margin: salePrice ? (predictedProfit / salePrice) * 100 : 0, complete: form.grossPurchaseTotal !== '' };
-  }, [form]);
+  }, [catalogSalePrice, form]);
 
   useEffect(() => {
     const productId = lot?.publicProductId ?? initialProductId ?? products[0]?.id;
@@ -138,7 +144,7 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
       }
     }
     setBusy(true);
-    try { await saveInventoryLot({ ...form, publicProductId: Number(form.publicProductId), quantityBought: Number(form.quantityBought), quantitySold: Number(form.quantitySold), grossPurchaseTotal: calculation.paid, supplierShippingCost: Number(form.supplierShippingCost), customsCost: Number(form.customsCost), purchasePrice: calculation.grossUnitCost, salePrice: Number(form.salePrice), cashbackValue: Number(form.cashbackValue), units: unitsToSave }, lot?.id); await onSaved(); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar o lote.'); } finally { setBusy(false); }
+    try { await saveInventoryLot({ ...form, publicProductId: Number(form.publicProductId), quantityBought: Number(form.quantityBought), quantitySold: Number(form.quantitySold), grossPurchaseTotal: calculation.paid, supplierShippingCost: Number(form.supplierShippingCost), customsCost: Number(form.customsCost), purchasePrice: calculation.grossUnitCost, salePrice: catalogSalePrice, cashbackValue: Number(form.cashbackValue), units: unitsToSave }, lot?.id); await onSaved(); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar o lote.'); } finally { setBusy(false); }
   };
   const remove = async () => { if (!lot?.id || !lot.publicProductId || !window.confirm('Apagar este lote e recalcular o stock da loja?')) return; setBusy(true); try { await deleteInventoryLot(lot.publicProductId, lot.id); await onSaved(); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível apagar o lote.'); } finally { setBusy(false); } };
 
@@ -178,7 +184,8 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     </section>
     <section className="editor-section lot-calculator"><header><span><Calculator /></span><div><strong>Resultado por produto</strong><small>Cálculo atualizado automaticamente.</small></div></header>
       <div className="calculator-results"><article><CircleDollarSign /><span><small>Custo antes do cashback</small><strong>{calculation.complete ? euro.format(calculation.grossUnitCost) : '—'}</strong></span></article><article className="net-cost"><Sparkles /><span><small>Custo final estimado</small><strong>{calculation.complete ? euro.format(calculation.netUnitCost) : '—'}</strong></span></article></div>
-      <div className="form-grid"><Field label="Preço de venda"><input type="number" min="0" step="0.01" value={form.salePrice} onChange={(event) => setForm({ ...form, salePrice: event.target.value })} /></Field><div className={`profit-preview ${calculation.complete && calculation.predictedProfit < 0 ? 'negative' : ''}`}><Truck /><span><small>Lucro previsto por unidade</small><strong>{calculation.complete ? euro.format(calculation.predictedProfit) : '—'}</strong><em>{calculation.complete ? `Margem ${calculation.margin.toFixed(1)}% · envio líquido ${euro.format(calculation.shippingPerSale)}` : 'Preencha o total pago'}</em></span></div></div>
+      <div className="form-grid"><Field label="Preço atual da loja (automático)"><input type="text" value={euro.format(catalogSalePrice)} readOnly aria-readonly="true" /></Field><div className={`profit-preview ${calculation.complete && calculation.predictedProfit < 0 ? 'negative' : ''}`}><Truck /><span><small>Lucro previsto por unidade</small><strong>{calculation.complete ? euro.format(calculation.predictedProfit) : '—'}</strong><em>{calculation.complete ? `Margem ${calculation.margin.toFixed(1)}% · envio líquido ${euro.format(calculation.shippingPerSale)}` : 'Preencha o total pago'}</em></span></div></div>
+      <p className="editor-info">Este valor vem do catálogo e não pode ser alterado no lote. Para mudar o preço apresentado ao cliente, edite apenas o produto.</p>
       <p className="calculator-note">A previsão assume uma venda individual com envio: acima de 50 € desconta 5,40 € de portes; abaixo de 50 € desconta apenas a diferença entre os portes cobrados e pagos pela loja. O levantamento em loja não terá este custo.</p>
     </section>
     {!adminMutationsAvailable && <p className="safe-action-note">O formulário já está pronto. Guardar será ativado no endereço Vercel de testes.</p>}{error && <p className="form-error">{error}</p>}

@@ -1,5 +1,5 @@
 import { AlertTriangle, Boxes, CircleDollarSign, ClipboardList, Database, FileBarChart, Headphones, History, Import, Layers, LayoutDashboard, LogOut, Megaphone, PackageCheck, PackagePlus, Plus, RefreshCw, Search, TicketPercent, UsersRound } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadAdminSnapshot } from './adminApi';
 import type { AdminOrder, AdminSnapshot, InventoryLot, StockGroup } from './adminTypes';
 import { buildStockGroups } from './stockMetrics';
@@ -57,9 +57,12 @@ export function AdminDashboard({ email, onLogout }: AdminDashboardProps) {
   const [importEditorOpen, setImportEditorOpen] = useState(false);
   const [editingImport, setEditingImport] = useState<AdminSnapshot['imports'][number] | null>(null);
   const [telegramRecoveryOpen, setTelegramRecoveryOpen] = useState(false);
+  const refreshInFlight = useRef(false);
 
-  const refresh = async () => {
-    setLoading(true);
+  const refresh = useCallback(async (silent = false) => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const snapshot = await loadAdminSnapshot();
@@ -69,10 +72,24 @@ export function AdminDashboard({ email, onLogout }: AdminDashboardProps) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível carregar a dashboard.');
     } finally {
       setLoading(false);
+      refreshInFlight.current = false;
     }
-  };
+  }, []);
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => {
+    void refresh();
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refresh(true);
+    };
+    const interval = window.setInterval(refreshWhenVisible, 60_000);
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [refresh]);
 
   const stockGroups = useMemo(
     () => data ? buildStockGroups(data.lots, data.products, data.reservations) : [],

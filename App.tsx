@@ -599,21 +599,27 @@ const App: React.FC = () => {
           });
           setCartItems([]);
 
-          try {
-              await notifyNewOrder(savedOrder, user ? user.name : savedOrder.shippingInfo.name);
-              supabaseSync.saveOrder(savedOrder);
-              await fetch('/api/send-push', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      target: 'admins',
-                      title: 'Nova Encomenda! 💰',
-                      body: `Pedido ${savedOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(savedOrder.total)} recebido de ${savedOrder.shippingInfo.name}.`,
-                      link: 'https://www.all-shop.net/#dashboard'
-                  })
-              });
-          } catch (backgroundError) {
-              console.error('Tarefas posteriores ao checkout falharam:', backgroundError);
+          // A encomenda já está gravada. As notificações e o backup são tarefas
+          // independentes: a falha de uma nunca deve impedir as restantes.
+          const backgroundResults = await Promise.allSettled([
+              notifyNewOrder(savedOrder, user ? user.name : savedOrder.shippingInfo.name),
+              Promise.resolve().then(() => supabaseSync.saveOrder(savedOrder)),
+              fetch('/api/send-push', {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json' },
+                   body: JSON.stringify({
+                       target: 'admins',
+                       title: 'Nova Encomenda! 💰',
+                       body: `Pedido ${savedOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(savedOrder.total)} recebido de ${savedOrder.shippingInfo.name}.`,
+                       link: 'https://www.all-shop.net/#dashboard'
+                   })
+               }).then((pushResponse) => {
+                   if (!pushResponse.ok) throw new Error(`Push devolveu ${pushResponse.status}`);
+               }),
+          ]);
+          const backgroundFailures = backgroundResults.filter((result) => result.status === 'rejected');
+          if (backgroundFailures.length) {
+              console.error('Algumas tarefas posteriores ao checkout falharam:', backgroundFailures);
           }
           return true;
       } catch (error: any) {
