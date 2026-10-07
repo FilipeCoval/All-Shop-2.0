@@ -15,8 +15,9 @@
     "test:fulfillment": "tsx tests/orderFulfillment.test.ts",
     "test:cancellation": "tsx tests/orderCancellation.test.ts",
     "test:stock": "tsx tests/stockProjection.test.ts",
+    "test:identity": "tsx tests/unitIdentity.test.ts",
     "test:checkout": "tsx tests/checkoutCore.test.ts",
-    "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock",
+    "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock && npm run test:identity",
     "check": "npm run lint && npm run test:regression && npm run build"
   },
   "dependencies": {

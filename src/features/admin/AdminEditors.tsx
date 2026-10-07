@@ -4,7 +4,7 @@ import type { Product, ProductVariant } from '../../types/domain';
 import type { InventoryLot, StoreCategory } from './adminTypes';
 import { adminMutationsAvailable, deleteInventoryLot, saveCatalogProduct, saveInventoryLot } from './adminMutations';
 import { SerialScanner } from './SerialScanner';
-import { displayUnitCode, normalizeUnitCode, stableUnitId, unitCodes } from './unitIdentity';
+import { displayUnitCode, normalizeUnitCode, resolveUnitIdForSerial, stableUnitId, unitCodes } from './unitIdentity';
 
 type EditorProps = { open: boolean; onClose: () => void; onSaved: () => Promise<void> };
 const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
@@ -173,7 +173,7 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     const serialNumber = normalizeUnitCode(value);
     next[index] = {
       ...current,
-      id: stableUnitId(current) || serialNumber,
+      id: resolveUnitIdForSerial(current, serialNumber, !lot),
       serialNumber,
       status: current.status || 'AVAILABLE',
     };
@@ -201,15 +201,18 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     event.preventDefault(); setError(null);
     const lockedOutsideQuantity = units.slice(quantityForUnits).some((unit) => unit.status && unit.status !== 'AVAILABLE');
     if (lockedOutsideQuantity) { setError('A quantidade não pode ser inferior ao número de unidades já reservadas ou vendidas.'); return; }
-    const unitsToSave = units.slice(0, quantityForUnits).filter((unit) => displayUnitCode(unit)).map((unit) => ({
-      ...unit,
-      id: stableUnitId(unit) || normalizeUnitCode(displayUnitCode(unit)),
-      serialNumber: unit.serialNumber ? normalizeUnitCode(unit.serialNumber) : undefined,
-      internalLabel: unit.internalLabel ? normalizeUnitCode(unit.internalLabel) : undefined,
-      barcode: unit.barcode ? normalizeUnitCode(unit.barcode) : undefined,
-      status: unit.status || 'AVAILABLE',
-      addedAt: unit.addedAt || new Date().toISOString(),
-    }));
+    const unitsToSave = units.slice(0, quantityForUnits).filter((unit) => displayUnitCode(unit)).map((unit) => {
+      const serialNumber = unit.serialNumber ? normalizeUnitCode(unit.serialNumber) : undefined;
+      return {
+        ...unit,
+        id: resolveUnitIdForSerial(unit, serialNumber || displayUnitCode(unit), !lot) || normalizeUnitCode(displayUnitCode(unit)),
+        serialNumber,
+        internalLabel: unit.internalLabel ? normalizeUnitCode(unit.internalLabel) : undefined,
+        barcode: unit.barcode ? normalizeUnitCode(unit.barcode) : undefined,
+        status: unit.status || 'AVAILABLE',
+        addedAt: unit.addedAt || new Date().toISOString(),
+      };
+    });
     const ownerByCode = new Map<string, number>();
     for (let index = 0; index < unitsToSave.length; index += 1) {
       for (const code of unitCodes(unitsToSave[index])) {
