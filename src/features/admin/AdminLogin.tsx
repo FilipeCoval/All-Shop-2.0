@@ -1,12 +1,14 @@
 import { FormEvent, useState } from 'react';
-import { ArrowLeft, LockKeyhole, Loader2 } from 'lucide-react';
+import { ArrowLeft, LockKeyhole, Loader2, Moon, Sun } from 'lucide-react';
 
 interface AdminLoginProps {
   error: string | null;
+  isDarkMode: boolean;
   onLogin: (email: string, password: string) => Promise<void>;
+  onToggleDarkMode: () => void;
 }
 
-export function AdminLogin({ error, onLogin }: AdminLoginProps) {
+export function AdminLogin({ error, isDarkMode, onLogin, onToggleDarkMode }: AdminLoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -26,7 +28,12 @@ export function AdminLogin({ error, onLogin }: AdminLoginProps) {
   return (
     <main className="admin-login-page">
       <section className="admin-login-card">
-        <a href="/" className="back-link"><ArrowLeft size={17} /> Voltar à loja</a>
+        <div className="admin-login-toolbar">
+          <a href="/" className="back-link"><ArrowLeft size={17} /> Voltar à loja</a>
+          <button className="admin-theme-button admin-login-theme" type="button" onClick={onToggleDarkMode} aria-label={isDarkMode ? 'Ativar modo claro' : 'Ativar modo escuro'} aria-pressed={isDarkMode} title={isDarkMode ? 'Modo claro' : 'Modo escuro'}>
+            {isDarkMode ? <Sun /> : <Moon />}
+          </button>
+        </div>
         <span className="admin-login-icon"><LockKeyhole /></span>
         <p className="eyebrow">Área reservada</p>
         <h1>Administração</h1>

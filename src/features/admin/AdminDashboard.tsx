@@ -1,4 +1,4 @@
-import { AlertTriangle, Boxes, CircleDollarSign, ClipboardList, Database, FileBarChart, Headphones, History, Import, Layers, LayoutDashboard, LogOut, Megaphone, PackageCheck, PackagePlus, Plus, RefreshCw, Search, TicketPercent, UsersRound } from 'lucide-react';
+import { AlertTriangle, Boxes, CircleDollarSign, ClipboardList, Database, FileBarChart, Headphones, History, Import, Layers, LayoutDashboard, LogOut, Megaphone, Moon, PackageCheck, PackagePlus, Plus, RefreshCw, Search, Sun, TicketPercent, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadAdminSnapshot } from './adminApi';
 import type { AdminOrder, AdminSnapshot, InventoryLot, StockGroup } from './adminTypes';
@@ -10,12 +10,14 @@ import { AdminActionEditor, type AdminActionTarget } from './AdminActionEditor';
 import { AuditSection, BackupsSection, CategoriesSection, MarketingSection } from './AdminUtilitySections';
 import type { Product } from '../../types/domain';
 import { ImportEditor } from './ImportEditor';
-import { BrandLogo } from '../../components/BrandLogo';
 import { TelegramOrderRecovery } from './TelegramOrderRecovery';
+import { LOGO_URL, STORE_NAME } from '../../../constants';
 
 interface AdminDashboardProps {
   email: string;
+  isDarkMode: boolean;
   onLogout: () => Promise<void>;
+  onToggleDarkMode: () => void;
 }
 
 type AdminTab = 'overview' | 'products' | 'orders' | 'clients' | 'coupons' | 'support' | 'marketing' | 'imports' | 'categories' | 'reports' | 'audit' | 'backups';
@@ -40,7 +42,7 @@ const tabDescriptions: Record<AdminTab, string> = {
   backups: 'Exportação segura dos dados atuais.',
 };
 
-export function AdminDashboard({ email, onLogout }: AdminDashboardProps) {
+export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }: AdminDashboardProps) {
   const [tab, setTab] = useState<AdminTab>('overview');
   const [data, setData] = useState<AdminSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -103,7 +105,9 @@ export function AdminDashboard({ email, onLogout }: AdminDashboardProps) {
   return (
     <main className="admin-shell">
       <aside className="admin-sidebar">
-        <a href="/" className="admin-brand" aria-label="All-Shop, voltar à loja"><BrandLogo /></a>
+        <a href="/" className="admin-brand" aria-label="All-Shop, voltar à loja">
+          <img src={LOGO_URL} alt={STORE_NAME} className="admin-brand-logo" />
+        </a>
         <nav>
           <p className="admin-nav-label">Operação</p>
           <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}><LayoutDashboard /> Hoje</button>
@@ -133,6 +137,10 @@ export function AdminDashboard({ email, onLogout }: AdminDashboardProps) {
           <div className="admin-actions">
             {!['overview', 'marketing', 'reports', 'backups'].includes(tab) && <label className="admin-search"><Search /><input placeholder={`Pesquisar em ${tabTitles[tab].toLocaleLowerCase('pt')}…`} value={search} onChange={(event) => setSearch(event.target.value)} /></label>}
             {tab === 'orders' && <button className="telegram-recovery-button" type="button" onClick={() => setTelegramRecoveryOpen(true)}><Plus /> Recuperar pedido Telegram</button>}
+            <button className="admin-theme-button" type="button" onClick={onToggleDarkMode} aria-label={isDarkMode ? 'Ativar modo claro' : 'Ativar modo escuro'} aria-pressed={isDarkMode} title={isDarkMode ? 'Modo claro' : 'Modo escuro'}>
+              {isDarkMode ? <Sun /> : <Moon />}
+              <span>{isDarkMode ? 'Modo claro' : 'Modo escuro'}</span>
+            </button>
             <button className="refresh-button" onClick={() => void refresh()} disabled={loading}><RefreshCw className={loading ? 'spin' : ''} /> Atualizar</button>
           </div>
         </header>
