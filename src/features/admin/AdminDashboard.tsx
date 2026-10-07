@@ -60,6 +60,15 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
   const [editingImport, setEditingImport] = useState<AdminSnapshot['imports'][number] | null>(null);
   const [telegramRecoveryOpen, setTelegramRecoveryOpen] = useState(false);
   const refreshInFlight = useRef(false);
+  const automaticRefreshPaused = useRef(false);
+  automaticRefreshPaused.current = Boolean(
+    selectedOrder
+    || catalogEditorOpen
+    || lotEditorOpen
+    || actionTarget
+    || importEditorOpen
+    || telegramRecoveryOpen,
+  );
 
   const refresh = useCallback(async (silent = false) => {
     if (refreshInFlight.current) return;
@@ -81,7 +90,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
   useEffect(() => {
     void refresh();
     const refreshWhenVisible = () => {
-      if (document.visibilityState === 'visible') void refresh(true);
+      if (document.visibilityState === 'visible' && !automaticRefreshPaused.current) void refresh(true);
     };
     const interval = window.setInterval(refreshWhenVisible, 60_000);
     window.addEventListener('focus', refreshWhenVisible);

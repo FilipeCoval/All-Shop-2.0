@@ -9,6 +9,39 @@ import { displayUnitCode, normalizeUnitCode, stableUnitId, unitCodes } from './u
 type EditorProps = { open: boolean; onClose: () => void; onSaved: () => Promise<void> };
 const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
+const NEW_LOT_DRAFT_PREFIX = 'allshop:admin:new-lot-draft:v1';
+const emptyLotForm = () => ({ publicProductId: '', variant: '', name: '', supplierName: '', supplierOrderId: '', purchaseDate: '', quantityBought: '1', quantitySold: '0', grossPurchaseTotal: '', supplierShippingCost: '', customsCost: '', salePrice: '', cashbackValue: '', cashbackStatus: 'NONE', cashbackPlatform: '', cashbackExpectedDate: '', cashbackPaidDate: '' });
+type LotFormState = ReturnType<typeof emptyLotForm>;
+type NewLotDraft = { version: 1; savedAt: number; form: LotFormState; units: NonNullable<InventoryLot['units']>; nextSerial: string };
+
+const newLotDraftKey = (initialProductId?: number) => `${NEW_LOT_DRAFT_PREFIX}:${initialProductId ?? 'general'}`;
+const readNewLotDraft = (key: string): NewLotDraft | null => {
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<NewLotDraft>;
+    if (parsed.version !== 1 || !parsed.form || typeof parsed.form !== 'object') return null;
+    return {
+      version: 1,
+      savedAt: Number(parsed.savedAt) || Date.now(),
+      form: { ...emptyLotForm(), ...parsed.form },
+      units: Array.isArray(parsed.units) ? parsed.units.filter((unit) => unit && typeof unit === 'object') : [],
+      nextSerial: typeof parsed.nextSerial === 'string' ? parsed.nextSerial : '',
+    };
+  } catch {
+    return null;
+  }
+};
+const writeNewLotDraft = (key: string, form: LotFormState, units: NonNullable<InventoryLot['units']>, nextSerial: string) => {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify({ version: 1, savedAt: Date.now(), form, units, nextSerial } satisfies NewLotDraft));
+  } catch {
+    // A entrada continua utilizável mesmo que o browser bloqueie o armazenamento.
+  }
+};
+const clearNewLotDraft = (key: string) => {
+  try { window.sessionStorage.removeItem(key); } catch { /* Sem armazenamento, não há rascunho a limpar. */ }
+};
 
 export function CatalogEditor({ open, product, categories, onClose, onSaved }: EditorProps & { product: Product | null; categories: StoreCategory[] }) {
   const [form, setForm] = useState({ name: '', category: '', price: '', originalPrice: '', image: '', description: '', features: '', badges: '', variantLabel: 'Opção', isPrivate: false, comingSoon: false, maxQuantityPerOrder: '' });
@@ -17,13 +50,15 @@ export function CatalogEditor({ open, product, categories, onClose, onSaved }: E
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!open) return;
     setForm(product ? {
       name: product.name, category: product.category, price: String(product.price), originalPrice: product.originalPrice == null ? '' : String(product.originalPrice), image: product.image ?? '', description: product.description ?? '',
       features: (product.features ?? []).join('\n'), badges: (product.badges ?? []).join('\n'), variantLabel: product.variantLabel ?? 'Opção', isPrivate: Boolean(product.isPrivate), comingSoon: Boolean(product.comingSoon), maxQuantityPerOrder: product.maxQuantityPerOrder == null ? '' : String(product.maxQuantityPerOrder),
     } : { name: '', category: categories[0]?.name ?? 'Outros', price: '', originalPrice: '', image: '', description: '', features: '', badges: '', variantLabel: 'Opção', isPrivate: false, comingSoon: false, maxQuantityPerOrder: '' });
     setVariants((product?.variants ?? []).map((variant) => ({ name: variant.name, price: String(variant.price), image: variant.image ?? '' })));
     setError(null);
-  }, [product, open, categories]);
+    // As categorias são lidas ao abrir; uma atualização em segundo plano não pode apagar o formulário.
+  }, [product, open]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(null);
@@ -50,12 +85,15 @@ export function CatalogEditor({ open, product, categories, onClose, onSaved }: E
 }
 
 export function LotEditor({ open, lot, initialProductId, products, onClose, onSaved }: EditorProps & { lot: InventoryLot | null; initialProductId?: number; products: Product[] }) {
-  const [form, setForm] = useState({ publicProductId: '', variant: '', name: '', supplierName: '', supplierOrderId: '', purchaseDate: '', quantityBought: '1', quantitySold: '0', grossPurchaseTotal: '', supplierShippingCost: '', customsCost: '', salePrice: '', cashbackValue: '', cashbackStatus: 'NONE', cashbackPlatform: '', cashbackExpectedDate: '', cashbackPaidDate: '' });
+  const [form, setForm] = useState<LotFormState>(emptyLotForm);
   const [units, setUnits] = useState<NonNullable<InventoryLot['units']>>([]);
   const [nextSerial, setNextSerial] = useState('');
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const serialInputRef = useRef<HTMLInputElement>(null);
+  const skipNextDraftWrite = useRef(true);
+  const draftKey = newLotDraftKey(initialProductId);
   const product = useMemo(() => products.find((item) => item.id === Number(form.publicProductId)), [products, form.publicProductId]);
   const catalogSalePrice = useMemo(() => {
     const selectedVariant = product?.variants?.find((variant) => normalizeUnitCode(variant.name) === normalizeUnitCode(form.variant));
@@ -78,6 +116,28 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
   }, [catalogSalePrice, form]);
 
   useEffect(() => {
+    if (!open) return;
+    skipNextDraftWrite.current = true;
+    if (!lot) {
+      const draft = readNewLotDraft(draftKey);
+      const draftProductId = Number(draft?.form.publicProductId);
+      const draftProduct = products.find((item) => item.id === draftProductId);
+      const matchesRequestedProduct = !initialProductId || draftProductId === initialProductId;
+      if (draft && draftProduct && matchesRequestedProduct) {
+        const restoredForm = { ...draft.form };
+        if (restoredForm.variant && draftProduct.variants?.length && !draftProduct.variants.some((variant) => normalizeUnitCode(variant.name) === normalizeUnitCode(restoredForm.variant))) {
+          restoredForm.variant = '';
+        }
+        setForm(restoredForm);
+        setUnits(draft.units.map((unit) => ({ ...unit })));
+        setNextSerial(draft.nextSerial);
+        setDraftRestored(true);
+        setScannerOpen(false);
+        setError(null);
+        return;
+      }
+      if (draft) clearNewLotDraft(draftKey);
+    }
     const productId = lot?.publicProductId ?? initialProductId ?? products[0]?.id;
     const selected = products.find((item) => item.id === productId);
     const quantity = Math.max(1, Number(lot?.quantityBought ?? 1));
@@ -85,8 +145,23 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     const total = lot?.grossPurchaseTotal ?? Math.max(0, Number(lot?.purchasePrice ?? 0) * quantity - extras);
     setForm({ publicProductId: productId ? String(productId) : '', variant: lot?.variant ?? '', name: lot?.name ?? selected?.name ?? '', supplierName: lot?.supplierName ?? '', supplierOrderId: lot?.supplierOrderId ?? '', purchaseDate: lot?.purchaseDate?.slice(0, 10) ?? new Date().toISOString().slice(0, 10), quantityBought: String(lot?.quantityBought ?? 1), quantitySold: String(lot?.quantitySold ?? 0), grossPurchaseTotal: total ? String(total) : '', supplierShippingCost: lot?.supplierShippingCost ? String(lot.supplierShippingCost) : '', customsCost: lot?.customsCost ? String(lot.customsCost) : '', salePrice: lot?.salePrice == null ? String(selected?.price ?? '') : String(lot.salePrice), cashbackValue: lot?.cashbackValue ? String(lot.cashbackValue) : '', cashbackStatus: lot?.cashbackStatus ?? 'NONE', cashbackPlatform: lot?.cashbackPlatform ?? '', cashbackExpectedDate: lot?.cashbackExpectedDate?.slice(0, 10) ?? '', cashbackPaidDate: lot?.cashbackPaidDate?.slice(0, 10) ?? '' });
     setUnits((lot?.units ?? []).map((unit) => ({ ...unit })));
-    setNextSerial(''); setScannerOpen(false); setError(null);
-  }, [lot, initialProductId, open, products]);
+    setNextSerial(''); setDraftRestored(false); setScannerOpen(false); setError(null);
+    // A lista de produtos é lida ao abrir; refreshes automáticos não podem reiniciar um lote em curso.
+  }, [lot, initialProductId, open]);
+
+  useEffect(() => {
+    if (!open || lot) return;
+    if (skipNextDraftWrite.current) {
+      skipNextDraftWrite.current = false;
+      return;
+    }
+    writeNewLotDraft(draftKey, form, units, nextSerial);
+  }, [draftKey, form, lot, nextSerial, open, units]);
+
+  const closePreservingDraft = () => {
+    if (!lot) writeNewLotDraft(draftKey, form, units, nextSerial);
+    onClose();
+  };
 
   const quantityForUnits = Math.max(0, Number(form.quantityBought) || 0);
   const visibleUnits = Array.from({ length: Math.max(quantityForUnits, units.length) }, (_, index) => units[index] ?? { id: '', status: 'AVAILABLE' });
@@ -144,12 +219,13 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
       }
     }
     setBusy(true);
-    try { await saveInventoryLot({ ...form, publicProductId: Number(form.publicProductId), quantityBought: Number(form.quantityBought), quantitySold: Number(form.quantitySold), grossPurchaseTotal: calculation.paid, supplierShippingCost: Number(form.supplierShippingCost), customsCost: Number(form.customsCost), purchasePrice: calculation.grossUnitCost, salePrice: catalogSalePrice, cashbackValue: Number(form.cashbackValue), units: unitsToSave }, lot?.id); await onSaved(); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar o lote.'); } finally { setBusy(false); }
+    try { await saveInventoryLot({ ...form, publicProductId: Number(form.publicProductId), quantityBought: Number(form.quantityBought), quantitySold: Number(form.quantitySold), grossPurchaseTotal: calculation.paid, supplierShippingCost: Number(form.supplierShippingCost), customsCost: Number(form.customsCost), purchasePrice: calculation.grossUnitCost, salePrice: catalogSalePrice, cashbackValue: Number(form.cashbackValue), units: unitsToSave }, lot?.id); if (!lot) clearNewLotDraft(draftKey); await onSaved(); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar o lote.'); } finally { setBusy(false); }
   };
   const remove = async () => { if (!lot?.id || !lot.publicProductId || !window.confirm('Apagar este lote e recalcular o stock da loja?')) return; setBusy(true); try { await deleteInventoryLot(lot.publicProductId, lot.id); await onSaved(); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível apagar o lote.'); } finally { setBusy(false); } };
 
-  return <EditorFrame open={open} title={lot ? 'Editar lote' : 'Entrada de stock'} subtitle="Produtos e stock" onClose={onClose}><form className="editor-form" onSubmit={submit}>
+  return <EditorFrame open={open} title={lot ? 'Editar lote' : 'Entrada de stock'} subtitle="Produtos e stock" onClose={closePreservingDraft}><form className="editor-form" onSubmit={submit}>
     <p className="editor-lead">Este é o único local para registar stock. Escolha o produto e a opção correta; a disponibilidade da loja será recalculada automaticamente.</p>
+    {!lot && <p className="editor-info">{draftRestored ? 'Rascunho recuperado. Pode continuar exatamente onde ficou.' : 'Este lote fica guardado como rascunho neste separador até ser concluído.'}</p>}
     <section className="editor-section"><header><span>1</span><div><strong>Produto e opção</strong><small>Associe o lote ao artigo exato que será vendido.</small></div></header>
       <Field label="Produto do catálogo"><select value={form.publicProductId} disabled={Boolean(lot)} onChange={(event) => { const selected = products.find((item) => item.id === Number(event.target.value)); setForm({ ...form, publicProductId: event.target.value, name: selected?.name ?? form.name, variant: '' }); }} required>{products.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></Field>
       {lot && <p className="editor-info">O produto deste lote fica protegido para evitar stock duplicado. Se escolheu o produto errado, crie um novo lote.</p>}
@@ -189,7 +265,7 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
       <p className="calculator-note">A previsão assume uma venda individual com envio: acima de 50 € desconta 5,40 € de portes; abaixo de 50 € desconta apenas a diferença entre os portes cobrados e pagos pela loja. O levantamento em loja não terá este custo.</p>
     </section>
     {!adminMutationsAvailable && <p className="safe-action-note">O formulário já está pronto. Guardar será ativado no endereço Vercel de testes.</p>}{error && <p className="form-error">{error}</p>}
-    <div className="editor-footer">{lot && <button type="button" className="danger-button" onClick={() => void remove()} disabled={!adminMutationsAvailable || busy}><Trash2 /> Apagar lote</button>}<span /><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="save-button" disabled={!adminMutationsAvailable || busy}><Save /> {busy ? 'A guardar…' : 'Guardar lote'}</button></div>
+    <div className="editor-footer">{lot && <button type="button" className="danger-button" onClick={() => void remove()} disabled={!adminMutationsAvailable || busy}><Trash2 /> Apagar lote</button>}<span /><button type="button" className="secondary-button" onClick={closePreservingDraft}>Fechar</button><button className="save-button" disabled={!adminMutationsAvailable || busy}><Save /> {busy ? 'A guardar…' : 'Guardar lote'}</button></div>
     {scannerOpen && <SerialScanner onClose={() => setScannerOpen(false)} onScan={(value) => { setScannerOpen(false); addSerial(value); }} />}
   </form></EditorFrame>;
 }
