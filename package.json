@@ -16,8 +16,11 @@
     "test:cancellation": "tsx tests/orderCancellation.test.ts",
     "test:stock": "tsx tests/stockProjection.test.ts",
     "test:identity": "tsx tests/unitIdentity.test.ts",
+    "test:admin-request": "tsx tests/adminRequestPolicy.test.ts",
+    "test:admin-error": "tsx tests/adminError.test.ts",
+    "test:inventory-identity": "tsx tests/inventoryIdentity.test.ts",
     "test:checkout": "tsx tests/checkoutCore.test.ts",
-    "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock && npm run test:identity",
+    "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock && npm run test:identity && npm run test:admin-request && npm run test:admin-error && npm run test:inventory-identity",
     "check": "npm run lint && npm run test:regression && npm run build"
   },
   "dependencies": {

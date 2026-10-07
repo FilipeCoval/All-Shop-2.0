@@ -1,5 +1,6 @@
 import { getApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { randomUUID } from 'node:crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const FALLBACK_ADMIN_EMAILS = new Set([
@@ -19,6 +20,27 @@ const FALLBACK_ADMIN_UIDS = new Set([
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
+}
+
+type ErrorDetails = { status: number; message: string; retryable: boolean; code: string };
+const errorCode = (error: unknown) => {
+  if (!error || typeof error !== 'object' || !('code' in error)) return '';
+  return String((error as { code?: unknown }).code ?? '').trim().toLowerCase();
+};
+
+export function classifyAdminError(error: unknown): ErrorDetails {
+  if (error instanceof ApiError) return { status: error.status, message: error.message, retryable: false, code: 'api-error' };
+  const code = errorCode(error);
+  if (['8', 'resource-exhausted'].includes(code)) {
+    return { status: 429, message: 'O Firebase está temporariamente ocupado. Tente novamente dentro de momentos.', retryable: true, code };
+  }
+  if (['4', '10', '13', '14', 'aborted', 'deadline-exceeded', 'internal', 'unavailable'].includes(code)) {
+    return { status: 503, message: 'O Firebase não conseguiu terminar a operação neste momento. Tente novamente dentro de momentos.', retryable: true, code };
+  }
+  if (['firebase-admin/configuration-missing', 'app/invalid-credential', 'app/invalid-app-options'].includes(code)) {
+    return { status: 503, message: 'O servidor de testes não tem a ligação administrativa ao Firebase configurada.', retryable: false, code };
+  }
+  return { status: 500, message: 'O servidor não conseguiu concluir a operação. Tente novamente.', retryable: false, code: code || 'unknown' };
 }
 
 export const allowedAdminEmails = () => {
@@ -49,10 +71,18 @@ export async function requireAdmin(request: VercelRequest) {
 }
 
 export function handleApiError(response: VercelResponse, error: unknown) {
-  const status = error instanceof ApiError ? error.status : 500;
-  const message = error instanceof ApiError ? error.message : 'O servidor não conseguiu concluir a operação. Tente novamente.';
-  if (!(error instanceof ApiError)) console.error('[admin-api]', error);
-  return response.status(status).json({ success: false, error: message });
+  const details = classifyAdminError(error);
+  const requestId = randomUUID().slice(0, 12);
+  response.setHeader('Cache-Control', 'no-store');
+  response.setHeader('X-AllShop-Error-Id', requestId);
+  if (details.retryable) response.setHeader('Retry-After', '1');
+  if (!(error instanceof ApiError)) console.error('[admin-api]', {
+    requestId,
+    code: details.code,
+    message: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+  });
+  return response.status(details.status).json({ success: false, error: details.message, retryable: details.retryable, requestId });
 }
 
 export function requirePost(request: VercelRequest, response: VercelResponse) {

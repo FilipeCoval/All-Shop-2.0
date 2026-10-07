@@ -13,6 +13,32 @@ const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g,
 const normalize = (value: unknown) => text(value).toLowerCase();
 const cleanOrderId = (value: unknown) => text(value, 100).replace(/^#+/, '');
 
+const inventoryUnits = (value: unknown, lotId: string): DocumentData[] => {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some((unit) => !unit || typeof unit !== 'object' || Array.isArray(unit))) {
+    throw new ApiError(409, `O lote ${lotId} contém unidades inválidas. Corrija o inventário antes de continuar.`);
+  }
+  return value as DocumentData[];
+};
+
+async function resolveExistingOrderRef(database: ReturnType<typeof getAdminDb>, orderId: string) {
+  const canonicalOrderRef = database.collection('orders').doc(orderId);
+  const legacyOrderRef = database.collection('orders').doc(`#${orderId}`);
+  const [canonicalOrderSnapshot, legacyOrderSnapshot] = await Promise.all([
+    canonicalOrderRef.get(),
+    legacyOrderRef.get(),
+  ]);
+  if (canonicalOrderSnapshot.exists && legacyOrderSnapshot.exists) {
+    throw new ApiError(409, 'Existem duas encomendas com esta referência. Corrija o duplicado antes de continuar.');
+  }
+  if (canonicalOrderSnapshot.exists) return canonicalOrderRef;
+  if (legacyOrderSnapshot.exists) return legacyOrderRef;
+  const matchingLegacyOrders = await database.collection('orders').where('id', 'in', [orderId, `#${orderId}`]).limit(2).get();
+  if (matchingLegacyOrders.size > 1) throw new ApiError(409, 'Existem duas encomendas com esta referência. Corrija o duplicado antes de continuar.');
+  if (!matchingLegacyOrders.empty) return matchingLegacyOrders.docs[0].ref;
+  throw new ApiError(404, 'Encomenda não encontrada.');
+}
+
 async function notifyFulfillment(database: ReturnType<typeof getAdminDb>, order: DocumentData) {
   if (!order?.userId) return { sentCount: 0, failureCount: 0 };
   const userSnapshot = await database.collection('users').doc(String(order.userId)).get();
@@ -74,34 +100,43 @@ async function prepareRestock(transaction: Transaction, orderId: string, order: 
     grouped.set(key, { ...item, quantity: item.quantity + (current?.quantity ?? 0) });
   }
 
-  const contexts: RestockContext[] = [];
+  const byProduct = new Map<number, Array<{ productId: number; quantity: number; variant: string }>>();
   for (const item of grouped.values()) {
-    const productRef = database.collection('products_public').doc(String(item.productId));
+    const items = byProduct.get(item.productId) ?? [];
+    items.push(item);
+    byProduct.set(item.productId, items);
+  }
+
+  return Promise.all([...byProduct.entries()].map(async ([productId, items]) => {
+    const productRef = database.collection('products_public').doc(String(productId));
     const [productSnapshot, lotsSnapshot, reservationsSnapshot] = await Promise.all([
       transaction.get(productRef),
-      transaction.get(database.collection('products_inventory').where('publicProductId', '==', item.productId)),
-      transaction.get(database.collection('stock_reservations').where('productId', '==', item.productId)),
+      transaction.get(database.collection('products_inventory').where('publicProductId', '==', productId)),
+      transaction.get(database.collection('stock_reservations').where('productId', '==', productId)),
     ]);
-    if (!productSnapshot.exists) throw new ApiError(409, `O produto ${item.productId} já não existe no catálogo.`);
+    if (!productSnapshot.exists) throw new ApiError(409, `O produto ${productId} já não existe no catálogo.`);
     const productLots = lotsSnapshot.docs;
-    const generic = productLots.filter((lot) => !normalize(lot.data().variant));
-    const variantKey = normalize(item.variant);
-    const exact = productLots.filter((lot) => normalize(lot.data().variant) === variantKey);
-    const matching = !variantKey ? (generic.length ? generic : productLots) : (exact.length ? exact : generic);
+    for (const lot of productLots) inventoryUnits(lot.data().units, lot.id);
     const restoreByLot = new Map<string, number>();
-    let remaining = item.quantity;
-    for (const lot of matching) {
-      if (remaining <= 0) break;
-      const data = lot.data();
-      const soldForOrder = Array.isArray(data.units) ? data.units.filter((unit: DocumentData) => unit?.status === 'SOLD' && cleanOrderId(unit?.soldToOrder) === orderId).length : 0;
-      const restorable = soldForOrder || Math.max(0, Number(data.quantitySold ?? 0));
-      const quantity = Math.min(remaining, restorable);
-      if (quantity > 0) { restoreByLot.set(lot.id, quantity); remaining -= quantity; }
+    for (const item of items) {
+      const generic = productLots.filter((lot) => !normalize(lot.data().variant));
+      const variantKey = normalize(item.variant);
+      const exact = productLots.filter((lot) => normalize(lot.data().variant) === variantKey);
+      const matching = !variantKey ? (generic.length ? generic : productLots) : (exact.length ? exact : generic);
+      let remaining = item.quantity;
+      for (const lot of matching) {
+        if (remaining <= 0) break;
+        const data = lot.data();
+        const soldForOrder = inventoryUnits(data.units, lot.id).filter((unit) => unit.status === 'SOLD' && cleanOrderId(unit.soldToOrder) === orderId).length;
+        const alreadyPlanned = restoreByLot.get(lot.id) ?? 0;
+        const restorable = Math.max(0, (soldForOrder || Math.max(0, Number(data.quantitySold ?? 0))) - alreadyPlanned);
+        const quantity = Math.min(remaining, restorable);
+        if (quantity > 0) { restoreByLot.set(lot.id, alreadyPlanned + quantity); remaining -= quantity; }
+      }
+      if (remaining > 0) throw new ApiError(409, 'Não foi possível repor o stock com segurança. Verifique os lotes antes de cancelar.');
     }
-    if (remaining > 0) throw new ApiError(409, 'Não foi possível repor o stock com segurança. Verifique os lotes antes de cancelar.');
-    contexts.push({ productId: item.productId, productRef, product: productSnapshot.data() ?? {}, lots: lotsSnapshot.docs as RestockContext['lots'], reservations: reservationsSnapshot.docs.map((document) => document.data() as ReservationData), restoreByLot, orderId });
-  }
-  return contexts;
+    return { productId, productRef, product: productSnapshot.data() ?? {}, lots: lotsSnapshot.docs as RestockContext['lots'], reservations: reservationsSnapshot.docs.map((document) => document.data() as ReservationData), restoreByLot, orderId };
+  }));
 }
 
 function applyRestock(transaction: Transaction, contexts: RestockContext[]) {
@@ -112,14 +147,14 @@ function applyRestock(transaction: Transaction, contexts: RestockContext[]) {
       const restore = context.restoreByLot.get(lot.id) ?? 0;
       if (!restore) return { id: lot.id, ...data };
       let unitsLeft = restore;
-      const units = Array.isArray(data.units) ? data.units.map((unit: DocumentData) => {
+      const units = inventoryUnits(data.units, lot.id).map((unit) => {
         if (unitsLeft > 0 && unit?.status === 'SOLD' && cleanOrderId(unit?.soldToOrder) === context.orderId) {
           unitsLeft -= 1;
           const { soldAt: _soldAt, soldToOrder: _soldToOrder, soldToCustomerName: _name, soldToCustomerEmail: _email, ...rest } = unit;
           return { ...rest, status: 'AVAILABLE', returnedAt: now };
         }
         return unit;
-      }) : [];
+      });
       const update = { quantitySold: Math.max(0, Number(data.quantitySold ?? 0) - restore), units };
       transaction.update(lot.ref, update);
       return { id: lot.id, ...data, ...update };
@@ -138,35 +173,52 @@ export default async function handler(request: VercelRequest, response: VercelRe
     if (!orderId) throw new ApiError(400, 'A encomenda não foi indicada.');
     if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'fulfill_order'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
 
+    // Procurar formatos antigos do ID fora da transação evita que cada alteração
+    // simples fique desnecessariamente dependente de dois documentos e uma query.
+    // A transação continua a reler o documento escolhido antes de o alterar.
+    const existingOrderRef = action === 'recover_telegram_order'
+      ? null
+      : await resolveExistingOrderRef(database, orderId);
+
     const transactionResult = await database.runTransaction(async (transaction) => {
       const canonicalOrderRef = database.collection('orders').doc(orderId);
       const legacyOrderRef = database.collection('orders').doc(`#${orderId}`);
-      const [canonicalOrderSnapshot, legacyOrderSnapshot] = await Promise.all([
-        transaction.get(canonicalOrderRef),
-        transaction.get(legacyOrderRef),
-      ]);
-      if (canonicalOrderSnapshot.exists && legacyOrderSnapshot.exists) {
-        throw new ApiError(409, 'Existem duas encomendas com esta referência. Corrija o duplicado antes de continuar.');
-      }
-      let orderRef = canonicalOrderSnapshot.exists
-        ? canonicalOrderRef
-        : legacyOrderSnapshot.exists
-          ? legacyOrderRef
-          : canonicalOrderRef;
-      let orderSnapshot = canonicalOrderSnapshot.exists ? canonicalOrderSnapshot : legacyOrderSnapshot;
-      if (!orderSnapshot.exists) {
-        const matchingLegacyOrders = await transaction.get(database.collection('orders').where('id', 'in', [orderId, `#${orderId}`]).limit(2));
-        if (matchingLegacyOrders.size > 1) throw new ApiError(409, 'Existem duas encomendas com esta referência. Corrija o duplicado antes de continuar.');
-        if (!matchingLegacyOrders.empty) {
-          orderSnapshot = matchingLegacyOrders.docs[0];
-          orderRef = matchingLegacyOrders.docs[0].ref;
+      let orderRef = existingOrderRef ?? canonicalOrderRef;
+      let orderSnapshot;
+      if (action === 'recover_telegram_order') {
+        const [canonicalOrderSnapshot, legacyOrderSnapshot] = await Promise.all([
+          transaction.get(canonicalOrderRef),
+          transaction.get(legacyOrderRef),
+        ]);
+        if (canonicalOrderSnapshot.exists && legacyOrderSnapshot.exists) {
+          throw new ApiError(409, 'Existem duas encomendas com esta referência. Corrija o duplicado antes de continuar.');
         }
+        orderRef = canonicalOrderSnapshot.exists
+          ? canonicalOrderRef
+          : legacyOrderSnapshot.exists
+            ? legacyOrderRef
+            : canonicalOrderRef;
+        orderSnapshot = canonicalOrderSnapshot.exists ? canonicalOrderSnapshot : legacyOrderSnapshot;
+        if (!orderSnapshot.exists) {
+          const matchingLegacyOrders = await transaction.get(database.collection('orders').where('id', 'in', [orderId, `#${orderId}`]).limit(2));
+          if (matchingLegacyOrders.size > 1) throw new ApiError(409, 'Existem duas encomendas com esta referência. Corrija o duplicado antes de continuar.');
+          if (!matchingLegacyOrders.empty) {
+            orderSnapshot = matchingLegacyOrders.docs[0];
+            orderRef = matchingLegacyOrders.docs[0].ref;
+          }
+        }
+      } else {
+        orderSnapshot = await transaction.get(orderRef);
       }
-      const withDocument = (order: DocumentData) => ({ order, documentId: orderRef.id });
+      const withDocument = (order: DocumentData, changed = true) => ({ order, documentId: orderRef.id, changed });
       const now = new Date().toISOString();
 
       if (action === 'recover_telegram_order') {
-        if (orderSnapshot.exists) throw new ApiError(409, 'Esta encomenda já existe na base de dados. Atualize a dashboard.');
+        if (orderSnapshot.exists) {
+          const existing = orderSnapshot.data() ?? {};
+          if (existing.recoveredFromTelegram === true) return withDocument({ ...existing, id: orderId }, false);
+          throw new ApiError(409, 'Esta encomenda já existe na base de dados. Atualize a dashboard.');
+        }
         if (!/^AS-\d{6,16}$/.test(orderId)) throw new ApiError(400, 'A referência do pedido é inválida.');
         const rawItems: unknown[] = Array.isArray(request.body?.items) ? request.body.items : [];
         if (!rawItems.length || rawItems.length > 20) throw new ApiError(400, 'Indique pelo menos um artigo.');
@@ -226,7 +278,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
         for (const [productId, context] of productContexts) {
           workingLots.set(productId, context.lots.map((lot) => ({
             ...lot,
-            ...(Array.isArray(lot.units) ? { units: lot.units.map((unit: DocumentData) => ({ ...unit })) } : {}),
+            ...(lot.units !== undefined ? { units: inventoryUnits(lot.units, String(lot.id ?? 'sem ID')).map((unit) => ({ ...unit })) } : {}),
           })));
         }
 
@@ -308,7 +360,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const order = orderSnapshot.data() ?? {};
 
       if (action === 'fulfill_order') {
-        if (isOrderFulfillmentComplete(order)) throw new ApiError(409, 'Esta encomenda já foi expedida. Atualize a dashboard.');
+        // Se a primeira resposta se perder depois do commit, a repetição do mesmo
+        // pedido deve confirmar o resultado já guardado, não apresentar um erro.
+        if (isOrderFulfillmentComplete(order)) return withDocument({ ...order, id: orderId }, false);
         if (['Cancelado', 'Devolvido'].includes(String(order.status ?? ''))) throw new ApiError(409, 'Uma encomenda cancelada ou devolvida não pode ser expedida.');
         const rawSelections: unknown[] = Array.isArray(request.body?.selections) ? request.body.selections : [];
         const selections = rawSelections.map((raw) => {
@@ -351,7 +405,14 @@ export default async function handler(request: VercelRequest, response: VercelRe
             productId,
             productRef,
             product: productSnapshot.data() ?? {},
-            lots: lotsSnapshot.docs.map((document) => ({ ...document.data(), id: document.id } as FulfillmentLot)),
+            lots: lotsSnapshot.docs.map((document) => {
+              const lot = document.data();
+              return {
+                ...lot,
+                id: document.id,
+                ...(lot.units !== undefined ? { units: inventoryUnits(lot.units, document.id) } : {}),
+              } as FulfillmentLot;
+            }),
             lotRefs: new Map(lotsSnapshot.docs.map((document) => [document.id, document.ref])),
             reservations: reservationsSnapshot.docs.map((document) => ({ id: document.id, ...document.data() } as ReservationData)).filter((item) => toMillis(item.expiresAt) > Date.now()),
           };
@@ -377,7 +438,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
           throw error;
         }
 
-        const updatedById = new Map(plan.updatedLots.map((lot) => [lot.id, lot]));
+        const updatedById = new Map<string, FulfillmentLot>(plan.updatedLots.map((lot: FulfillmentLot) => [lot.id, lot]));
         for (const context of contexts) {
           const projectedLots = context.lots.map((lot) => updatedById.get(lot.id) ?? lot);
           for (const lot of projectedLots) {
@@ -458,12 +519,16 @@ export default async function handler(request: VercelRequest, response: VercelRe
         } else {
           update.trackingNumber = requestedTrackingNumber;
         }
+        const sameRootTracking = text(order.trackingNumber, 150) === text(update.trackingNumber, 150);
+        const samePackageTracking = !orderPackages.length || orderPackages.every((pkg, index) =>
+          text(pkg.trackingNumber, 150) === text(update.packages?.[index]?.trackingNumber, 150));
+        if (sameRootTracking && samePackageTracking) return withDocument({ ...order, id: orderId }, false);
       }
 
       if (action === 'set_status') {
         const status = text(request.body?.status, 60);
         if (!STATUSES.has(status)) throw new ApiError(400, 'Estado inválido.');
-        if (status === String(order.status ?? 'Pendente')) return withDocument({ ...order, id: orderId });
+        if (status === String(order.status ?? 'Pendente')) return withDocument({ ...order, id: orderId }, false);
         if (['Cancelado', 'Devolvido'].includes(String(order.status ?? ''))) {
           throw new ApiError(409, 'Uma encomenda cancelada ou devolvida fica fechada e não pode ser reaberta.');
         }
@@ -499,8 +564,10 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const decision = request.body?.decision === 'approve' ? 'approve' : request.body?.decision === 'reject' ? 'reject' : null;
         if (!kind || !decision) throw new ApiError(400, 'Decisão inválida.');
         const field = kind === 'return' ? 'returnRequest' : 'cancellationRequest';
+        const completedDecision = decision === 'approve' ? 'Aprovado' : 'Rejeitado';
+        if (order[field]?.status === completedDecision) return withDocument({ ...order, id: orderId }, false);
         if (order[field]?.status !== 'Pendente') throw new ApiError(409, 'Este pedido já não está pendente. Atualize a dashboard.');
-        update[field] = { ...order[field], status: decision === 'approve' ? 'Aprovado' : 'Rejeitado', reviewNote: text(request.body?.reviewNote), reviewedAt: now, reviewedByUserId: admin.uid };
+        update[field] = { ...order[field], status: completedDecision, reviewNote: text(request.body?.reviewNote), reviewedAt: now, reviewedByUserId: admin.uid };
         update.statusHistory = FieldValue.arrayUnion({ status: `${kind === 'return' ? 'Devolução' : 'Cancelamento'} ${decision === 'approve' ? 'aprovado' : 'recusado'}`, date: now, notes: text(request.body?.reviewNote) || 'Decisão registada na All-Shop 3.0' });
         if (kind === 'cancellation' && decision === 'approve') {
           const allItems = cleanItems(order);
@@ -540,7 +607,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const persistedOrderRef = database.collection('orders').doc(transactionResult.documentId);
 
     let notification: { sentCount: number; failureCount: number } | undefined;
-    if (action === 'fulfill_order') {
+    if (action === 'fulfill_order' && transactionResult.changed) {
       try {
         notification = await notifyFulfillment(database, result);
         await persistedOrderRef.update({ fulfillmentNotification: { ...notification, attemptedAt: new Date().toISOString() } });

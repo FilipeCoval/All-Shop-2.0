@@ -60,7 +60,8 @@ export function MarketingSection({ users, onSent }: { users: AdminUser[]; onSent
     setBusy(true); setError(null); setResult(null);
     try {
       const response = await sendMarketingPush(form);
-      setResult(response.message || `${Number(response.sentCount ?? 0)} notificações enviadas; ${Number(response.failureCount ?? 0)} falharam.`);
+      const serverMessage = typeof response.message === 'string' ? response.message : '';
+      setResult(serverMessage || `${Number(response.sentCount ?? 0)} notificações enviadas; ${Number(response.failureCount ?? 0)} falharam.`);
       setForm((current) => ({ ...current, title: '', body: '', image: '' }));
       await onSent();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível enviar a campanha.'); }

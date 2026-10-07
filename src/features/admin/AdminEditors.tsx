@@ -12,9 +12,10 @@ const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR'
 const NEW_LOT_DRAFT_PREFIX = 'allshop:admin:new-lot-draft:v1';
 const emptyLotForm = () => ({ publicProductId: '', variant: '', name: '', supplierName: '', supplierOrderId: '', purchaseDate: '', quantityBought: '1', quantitySold: '0', grossPurchaseTotal: '', supplierShippingCost: '', customsCost: '', salePrice: '', cashbackValue: '', cashbackStatus: 'NONE', cashbackPlatform: '', cashbackExpectedDate: '', cashbackPaidDate: '' });
 type LotFormState = ReturnType<typeof emptyLotForm>;
-type NewLotDraft = { version: 1; savedAt: number; form: LotFormState; units: NonNullable<InventoryLot['units']>; nextSerial: string };
+type NewLotDraft = { version: 1; lotId: string; savedAt: number; form: LotFormState; units: NonNullable<InventoryLot['units']>; nextSerial: string };
 
 const newLotDraftKey = (initialProductId?: number) => `${NEW_LOT_DRAFT_PREFIX}:${initialProductId ?? 'general'}`;
+const createDraftLotId = () => `lot-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
 const readNewLotDraft = (key: string): NewLotDraft | null => {
   try {
     const raw = window.sessionStorage.getItem(key);
@@ -23,6 +24,7 @@ const readNewLotDraft = (key: string): NewLotDraft | null => {
     if (parsed.version !== 1 || !parsed.form || typeof parsed.form !== 'object') return null;
     return {
       version: 1,
+      lotId: typeof parsed.lotId === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(parsed.lotId) ? parsed.lotId : createDraftLotId(),
       savedAt: Number(parsed.savedAt) || Date.now(),
       form: { ...emptyLotForm(), ...parsed.form },
       units: Array.isArray(parsed.units) ? parsed.units.filter((unit) => unit && typeof unit === 'object') : [],
@@ -32,9 +34,9 @@ const readNewLotDraft = (key: string): NewLotDraft | null => {
     return null;
   }
 };
-const writeNewLotDraft = (key: string, form: LotFormState, units: NonNullable<InventoryLot['units']>, nextSerial: string) => {
+const writeNewLotDraft = (key: string, lotId: string, form: LotFormState, units: NonNullable<InventoryLot['units']>, nextSerial: string) => {
   try {
-    window.sessionStorage.setItem(key, JSON.stringify({ version: 1, savedAt: Date.now(), form, units, nextSerial } satisfies NewLotDraft));
+    window.sessionStorage.setItem(key, JSON.stringify({ version: 1, lotId, savedAt: Date.now(), form, units, nextSerial } satisfies NewLotDraft));
   } catch {
     // A entrada continua utilizável mesmo que o browser bloqueie o armazenamento.
   }
@@ -93,6 +95,7 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
   const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const serialInputRef = useRef<HTMLInputElement>(null);
   const skipNextDraftWrite = useRef(true);
+  const draftLotIdRef = useRef(createDraftLotId());
   const draftKey = newLotDraftKey(initialProductId);
   const product = useMemo(() => products.find((item) => item.id === Number(form.publicProductId)), [products, form.publicProductId]);
   const catalogSalePrice = useMemo(() => {
@@ -124,6 +127,7 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
       const draftProduct = products.find((item) => item.id === draftProductId);
       const matchesRequestedProduct = !initialProductId || draftProductId === initialProductId;
       if (draft && draftProduct && matchesRequestedProduct) {
+        draftLotIdRef.current = draft.lotId;
         const restoredForm = { ...draft.form };
         if (restoredForm.variant && draftProduct.variants?.length && !draftProduct.variants.some((variant) => normalizeUnitCode(variant.name) === normalizeUnitCode(restoredForm.variant))) {
           restoredForm.variant = '';
@@ -137,6 +141,7 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
         return;
       }
       if (draft) clearNewLotDraft(draftKey);
+      draftLotIdRef.current = createDraftLotId();
     }
     const productId = lot?.publicProductId ?? initialProductId ?? products[0]?.id;
     const selected = products.find((item) => item.id === productId);
@@ -155,11 +160,11 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
       skipNextDraftWrite.current = false;
       return;
     }
-    writeNewLotDraft(draftKey, form, units, nextSerial);
+    writeNewLotDraft(draftKey, draftLotIdRef.current, form, units, nextSerial);
   }, [draftKey, form, lot, nextSerial, open, units]);
 
   const closePreservingDraft = () => {
-    if (!lot) writeNewLotDraft(draftKey, form, units, nextSerial);
+    if (!lot) writeNewLotDraft(draftKey, draftLotIdRef.current, form, units, nextSerial);
     onClose();
   };
 
@@ -222,7 +227,7 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
       }
     }
     setBusy(true);
-    try { await saveInventoryLot({ ...form, publicProductId: Number(form.publicProductId), quantityBought: Number(form.quantityBought), quantitySold: Number(form.quantitySold), grossPurchaseTotal: calculation.paid, supplierShippingCost: Number(form.supplierShippingCost), customsCost: Number(form.customsCost), purchasePrice: calculation.grossUnitCost, salePrice: catalogSalePrice, cashbackValue: Number(form.cashbackValue), units: unitsToSave }, lot?.id); if (!lot) clearNewLotDraft(draftKey); await onSaved(); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar o lote.'); } finally { setBusy(false); }
+    try { await saveInventoryLot({ ...form, publicProductId: Number(form.publicProductId), quantityBought: Number(form.quantityBought), quantitySold: Number(form.quantitySold), grossPurchaseTotal: calculation.paid, supplierShippingCost: Number(form.supplierShippingCost), customsCost: Number(form.customsCost), purchasePrice: calculation.grossUnitCost, salePrice: catalogSalePrice, cashbackValue: Number(form.cashbackValue), units: unitsToSave }, lot?.id || draftLotIdRef.current); if (!lot) clearNewLotDraft(draftKey); await onSaved(); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar o lote.'); } finally { setBusy(false); }
   };
   const remove = async () => { if (!lot?.id || !lot.publicProductId || !window.confirm('Apagar este lote e recalcular o stock da loja?')) return; setBusy(true); try { await deleteInventoryLot(lot.publicProductId, lot.id); await onSaved(); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível apagar o lote.'); } finally { setBusy(false); } };
 

@@ -34,7 +34,8 @@ export function TelegramOrderRecovery({ open, products, onClose, onSaved }: { op
     try {
       const items = rows.map((row) => ({ productId: Number(row.productId), variantName: row.variantName, quantity: Number(row.quantity), price: Number(row.price) }));
       const result = await recoverTelegramOrder({ orderId, name, phone, email, paymentMethod, deliveryMethod, total, items, allowWithoutStock });
-      const deducted = result?.order?.stockDeducted === true;
+      const savedOrder = result.order && typeof result.order === 'object' ? result.order as Record<string, unknown> : null;
+      const deducted = savedOrder?.stockDeducted === true;
       setSuccess(deducted ? `Pedido ${orderId} recuperado e stock abatido.` : `Pedido ${orderId} recuperado. O stock ficou marcado para acerto manual.`);
       await onSaved();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível recuperar a encomenda.'); }
