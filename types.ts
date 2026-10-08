@@ -65,11 +65,29 @@ export interface Order {
   stockDeducted?: boolean;
   cancellationReason?: string;
   statusHistory?: StatusHistory[];
-  returnRequest?: {
-      date: string;
-      reason: string;
+  cancellationRequest?: {
       status: 'Pendente' | 'Aprovado' | 'Rejeitado';
+      type: 'TOTAL' | 'PARCIAL';
+      reason: string;
+      requestedAt: string;
+      requestedByUserId?: string;
+      reviewedAt?: string;
+      reviewedByUserId?: string;
+      reviewNote?: string;
+      items?: Array<{ productId: number; quantity: number; selectedVariant?: string }>;
   };
+  returnRequest?: {
+      status: 'Pendente' | 'Aprovado' | 'Rejeitado';
+      reason: string;
+      requestedAt?: string;
+      date?: string; // Retrocompatibilidade com pedidos antigos
+      requestedByUserId?: string;
+      reviewedAt?: string;
+      reviewedByUserId?: string;
+      reviewNote?: string;
+  };
+  stockRestoredAt?: string;
+  stockRestoredItems?: Array<{ productId: number; quantity: number; selectedVariant?: string }>;
   // Fulfillment Fields
   fulfilledAt?: string | null;
   fulfilledBy?: string | null;
@@ -204,6 +222,7 @@ export interface Product {
   premiumData?: PremiumBentoData;
   cardHoverColor?: string; // NOVO: Cor do efeito hover no card do produto
   comingSoon?: boolean;
+  availabilityMode?: import('./src/domain/productAvailability').ProductAvailabilityMode;
   maxQuantityPerOrder?: number; // NOVO: Limite de quantidade por encomenda
   badges?: string[];
   images?: string[];
@@ -259,14 +278,37 @@ export interface InventoryProduct {
   isPrivate?: boolean; // NOVO: Produto privado (só admin vê)
 }
 
+export type ProductUnitStatus =
+  | 'AVAILABLE'
+  | 'RESERVED'
+  | 'SOLD'
+  | 'RETURNED'
+  | 'DEFECTIVE'
+  | 'IN_TRANSIT';
+
 export interface ProductUnit {
+  /**
+   * Identificador estável da unidade. Nos registos antigos pode ser o próprio S/N.
+   * Nos novos registos pode ser um código interno All-Shop, mantendo o S/N em serialNumber.
+   */
   id: string;
-  status: 'AVAILABLE' | 'SOLD' | 'RESERVED';
+  status: ProductUnitStatus;
   addedAt: string;
+
+  // Rastreabilidade: mantemos compatibilidade com unidades antigas que só têm id.
+  serialNumber?: string;
+  barcode?: string;
+  internalLabel?: string;
+  notes?: string;
+
   reservedBy?: string; // sessionId ou userId
   reservedUntil?: string;
   soldAt?: string;
   soldToOrder?: string;
+  soldToCustomerName?: string;
+  soldToCustomerEmail?: string;
+  returnedAt?: string;
+  defectiveAt?: string;
 }
 
 export interface StockReservation {

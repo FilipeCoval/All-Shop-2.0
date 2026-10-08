@@ -9,7 +9,7 @@ import { LOYALTY_TIERS, STORE_NAME, STORE_ADDRESS, LOGO_URL } from '../constants
 
 import OrderPackagingModal from './OrderPackagingModal';
 import { cancelOrderItem } from '../services/returnService';
-import { backfillOrderSerials } from '../services/repairService'; // Adicionado
+import { backfillOrderSerials, manualFixStockStatus } from '../services/repairService';
 
 interface OrderDetailsModalProps {
     order: Order | null;
@@ -565,7 +565,6 @@ const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({ order, onClose, o
                             const pId = (document.getElementById('fix-prod-id') as HTMLInputElement).value;
                             const sn = (document.getElementById('fix-sn') as HTMLInputElement).value;
                             if(!pId || !sn) { alert("Preencha ID e SN."); return; }
-                            const { manualFixStockStatus } = await import('../services/repairService');
                             const res = await manualFixStockStatus(order.id, pId, sn);
                             alert(res.message);
                             if(res.success) onClose();

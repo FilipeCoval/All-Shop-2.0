@@ -12,7 +12,7 @@ import {   db, storage, requestPushPermission, messaging , modularDb } from '../
 import { collection, doc, updateDoc, addDoc, arrayUnion, arrayRemove, deleteField, onSnapshot, query, where, getDoc, runTransaction, getFirestore, writeBatch, getDocs } from 'firebase/firestore';
 import { ref, deleteObject, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 
-import { cancelOrderItem } from '../services/returnService';
+import { requestOrderAction } from '../services/api';
 import LoyaltyPage from './LoyaltyPage';
 import RequestsTab from './RequestsTab';
 
@@ -293,162 +293,50 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
     };
   
   const handleOrderAction = async () => {
-    if (!modalState.order || !modalReason.trim()) { alert("Por favor, preencha o motivo."); return; }
+    if (!modalState.order || !modalReason.trim()) {
+      alert("Por favor, preencha o motivo.");
+      return;
+    }
+
     setIsProcessingAction(true);
     try {
-        const orderRef = doc(modularDb, 'orders', modalState.order.id);
-        const now = new Date().toISOString();
-        if (modalState.type === 'cancel') {
-            // Prepare Matching Inventory Lots to restore stock on cancellation
-            const inventoryDocsToRead: any[] = [];
-            if (modalState.order && Array.isArray(modalState.order.items)) {
-                for (const item of modalState.order.items) {
-                    if (typeof item === 'object' && item !== null && item.productId) {
-                        const q = query(
-                            collection(modularDb, 'products_inventory'),
-                            where('publicProductId', '==', Number(item.productId))
-                        );
-                        const qSnap = await getDocs(q);
-                        qSnap.forEach(d => {
-                            const invData = d.data();
-                            const orderVariant = String(item.selectedVariant || '').trim().toLowerCase();
-                            const batchVariant = String(invData.variant || '').trim().toLowerCase();
-                            if (orderVariant === batchVariant) {
-                                inventoryDocsToRead.push({ ref: d.ref, id: d.id, itemQty: item.quantity, productId: item.productId });
-                            }
-                        });
-                    }
-                }
-            }
+      const action = modalState.type === 'return' ? 'request_return' : 'cancel_order';
+      const response = await requestOrderAction({
+        action,
+        orderId: modalState.order.id,
+        reason: modalReason.trim(),
+      });
 
-            await runTransaction(modularDb, async (transaction) => {
-                // 1. First, perform all reads
-                const updates: any[] = [];
-                const invSnaps: Record<string, any> = {};
-                for (const docToRead of inventoryDocsToRead) {
-                    const snap = await transaction.get(docToRead.ref);
-                    invSnaps[docToRead.id] = snap;
-                }
-                
-                if (modalState.order && modalState.order.items) {
-                    // Repor o stock no lote de inventário correspondente (products_inventory)
-                    for (const docToRead of inventoryDocsToRead) {
-                        const invSnap = invSnaps[docToRead.id];
-                        if (invSnap && invSnap.exists()) {
-                            const invData = invSnap.data() as any;
-                            let currentQtySold = Number(invData.quantitySold || 0);
-                            let newQtySold = currentQtySold;
-
-                            if (modalState.order?.stockDeducted) {
-                                newQtySold = Math.max(0, currentQtySold - docToRead.itemQty);
-                            }
-
-                            let updatedUnits = invData.units ? [...invData.units] : null;
-                            if (updatedUnits) {
-                                updatedUnits = updatedUnits.map((unit: any) => {
-                                    if (unit.soldToOrder === modalState.order?.id) {
-                                        return {
-                                            ...unit,
-                                            status: 'AVAILABLE',
-                                            soldAt: undefined,
-                                            soldToOrder: undefined
-                                        };
-                                    }
-                                    return unit;
-                                });
-                            }
-
-                            const invUpdateData: any = {
-                                quantitySold: newQtySold,
-                                status: newQtySold >= (invData.quantityBought || 0) ? 'SOLD' : (newQtySold > 0 ? 'PARTIAL' : 'AVAILABLE')
-                            };
-                            if (updatedUnits) {
-                                invUpdateData.units = updatedUnits;
-                            }
-
-                            updates.push({
-                                ref: docToRead.ref,
-                                data: invUpdateData
-                            });
-                        }
-                    }
-
-                    // Depois, repor stock na coleção principal (products_public)
-                    for (const item of modalState.order.items) {
-                        if (typeof item !== 'object' || item === null) continue;
-                        const productDocRef = doc(modularDb, 'products_public', item.productId.toString());
-                        const productDoc = await transaction.get(productDocRef);
-                        
-                        if (productDoc.exists()) {
-                            const productData = productDoc.data() as Product;
-                            
-                            let updatedVariants = productData.variants;
-                            if (item.selectedVariant && productData.variants) {
-                                const vIndex = productData.variants.findIndex((v: any) => v.name === item.selectedVariant);
-                                if (vIndex !== -1) {
-                                    updatedVariants = [...productData.variants];
-                                    updatedVariants[vIndex] = {
-                                        ...updatedVariants[vIndex],
-                                        stock: (updatedVariants[vIndex].stock || 0) + item.quantity
-                                    };
-                                }
-                            }
-                            
-                            const updateData: any = { stock: (productData.stock || 0) + item.quantity };
-                            if (updatedVariants) updateData.variants = updatedVariants;
-                            
-                            updates.push({
-                                ref: productDoc.ref,
-                                data: Object.fromEntries(Object.entries(updateData).filter(([_,v]) => v !== undefined))
-                            });
-                        }
-                    }
-                }
-
-                // 2. Then, perform all writes
-                transaction.update(orderRef, { 
-                    status: 'Cancelado', 
-                    statusHistory: arrayUnion({ status: 'Cancelado', date: now, notes: modalReason.trim() }) 
-                });
-
-                for (const update of updates) {
-                    transaction.update(update.ref, update.data);
-                }
-            });
-        } else if (modalState.type === 'return') {
-            await updateDoc(orderRef, { 
-                returnRequest: { date: now, reason: modalReason.trim(), status: 'Pendente' },
-                statusHistory: arrayUnion({ status: 'Pendente Devolução', date: now, notes: `Pedido Devolução: ${modalReason.trim()}` })
-            });
-        }
-        setModalState({ type: 'cancel', order: null });
-        setModalReason('');
-        alert("O seu pedido foi enviado com sucesso. A nossa equipa irá analisar e entrar em contacto.");
-    } catch (e) { 
-        console.error("Erro ao processar ação:", e); 
-        alert("Ocorreu um erro. Tente novamente."); 
-    } finally { 
-        setIsProcessingAction(false); 
+      setModalState({ type: 'cancel', order: null });
+      setModalReason('');
+      alert(response?.message || "O seu pedido foi enviado para análise.");
+    } catch (error: any) {
+      console.error("Erro ao enviar pedido de encomenda:", error);
+      alert(error?.message || "Não foi possível enviar o pedido. Tente novamente.");
+    } finally {
+      setIsProcessingAction(false);
     }
   };
 
   const handleCancelItem = async (order: Order, productId: number, quantity: number) => {
-      if (!window.confirm("Tem a certeza que quer cancelar este item da encomenda?")) return;
-      setIsProcessingAction(true);
-      
-      const item = order.items.find(i => typeof i === 'object' && i.productId === productId) as OrderItem | undefined;
-      const serials = item?.serialNumbers?.slice(0, quantity) || [];
-      
-      const result = await cancelOrderItem(order.id, productId, serials, "Cancelamento pelo cliente");
+    if (!window.confirm("Tem a certeza que quer pedir o cancelamento deste artigo? O pedido será analisado pela nossa equipa.")) return;
+    setIsProcessingAction(true);
+    try {
+      const response = await requestOrderAction({
+        action: 'cancel_item',
+        orderId: order.id,
+        productId,
+        quantity,
+        reason: 'Pedido de cancelamento de artigo pelo cliente',
+      });
+      alert(response?.message || "O pedido foi enviado para análise.");
+    } catch (error: any) {
+      console.error("Erro ao pedir cancelamento do artigo:", error);
+      alert(error?.message || "Não foi possível enviar o pedido. Tente novamente.");
+    } finally {
       setIsProcessingAction(false);
-      if (result.success) {
-          alert("Item cancelado com sucesso.");
-      } else {
-          alert(result.message);
-      }
+    }
   };
-  
-  // ... (Keep existing variables and helpers) ...
 
   const handleRedeemReward = async (reward: typeof LOYALTY_REWARDS[0]) => {
       const currentPoints = user.loyaltyPoints || 0;

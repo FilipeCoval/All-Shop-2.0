@@ -18,7 +18,7 @@ export const PUBLIC_URL = "https://www.all-shop.net";
 export const SHARE_URL = "https://share.all-shop.net";
 
 export const SELLER_PHONE = "351933865907"; 
-export const TELEGRAM_LINK = "https://t.me/+EEj0ObcKXzJmNjc8"; 
+export const TELEGRAM_LINK = "https://telegram.me/+EEj0ObcKXzJmNjc8"; 
 export const TELEGRAM_BOT_TOKEN = "8486202340:AAEny5gLzHm_obmJmPLeGKyNcjIePR3OBYs";
 export const TELEGRAM_CHAT_ID = "-1003494194252"; 
 
@@ -32,8 +32,7 @@ export const BOT_AVATAR_URL = "https://firebasestorage.googleapis.com/v0/b/allsh
 export const ADMIN_EMAILS = [
   "filipe_coval_90@hotmail.com",
   "filipecoval90@gmail.com",
-  "mcpoleca@gmail.com",
-  "filipe@teste.com"
+  "mcpoleca@gmail.com"
 ];
 
 export const getAdminDisplayName = (email: string | null | undefined): string => {
