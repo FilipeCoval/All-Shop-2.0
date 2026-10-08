@@ -14,7 +14,7 @@ import syncUserHandler from './api/sync-user.ts';
 import sitemapHandler from './api/sitemap.ts';
 import chatHandler from './api/chat.ts';
 import trackOrderHandler from './api/track-order.ts';
-import adminHandler from './api/admin/[resource].ts';
+import adminHandler from './api/admin.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -108,13 +108,16 @@ async function startServer() {
     }
   });
 
-  app.all('/api/admin/:resource', async (req, res) => {
+  const handleAdminRequest = async (req: express.Request, res: express.Response) => {
     try {
         await adminHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message || 'Erro interno na administração.' });
     }
-  });
+  };
+
+  app.all('/api/admin', handleAdminRequest);
+  app.all('/api/admin/:resource', handleAdminRequest);
 
   // Sitemap route
   app.get('/sitemap.xml', async (req, res) => {

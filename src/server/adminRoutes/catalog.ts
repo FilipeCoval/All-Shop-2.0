@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { FieldValue } from 'firebase-admin/firestore';
 import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
 import { getAdminDb } from '../firebaseAdmin.js';
+import { normalizeProductAvailabilityMode } from '../../domain/productAvailability.js';
 
 const text = (value: unknown, max = 2000) => String(value ?? '').trim().slice(0, max);
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -46,6 +47,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
       if (removedVariantWithInventory) {
         throw new ApiError(409, 'Não é possível apagar ou mudar o nome de uma opção que já tem lotes. Edite apenas o preço ou crie uma nova opção.');
       }
+      const availabilityMode = normalizeProductAvailabilityMode(input);
       const product = {
         ...current,
         id,
@@ -61,7 +63,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
         badges: strings(input.badges),
         variantLabel: text(input.variantLabel, 100),
         variants,
-        comingSoon: Boolean(input.comingSoon),
+        availabilityMode,
+        // Compatibility for the 2.0 storefront while all cached clients update.
+        comingSoon: availabilityMode === 'COMING_SOON',
         isPrivate: Boolean(input.isPrivate),
         maxQuantityPerOrder: input.maxQuantityPerOrder ? Math.max(1, Math.floor(number(input.maxQuantityPerOrder))) : null,
         stock: currentSnapshot.exists ? Math.max(0, number(current.stock)) : 0,

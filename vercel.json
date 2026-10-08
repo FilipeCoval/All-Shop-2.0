@@ -2,22 +2,26 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/admin/*.ts": {
+    "api/admin.ts": {
       "maxDuration": 60
     }
   },
   "rewrites": [
     {
+      "source": "/api/admin/:resource",
+      "destination": "/api/admin?resource=:resource"
+    },
+    {
       "source": "/api/checkout",
-      "destination": "/api/admin/legacy"
+      "destination": "/api/admin?resource=legacy"
     },
     {
       "source": "/api/cleanup-reservations",
-      "destination": "/api/admin/legacy"
+      "destination": "/api/admin?resource=legacy"
     },
     {
       "source": "/api/update-stock-summary",
-      "destination": "/api/admin/legacy"
+      "destination": "/api/admin?resource=legacy"
     },
     {
       "source": "/admin",

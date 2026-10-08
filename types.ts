@@ -222,6 +222,7 @@ export interface Product {
   premiumData?: PremiumBentoData;
   cardHoverColor?: string; // NOVO: Cor do efeito hover no card do produto
   comingSoon?: boolean;
+  availabilityMode?: import('./src/domain/productAvailability').ProductAvailabilityMode;
   maxQuantityPerOrder?: number; // NOVO: Limite de quantidade por encomenda
   badges?: string[];
   images?: string[];

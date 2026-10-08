@@ -3,6 +3,7 @@ import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, CircleDollarSign,
 import type { Product } from '../../types/domain';
 import type { AdminCoupon, AdminOrder, AdminUser, ImportShipment, ProductRequest, StockGroup, StoreCategory, SupportTicket } from './adminTypes';
 import { unitMatchesCode } from './unitIdentity';
+import { normalizeProductAvailabilityMode } from '../../domain/productAvailability';
 
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const shortDate = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'short' });
@@ -12,6 +13,7 @@ const safeDate = (value?: string) => {
   return Number.isFinite(parsed.getTime()) ? shortDate.format(parsed) : '—';
 };
 const statusClass = (status = '') => `status status-${status.toLocaleLowerCase('pt').replace(/\s/g, '-')}`;
+const availabilityLabel = (product: Product) => ({ AUTO: 'Automático', AVAILABLE: 'Disponível', COMING_SOON: 'Em breve', OUT_OF_STOCK: 'Esgotado' }[normalizeProductAvailabilityMode(product)]);
 
 export function ProductsSection({ products, groups, search, onCreateProduct, onEditProduct, onCreateLot, onOpenStock }: {
   products: Product[];
@@ -40,7 +42,7 @@ export function ProductsSection({ products, groups, search, onCreateProduct, onE
           <td><div className="product-cell"><img src={product.image} alt="" /><span><strong>{product.name}</strong><small>{product.category} · ID {product.id}</small></span></div></td>
           <td><strong>{euro.format(product.price)}</strong><small>{product.variants?.length ? `${product.variants.length} opções: ${product.variants.map((item) => item.name).join(' · ')}` : 'Sem variantes'}</small></td>
           <td>{group?.physical ?? 0}</td><td>{group?.reserved ?? 0}</td><td><b className="number-good">{group?.available ?? 0}</b></td>
-          <td>{group?.warnings.length ? <button className="warning-pill workspace-status" onClick={() => group && onOpenStock(group)} title={group.warnings.join('\n')}><AlertTriangle /> Verificar</button> : <span className={product.isPrivate ? 'neutral-pill' : 'ok-pill'}>{product.isPrivate ? 'Privado' : 'Certo'}</span>}</td>
+          <td>{group?.warnings.length ? <button className="warning-pill workspace-status" onClick={() => group && onOpenStock(group)} title={group.warnings.join('\n')}><AlertTriangle /> Verificar</button> : <span className={product.isPrivate ? 'neutral-pill' : normalizeProductAvailabilityMode(product) === 'OUT_OF_STOCK' ? 'warning-pill' : 'ok-pill'}>{product.isPrivate ? 'Privado' : availabilityLabel(product)}</span>}</td>
           <td><div className="product-row-actions"><button onClick={() => onEditProduct(product)} title="Gerir produto"><Pencil /> Gerir</button><button onClick={() => onCreateLot(product.id)} title="Adicionar lote"><PackagePlus /> Lote</button>{group && <button onClick={() => onOpenStock(group)} title="Ver stock"><PackageSearch /> Stock</button>}</div></td>
         </tr>; })}</tbody>
       </table>
@@ -56,7 +58,7 @@ export function CatalogSection({ products, search, onCreate, onEdit }: { product
         <td><div className="product-cell"><img src={product.image} alt="" /><span><strong>{product.name}</strong><small>ID {product.id}</small></span></div></td>
         <td>{product.category}</td><td><strong>{euro.format(product.price)}</strong></td>
         <td>{product.variants?.length ?? 0}</td><td>{product.variants?.length ? product.variants.reduce((sum, item) => sum + Number(item.stock ?? 0), 0) : product.stock}</td>
-        <td><span className={product.isPrivate ? 'warning-pill' : 'ok-pill'}>{product.isPrivate ? 'Privado' : 'Publicado'}</span></td><td><button className="table-action" onClick={() => onEdit(product)}>Editar</button></td>
+        <td><span className={product.isPrivate || normalizeProductAvailabilityMode(product) === 'OUT_OF_STOCK' ? 'warning-pill' : 'ok-pill'}>{product.isPrivate ? 'Privado' : availabilityLabel(product)}</span></td><td><button className="table-action" onClick={() => onEdit(product)}>Editar</button></td>
       </tr>)}</tbody>
     </table>
   </TableCard>;

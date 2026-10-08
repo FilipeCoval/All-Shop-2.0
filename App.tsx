@@ -65,6 +65,7 @@ import { supabaseSync } from './services/supabaseSync';
 import LoyaltyPage from './components/LoyaltyPage';
 import { trackVisit } from './services/analyticsService';
 import { reserveStock, finalizeOrder, syncCurrentUser } from './services/api';
+import { effectiveProductAvailability } from './src/domain/productAvailability';
 
 const App: React.FC = () => {
 
@@ -451,8 +452,9 @@ const App: React.FC = () => {
         }
 
         const availableStock = getStockForProduct(product.id, variant?.name);
-        if (availableStock < 1) {
-            alert("Produto esgotado.");
+        const availability = effectiveProductAvailability(product, availableStock);
+        if (availability !== 'AVAILABLE') {
+            alert(availability === 'COMING_SOON' ? 'Este produto estará disponível em breve.' : 'Produto esgotado.');
             setProcessingProductIds(prev => prev.filter(id => id !== product.id));
             return;
         }

@@ -19,6 +19,7 @@ export interface Product {
   features?: string[];
   badges?: string[];
   comingSoon?: boolean;
+  availabilityMode?: import('../domain/productAvailability').ProductAvailabilityMode;
   isPrivate?: boolean;
   maxQuantityPerOrder?: number;
 }

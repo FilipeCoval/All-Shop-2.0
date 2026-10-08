@@ -15,6 +15,7 @@ import {
   toReservationRecord,
   type ReservationRecord,
 } from '../services/server/stock-utils.js';
+import { normalizeProductAvailabilityMode } from '../src/domain/productAvailability.js';
 
 type RequestedItem = {
   productId: number;
@@ -122,6 +123,13 @@ export default async function handler(req: Request, res: Response) {
         ]);
         if (inventorySnapshot.empty || !publicSnapshot.exists) {
           throw new Error('Um dos produtos deixou de estar disponível. Atualize o carrinho.');
+        }
+        const availabilityMode = normalizeProductAvailabilityMode(publicSnapshot.data() ?? {});
+        if (availabilityMode === 'COMING_SOON') {
+          throw new Error('Um dos produtos está marcado como “Em breve” e ainda não pode ser comprado.');
+        }
+        if (availabilityMode === 'OUT_OF_STOCK') {
+          throw new Error('Um dos produtos está temporariamente marcado como esgotado.');
         }
         productContexts.set(productId, { inventorySnapshot, reservationsSnapshot, publicSnapshot, publicRef });
       }

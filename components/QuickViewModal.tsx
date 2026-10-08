@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product, ProductVariant } from '../types';
 import { X, ShoppingCart, Info } from 'lucide-react';
+import { effectiveProductAvailability } from '../src/domain/productAvailability';
 
 interface QuickViewModalProps {
   product: Product | null;
@@ -25,12 +26,15 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
   const selectedVariant = product.variants?.find(v => v.name === selectedVariantName);
   const currentPrice = selectedVariant?.price || product.price;
   const currentStock = getStock(product.id, selectedVariantName);
-  const isOutOfStock = currentStock <= 0 && currentStock !== 999 && !product.comingSoon;
+  const availability = effectiveProductAvailability(product, currentStock);
+  const isOutOfStock = availability === 'OUT_OF_STOCK';
+  const isComingSoon = availability === 'COMING_SOON';
+  const isUnavailable = availability !== 'AVAILABLE';
   const hasVariants = product.variants && product.variants.length > 0;
   const isVariantSelected = !!selectedVariantName;
 
   const handleAddToCart = () => {
-      if (isOutOfStock || (hasVariants && !isVariantSelected)) return;
+      if (isUnavailable || (hasVariants && !isVariantSelected)) return;
       if (selectedVariant) onAddToCart(product, selectedVariant);
       else onAddToCart(product);
       onClose();
@@ -50,6 +54,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
             <img src={selectedImage} alt={product.name} className="max-w-full max-h-[300px] md:max-h-full object-contain mix-blend-multiply dark:mix-blend-normal" />
             <div className="absolute top-4 left-4 flex flex-col gap-2">
                 {isOutOfStock && <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded shadow-sm">ESGOTADO</span>}
+                {isComingSoon && <span className="bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded shadow-sm">EM BREVE</span>}
                 {product.badges && product.badges.map(badge => {
                     const upperBadge = badge.toUpperCase();
                     let color = "bg-indigo-600";
@@ -125,15 +130,15 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
 
                 <button 
                     onClick={handleAddToCart}
-                    disabled={isOutOfStock || (hasVariants && !isVariantSelected)}
+                    disabled={isUnavailable || (hasVariants && !isVariantSelected)}
                     className={`w-full py-3 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all transform active:scale-95
-                        ${isOutOfStock || (hasVariants && !isVariantSelected)
+                        ${isUnavailable || (hasVariants && !isVariantSelected)
                             ? 'bg-gray-200 dark:bg-slate-700 text-gray-400 cursor-not-allowed' 
                             : 'bg-primary hover:bg-blue-600 text-white'}
                     `}
                 >
                     <ShoppingCart size={20} />
-                    {isOutOfStock ? 'Indisponível' : 'Adicionar ao Carrinho'}
+                    {isComingSoon ? 'Brevemente disponível' : isOutOfStock ? 'Indisponível' : 'Adicionar ao Carrinho'}
                 </button>
                 
                 <a href={`#product/${product.id}`} onClick={onClose} className="block text-center mt-4 text-sm font-medium text-gray-500 dark:text-slate-400 hover:text-primary dark:hover:text-primary transition-colors">
