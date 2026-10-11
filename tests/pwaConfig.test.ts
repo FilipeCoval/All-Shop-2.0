@@ -30,8 +30,9 @@ assert.match(viteSource, /navigateFallbackDenylist/);
 assert.match(installPromptSource, /Nova versão disponível/);
 assert.match(adminPwaSource, /Instalar admin/);
 assert.match(adminPwaSource, /Sem ligação/);
-assert.match(adminHtml, /viewport-fit=cover/);
-assert.match(adminStyles, /env\(safe-area-inset-bottom\)/);
+assert.doesNotMatch(adminHtml, /viewport-fit=cover/);
+assert.match(adminHtml, /apple-mobile-web-app-status-bar-style" content="black"/);
+assert.match(adminStyles, /\.admin-sidebar \{ width: 100%; height: 70px;/);
 assert.ok(
   adminDashboardSource.indexOf("setTab('reports')") < adminDashboardSource.indexOf("setTab('coupons')"),
   'Relatórios deve estar entre as áreas principais da navegação móvel.',

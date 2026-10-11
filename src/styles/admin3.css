@@ -1389,8 +1389,8 @@ img { display: block; max-width: 100%; }
   .editor-footer { flex-wrap: wrap; }
   .editor-footer > span { display: none; }
   .editor-footer button { flex: 1; justify-content: center; }
-  .admin-shell { display: block; padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
-  .admin-sidebar { width: 100%; height: calc(72px + env(safe-area-inset-bottom)); padding: 8px max(10px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left)); position: fixed; top: auto; bottom: 0; z-index: 45; display: block; overflow: hidden; border-top: 1px solid #28364a; border-radius: 18px 18px 0 0; box-shadow: 0 -10px 30px rgba(2,8,23,.18); }
+  .admin-shell { display: block; padding-bottom: 80px; }
+  .admin-sidebar { width: 100%; height: 70px; padding: 7px 10px 9px; position: fixed; top: auto; bottom: 0; z-index: 45; display: block; overflow: hidden; border-top: 1px solid #28364a; border-radius: 18px 18px 0 0; box-shadow: 0 -10px 30px rgba(2,8,23,.18); }
   .admin-brand, .admin-sidebar-footer, .admin-nav-label, .admin-sidebar nav button:nth-of-type(n+6) { display: none; }
   .admin-sidebar nav { height: 55px; margin: 0; grid-template-columns: repeat(6,1fr); gap: 4px; overflow: visible; scroll-padding-inline: 4px; }
   .admin-sidebar nav button { height: 54px; display: flex; position: relative; border-radius: 12px; }
