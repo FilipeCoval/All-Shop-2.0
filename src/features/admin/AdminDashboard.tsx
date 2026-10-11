@@ -133,6 +133,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
           <button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><ClipboardList /> Encomendas</button>
           <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}><UsersRound /> Clientes</button>
           <button className={tab === 'support' ? 'active' : ''} onClick={() => setTab('support')}><Headphones /> Suporte</button>
+          <button className={tab === 'reports' ? 'active' : ''} onClick={() => setTab('reports')}><FileBarChart /> Relatórios</button>
           <p className="admin-nav-label">Crescimento</p>
           <button className={tab === 'coupons' ? 'active' : ''} onClick={() => setTab('coupons')}><TicketPercent /> Cupões</button>
           <button className={tab === 'marketing' ? 'active' : ''} onClick={() => setTab('marketing')}><Megaphone /> Marketing</button>
@@ -140,7 +141,6 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
           <button className={tab === 'imports' ? 'active' : ''} onClick={() => setTab('imports')}><Import /> Importações</button>
           <button className={tab === 'cashback' ? 'active' : ''} onClick={() => setTab('cashback')}><CircleDollarSign /> Cashback{pendingCashbackCount > 0 && <span className="admin-nav-count">{pendingCashbackCount}</span>}</button>
           <button className={tab === 'categories' ? 'active' : ''} onClick={() => setTab('categories')}><Layers /> Categorias</button>
-          <button className={tab === 'reports' ? 'active' : ''} onClick={() => setTab('reports')}><FileBarChart /> Relatórios</button>
           <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}><History /> Histórico</button>
           <button className={tab === 'backups' ? 'active' : ''} onClick={() => setTab('backups')}><Database /> Backups</button>
         </nav>

@@ -10,6 +10,8 @@ const appSource = read('App.tsx');
 const installPromptSource = read('components/InstallPrompt.tsx');
 const firebaseSource = read('services/firebaseConfig.ts');
 const adminPwaSource = read('src/features/admin/AdminPwaControls.tsx');
+const adminDashboardSource = read('src/features/admin/AdminDashboard.tsx');
+const adminStyles = read('src/styles/admin3.css');
 const viteSource = read('vite.config.ts');
 const vercelConfig = JSON.parse(read('vercel.json')) as { headers?: Array<{ source?: string }> };
 
@@ -28,6 +30,12 @@ assert.match(viteSource, /navigateFallbackDenylist/);
 assert.match(installPromptSource, /Nova versão disponível/);
 assert.match(adminPwaSource, /Instalar admin/);
 assert.match(adminPwaSource, /Sem ligação/);
+assert.match(adminHtml, /viewport-fit=cover/);
+assert.match(adminStyles, /env\(safe-area-inset-bottom\)/);
+assert.ok(
+  adminDashboardSource.indexOf("setTab('reports')") < adminDashboardSource.indexOf("setTab('coupons')"),
+  'Relatórios deve estar entre as áreas principais da navegação móvel.',
+);
 assert.ok(vercelConfig.headers?.some((entry) => entry.source === '/sw.js'));
 
 console.log('PWA configuration regressions: OK');
