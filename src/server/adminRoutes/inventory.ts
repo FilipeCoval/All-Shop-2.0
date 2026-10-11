@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { FieldValue } from 'firebase-admin/firestore';
 import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
+import { cashbackReceiptUpdate, CashbackReceiptValidationError, prepareCashbackForLotSave, prepareCashbackReceipt } from '../cashbackReceipt.js';
 import { getAdminDb } from '../firebaseAdmin.js';
 import { inventoryUnitCodeDocumentId } from '../inventoryIdentity.js';
 import { projectPublicStock, type LotData, type ReservationData } from '../stockProjection.js';
@@ -60,6 +61,44 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const database = getAdminDb();
     const action = text(request.body?.action, 40);
     const lotId = text(request.body?.lotId, 100);
+
+    if (action === 'confirm_cashback_received') {
+      if (!lotId || lotId.includes('/')) throw new ApiError(400, 'O lote não foi indicado corretamente.');
+      const paidDate = text(request.body?.paidDate, 30);
+      const lotRef = database.collection('products_inventory').doc(lotId);
+      const result = await database.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(lotRef);
+        if (!snapshot.exists) throw new ApiError(404, 'O lote já não existe.');
+
+        let receipt;
+        try {
+          receipt = prepareCashbackReceipt(snapshot.data() ?? {}, paidDate);
+        } catch (error) {
+          if (error instanceof CashbackReceiptValidationError) throw new ApiError(error.status, error.message);
+          throw error;
+        }
+        if (receipt.alreadyReceived) {
+          return { lotId, alreadyReceived: true, paidDate: receipt.paidDate };
+        }
+
+        transaction.update(lotRef, cashbackReceiptUpdate(receipt.paidDate, FieldValue.serverTimestamp(), admin.uid));
+        const auditRef = database.collection('admin_audit_log').doc();
+        transaction.set(auditRef, {
+          action: 'confirm_cashback_received',
+          targetId: lotId,
+          lotId,
+          publicProductId: Number(snapshot.data()?.publicProductId) || null,
+          cashbackValue: receipt.value,
+          cashbackPaidDate: receipt.paidDate,
+          adminId: admin.uid,
+          adminEmail: admin.email,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        return { lotId, alreadyReceived: false, paidDate: receipt.paidDate };
+      });
+      return response.status(200).json({ success: true, ...result });
+    }
+
     const publicProductId = Number(request.body?.lot?.publicProductId ?? request.body?.publicProductId);
     if (!Number.isInteger(publicProductId) || publicProductId <= 0) throw new ApiError(400, 'Escolha um produto válido do catálogo.');
 
@@ -194,7 +233,13 @@ export default async function handler(request: VercelRequest, response: VercelRe
         }
         const soldUnitCount = units.filter((unit) => unit.status === 'SOLD').length;
         if (quantitySold < soldUnitCount) throw new ApiError(409, 'A quantidade vendida não pode ser inferior ao número de unidades já vendidas.');
-        const cashbackStatus = ['NONE', 'PENDING', 'RECEIVED', 'REJECTED'].includes(text(input.cashbackStatus, 20)) ? text(input.cashbackStatus, 20) : 'NONE';
+        let cashback;
+        try {
+          cashback = prepareCashbackForLotSave(input);
+        } catch (error) {
+          if (error instanceof CashbackReceiptValidationError) throw new ApiError(error.status, error.message);
+          throw error;
+        }
         const saved = withoutUndefined({
           ...existing,
           publicProductId,
@@ -207,11 +252,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
           quantitySold,
           purchasePrice: Math.max(0, number(input.purchasePrice)),
           salePrice: Math.max(0, number(input.salePrice)),
-          cashbackValue: Math.max(0, number(input.cashbackValue)),
-          cashbackStatus,
-          cashbackPlatform: text(input.cashbackPlatform, 120) || '',
-          cashbackExpectedDate: text(input.cashbackExpectedDate, 30) || '',
-          cashbackPaidDate: text(input.cashbackPaidDate, 30) || '',
+          ...cashback,
           grossPurchaseTotal: Math.max(0, number(input.grossPurchaseTotal)),
           supplierShippingCost: Math.max(0, number(input.supplierShippingCost)),
           customsCost: Math.max(0, number(input.customsCost)),

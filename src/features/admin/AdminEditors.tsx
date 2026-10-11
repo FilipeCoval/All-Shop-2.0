@@ -10,6 +10,12 @@ import { normalizeProductAvailabilityMode, type ProductAvailabilityMode } from '
 type EditorProps = { open: boolean; onClose: () => void; onSaved: () => Promise<void> };
 const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
+const localIsoDate = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 const NEW_LOT_DRAFT_PREFIX = 'allshop:admin:new-lot-draft:v1';
 const emptyLotForm = () => ({ publicProductId: '', variant: '', name: '', supplierName: '', supplierOrderId: '', purchaseDate: '', quantityBought: '1', quantitySold: '0', grossPurchaseTotal: '', supplierShippingCost: '', customsCost: '', salePrice: '', cashbackValue: '', cashbackStatus: 'NONE', cashbackPlatform: '', cashbackExpectedDate: '', cashbackPaidDate: '' });
 type LotFormState = ReturnType<typeof emptyLotForm>;
@@ -170,6 +176,10 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
   };
 
   const quantityForUnits = Math.max(0, Number(form.quantityBought) || 0);
+  const cashbackMaximum = Math.max(0, Number(form.grossPurchaseTotal) || 0)
+    + Math.max(0, Number(form.supplierShippingCost) || 0)
+    + Math.max(0, Number(form.customsCost) || 0);
+  const today = localIsoDate();
   const visibleUnits = Array.from({ length: Math.max(quantityForUnits, units.length) }, (_, index) => units[index] ?? { id: '', status: 'AVAILABLE' });
   const registeredUnits = visibleUnits.slice(0, quantityForUnits).filter((unit) => displayUnitCode(unit)).length;
   const setUnitSerial = (index: number, value: string) => setUnits((previous) => {
@@ -252,8 +262,13 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
       <div className="form-grid"><Field label="Portes do fornecedor"><input type="number" min="0" step="0.01" value={form.supplierShippingCost} onChange={(event) => setForm({ ...form, supplierShippingCost: event.target.value })} /></Field><Field label="Alfândega / outros custos"><input type="number" min="0" step="0.01" value={form.customsCost} onChange={(event) => setForm({ ...form, customsCost: event.target.value })} /></Field></div>
     </section>
     <section className="editor-section cashback-section"><header><span>4</span><div><strong>Cashback</strong><small>Registe o valor total, o estado e quando espera recebê-lo.</small></div></header>
-      <div className="form-grid"><Field label="Estado"><select value={form.cashbackStatus} onChange={(event) => setForm({ ...form, cashbackStatus: event.target.value })}><option value="NONE">Sem cashback</option><option value="PENDING">Por receber</option><option value="RECEIVED">Recebido</option><option value="REJECTED">Recusado / expirado</option></select></Field><Field label="Valor total do cashback"><input type="number" min="0" step="0.01" disabled={form.cashbackStatus === 'NONE'} value={form.cashbackValue} onChange={(event) => setForm({ ...form, cashbackValue: event.target.value })} /></Field></div>
-      {form.cashbackStatus !== 'NONE' && <><Field label="Plataforma / campanha"><input value={form.cashbackPlatform} onChange={(event) => setForm({ ...form, cashbackPlatform: event.target.value })} placeholder="Ex.: iGraal, AliExpress, promoção do fornecedor" /></Field><div className="form-grid"><Field label="Previsão de pagamento"><input type="date" value={form.cashbackExpectedDate} onChange={(event) => setForm({ ...form, cashbackExpectedDate: event.target.value })} /></Field>{form.cashbackStatus === 'RECEIVED' && <Field label="Data em que foi recebido"><input type="date" value={form.cashbackPaidDate} onChange={(event) => setForm({ ...form, cashbackPaidDate: event.target.value })} /></Field>}</div></>}
+      <div className="form-grid"><Field label="Estado"><select value={form.cashbackStatus} onChange={(event) => {
+        const cashbackStatus = event.target.value;
+        setForm(cashbackStatus === 'NONE'
+          ? { ...form, cashbackStatus, cashbackValue: '', cashbackPlatform: '', cashbackExpectedDate: '', cashbackPaidDate: '' }
+          : { ...form, cashbackStatus, cashbackPaidDate: cashbackStatus === 'RECEIVED' ? form.cashbackPaidDate : '' });
+      }}><option value="NONE">Sem cashback</option><option value="PENDING">Por receber</option><option value="RECEIVED">Recebido</option><option value="REJECTED">Recusado / expirado</option></select></Field><Field label="Valor total do cashback"><input type="number" min="0.01" max={cashbackMaximum || undefined} step="0.01" required={form.cashbackStatus !== 'NONE'} disabled={form.cashbackStatus === 'NONE'} value={form.cashbackValue} onChange={(event) => setForm({ ...form, cashbackValue: event.target.value })} /></Field></div>
+      {form.cashbackStatus !== 'NONE' && <><Field label="Plataforma / campanha"><input value={form.cashbackPlatform} onChange={(event) => setForm({ ...form, cashbackPlatform: event.target.value })} placeholder="Ex.: iGraal, AliExpress, promoção do fornecedor" /></Field><div className="form-grid"><Field label="Previsão de pagamento"><input type="date" value={form.cashbackExpectedDate} onChange={(event) => setForm({ ...form, cashbackExpectedDate: event.target.value })} /></Field>{form.cashbackStatus === 'RECEIVED' && <Field label="Data em que foi recebido"><input type="date" max={today} required value={form.cashbackPaidDate} onChange={(event) => setForm({ ...form, cashbackPaidDate: event.target.value })} /></Field>}</div></>}
     </section>
     <section className="editor-section serial-management"><header><span>5</span><div><strong>Unidades e S/N</strong><small>Leia ou escreva um número por unidade deste lote.</small></div><b>{registeredUnits}/{quantityForUnits}</b></header>
       <div className="serial-quick-entry">

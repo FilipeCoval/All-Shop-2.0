@@ -21,8 +21,9 @@
     "test:admin-routing": "tsx tests/adminRouting.test.ts",
     "test:inventory-identity": "tsx tests/inventoryIdentity.test.ts",
     "test:availability": "tsx tests/productAvailability.test.ts",
+    "test:cashback": "tsx tests/cashbackReceipt.test.ts",
     "test:checkout": "tsx tests/checkoutCore.test.ts",
-    "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock && npm run test:identity && npm run test:admin-request && npm run test:admin-error && npm run test:admin-routing && npm run test:inventory-identity && npm run test:availability",
+    "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock && npm run test:identity && npm run test:admin-request && npm run test:admin-error && npm run test:admin-routing && npm run test:inventory-identity && npm run test:availability && npm run test:cashback",
     "check": "npm run lint && npm run test:regression && npm run build"
   },
   "dependencies": {

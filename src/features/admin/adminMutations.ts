@@ -50,6 +50,7 @@ export const fulfillOrder = (orderId: string, selections: Array<{ serialNumber: 
 export const reviewOrderRequest = (orderId: string, requestKind: 'cancellation' | 'return', decision: 'approve' | 'reject', reviewNote = '') => callAdminApi(adminApiPath('orders'), { action: 'review_request', orderId, requestKind, decision, reviewNote });
 export const saveCatalogProduct = (product: Record<string, unknown>) => callAdminApi(adminApiPath('catalog'), { action: 'save_product', product });
 export const saveInventoryLot = (lot: Record<string, unknown>, lotId: string) => callAdminApi(adminApiPath('inventory'), { action: 'save_lot', lotId, lot }, { retryTransient: true });
+export const confirmInventoryCashbackReceived = (lotId: string, paidDate: string) => callAdminApi(adminApiPath('inventory'), { action: 'confirm_cashback_received', lotId, paidDate }, { retryTransient: true });
 export const deleteInventoryLot = (publicProductId: number, lotId: string) => callAdminApi(adminApiPath('inventory'), { action: 'delete_lot', publicProductId, lotId });
 export const syncProductStock = (publicProductId: number) => callAdminApi(adminApiPath('inventory'), { action: 'sync_product', publicProductId });
 export const saveCoupon = (coupon: Record<string, unknown>) => callAdminApi(adminApiPath('misc'), { action: 'save_coupon', coupon });

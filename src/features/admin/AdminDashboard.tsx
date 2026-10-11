@@ -12,6 +12,8 @@ import type { Product } from '../../types/domain';
 import { ImportEditor } from './ImportEditor';
 import { TelegramOrderRecovery } from './TelegramOrderRecovery';
 import { LOGO_URL, STORE_NAME } from '../../../constants';
+import { AdminCashbackSection } from './AdminCashbackSection';
+import { AdminNotificationCenter, type AdminCashbackNotificationTarget } from './AdminNotificationCenter';
 
 interface AdminDashboardProps {
   email: string;
@@ -20,12 +22,12 @@ interface AdminDashboardProps {
   onToggleDarkMode: () => void;
 }
 
-type AdminTab = 'overview' | 'products' | 'orders' | 'clients' | 'coupons' | 'support' | 'marketing' | 'imports' | 'categories' | 'reports' | 'audit' | 'backups';
+type AdminTab = 'overview' | 'products' | 'orders' | 'clients' | 'coupons' | 'support' | 'marketing' | 'imports' | 'cashback' | 'categories' | 'reports' | 'audit' | 'backups';
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const statusClass = (status: string) => `status status-${status.toLocaleLowerCase('pt').replace(/\s/g, '-')}`;
 const tabTitles: Record<AdminTab, string> = {
   overview: 'Hoje na loja', products: 'Produtos e stock', orders: 'Encomendas', clients: 'Clientes',
-  coupons: 'Cupões', support: 'Suporte', marketing: 'Marketing', imports: 'Importações', categories: 'Categorias', reports: 'Relatórios', audit: 'Histórico', backups: 'Backups',
+  coupons: 'Cupões', support: 'Suporte', marketing: 'Marketing', imports: 'Importações', cashback: 'Cashback', categories: 'Categorias', reports: 'Relatórios', audit: 'Histórico', backups: 'Backups',
 };
 const tabDescriptions: Record<AdminTab, string> = {
   overview: 'O que precisa da sua atenção, sem ruído.',
@@ -36,6 +38,7 @@ const tabDescriptions: Record<AdminTab, string> = {
   support: 'Pedidos de apoio e produtos procurados.',
   marketing: 'Comunicação com clientes que aceitaram notificações.',
   imports: 'Compras a fornecedores, envios e custos.',
+  cashback: 'Valores por receber e confirmação segura da sua receção.',
   categories: 'Organização visual do catálogo.',
   reports: 'Indicadores essenciais da operação.',
   audit: 'Registo das alterações administrativas.',
@@ -110,6 +113,11 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
   const pendingOrders = (data?.orders ?? []).filter((order) => ['Pendente', 'Processamento', 'Pago'].includes(order.status)).length;
   const completedRevenue = (data?.orders ?? []).filter((order) => order.status === 'Entregue').reduce((sum, order) => sum + Number(order.total ?? 0), 0);
   const warningCount = stockGroups.filter((group) => group.warnings.length > 0).length;
+  const pendingCashbackCount = (data?.lots ?? []).filter((lot) => Number(lot.cashbackValue ?? 0) > 0 && (!lot.cashbackStatus || String(lot.cashbackStatus).toUpperCase() === 'PENDING')).length;
+
+  const openCashbackNotification = (_target: AdminCashbackNotificationTarget) => {
+    setTab('cashback');
+  };
 
   return (
     <main className="admin-shell">
@@ -129,6 +137,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
           <button className={tab === 'marketing' ? 'active' : ''} onClick={() => setTab('marketing')}><Megaphone /> Marketing</button>
           <p className="admin-nav-label">Gestão</p>
           <button className={tab === 'imports' ? 'active' : ''} onClick={() => setTab('imports')}><Import /> Importações</button>
+          <button className={tab === 'cashback' ? 'active' : ''} onClick={() => setTab('cashback')}><CircleDollarSign /> Cashback{pendingCashbackCount > 0 && <span className="admin-nav-count">{pendingCashbackCount}</span>}</button>
           <button className={tab === 'categories' ? 'active' : ''} onClick={() => setTab('categories')}><Layers /> Categorias</button>
           <button className={tab === 'reports' ? 'active' : ''} onClick={() => setTab('reports')}><FileBarChart /> Relatórios</button>
           <button className={tab === 'audit' ? 'active' : ''} onClick={() => setTab('audit')}><History /> Histórico</button>
@@ -144,8 +153,17 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
         <header className="admin-topbar">
           <div><p className="eyebrow">Centro de controlo</p><h1>{tabTitles[tab]}</h1><p className="admin-page-description">{tabDescriptions[tab]}</p></div>
           <div className="admin-actions">
-            {!['overview', 'marketing', 'reports', 'backups'].includes(tab) && <label className="admin-search"><Search /><input placeholder={`Pesquisar em ${tabTitles[tab].toLocaleLowerCase('pt')}…`} value={search} onChange={(event) => setSearch(event.target.value)} /></label>}
+            {!['overview', 'marketing', 'cashback', 'reports', 'backups'].includes(tab) && <label className="admin-search"><Search /><input placeholder={`Pesquisar em ${tabTitles[tab].toLocaleLowerCase('pt')}…`} value={search} onChange={(event) => setSearch(event.target.value)} /></label>}
             {tab === 'orders' && <button className="telegram-recovery-button" type="button" onClick={() => setTelegramRecoveryOpen(true)}><Plus /> Recuperar pedido Telegram</button>}
+            {data && <AdminNotificationCenter
+              data={data}
+              stockGroups={stockGroups}
+              onOrder={(order) => { setTab('orders'); setSelectedOrder(order); setSelectedStock(null); }}
+              onSupport={(ticket) => { setTab('support'); setActionTarget({ kind: 'ticket', value: ticket }); }}
+              onRequest={(request) => { setTab('support'); setActionTarget({ kind: 'request', value: request }); }}
+              onStock={(group) => { setTab('products'); setSelectedStock(group); setSelectedOrder(null); }}
+              onCashback={openCashbackNotification}
+            />}
             <button className="admin-theme-button" type="button" onClick={onToggleDarkMode} aria-label={isDarkMode ? 'Ativar modo claro' : 'Ativar modo escuro'} aria-pressed={isDarkMode} title={isDarkMode ? 'Modo claro' : 'Modo escuro'}>
               {isDarkMode ? <Sun /> : <Moon />}
               <span>{isDarkMode ? 'Modo claro' : 'Modo escuro'}</span>
@@ -200,6 +218,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
         {data && tab === 'support' && <SupportSection tickets={data.tickets} requests={data.requests} search={search} onTicket={(ticket) => setActionTarget({ kind: 'ticket', value: ticket })} onRequest={(request) => setActionTarget({ kind: 'request', value: request })} />}
         {data && tab === 'marketing' && <MarketingSection users={data.users} onSent={refresh} />}
         {data && tab === 'imports' && <ImportsSection shipments={data.imports} search={search} onCreate={() => { setEditingImport(null); setImportEditorOpen(true); }} onOpen={(shipment) => { setEditingImport(shipment); setImportEditorOpen(true); }} />}
+        {data && tab === 'cashback' && <AdminCashbackSection lots={data.lots} onChanged={refresh} />}
         {data && tab === 'categories' && <CategoriesSection categories={data.categories} search={search} onCreate={() => setActionTarget({ kind: 'category', value: null })} onEdit={(category) => setActionTarget({ kind: 'category', value: category })} onChanged={refresh} />}
         {data && tab === 'reports' && <ReportsSection orders={data.orders} groups={stockGroups} users={data.users} categories={data.categories} />}
         {data && tab === 'audit' && <AuditSection entries={data.audit} search={search} />}
