@@ -1986,3 +1986,31 @@ html.dark .admin-notification-footer { background: #111c2e; }
   .admin-sidebar nav button:nth-of-type(n+6) { min-width: 49px; width: 49px; flex: 0 0 49px; display: flex; position: relative; }
   .admin-sidebar nav button .admin-nav-count { min-width: 16px; height: 16px; margin: 0; padding: 0 4px; position: absolute; top: 3px; right: 2px; font-size: 7px; }
 }
+
+/* Estado da PWA no topo do admin. As atualizações nunca recarregam
+   automaticamente enquanto o administrador está a preencher formulários. */
+.admin-pwa-control { min-height: 43px; padding: 0 13px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line); border-radius: 11px; background: white; color: #475569; font: inherit; font-size: 10px; font-weight: 850; white-space: nowrap; }
+button.admin-pwa-control { cursor: pointer; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+button.admin-pwa-control:hover { transform: translateY(-1px); border-color: #fdba74; box-shadow: 0 8px 20px rgba(15,23,42,.07); }
+.admin-pwa-control svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.admin-pwa-control.install { border-color: #fed7aa; background: #fff7ed; color: #c2410c; }
+.admin-pwa-control.update { border-color: #fdba74; background: #f97316; color: white; box-shadow: 0 8px 18px rgba(249,115,22,.22); }
+.admin-pwa-control.offline { border-color: #fecdd3; background: #fff1f2; color: #be123c; }
+.admin-pwa-control.ready { border-color: #a7f3d0; background: #ecfdf5; color: #047857; }
+.admin-pwa-control.ready > button { width: 22px; height: 22px; margin-right: -6px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: inherit; cursor: pointer; }
+.admin-pwa-control.ready > button:hover { background: rgba(5,150,105,.1); }
+.admin-pwa-control.ready > button svg { width: 13px; }
+.admin-pwa-control:focus-visible,
+.admin-pwa-control.ready > button:focus-visible { outline: 3px solid rgba(249,115,22,.3); outline-offset: 2px; }
+
+html.dark .admin-pwa-control { border-color: #34465e; background: #0b1627; color: #cbd5e1; }
+html.dark .admin-pwa-control.install { border-color: #7c2d12; background: rgba(154,52,18,.24); color: #fdba74; }
+html.dark .admin-pwa-control.update { border-color: #fb923c; background: #c2410c; color: white; }
+html.dark .admin-pwa-control.offline { border-color: #881337; background: rgba(136,19,55,.28); color: #fda4af; }
+html.dark .admin-pwa-control.ready { border-color: #065f46; background: rgba(6,78,59,.3); color: #6ee7b7; }
+
+@media (max-width: 760px) {
+  .admin-pwa-control { width: 43px; padding: 0; }
+  .admin-pwa-control > span { display: none; }
+  .admin-pwa-control.ready > button { display: none; }
+}

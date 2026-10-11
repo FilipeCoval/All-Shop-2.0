@@ -17,6 +17,9 @@ export function AdminPage() {
 
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', isDarkMode ? '#0f172a' : '#f3f6fb');
     try {
       window.localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
     } catch {

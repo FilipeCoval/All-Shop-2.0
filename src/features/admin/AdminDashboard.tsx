@@ -14,6 +14,7 @@ import { TelegramOrderRecovery } from './TelegramOrderRecovery';
 import { LOGO_URL, STORE_NAME } from '../../../constants';
 import { AdminCashbackSection } from './AdminCashbackSection';
 import { AdminNotificationCenter, type AdminCashbackNotificationTarget } from './AdminNotificationCenter';
+import { AdminPwaControls } from './AdminPwaControls';
 
 interface AdminDashboardProps {
   email: string;
@@ -155,6 +156,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
           <div className="admin-actions">
             {!['overview', 'marketing', 'cashback', 'reports', 'backups'].includes(tab) && <label className="admin-search"><Search /><input placeholder={`Pesquisar em ${tabTitles[tab].toLocaleLowerCase('pt')}…`} value={search} onChange={(event) => setSearch(event.target.value)} /></label>}
             {tab === 'orders' && <button className="telegram-recovery-button" type="button" onClick={() => setTelegramRecoveryOpen(true)}><Plus /> Recuperar pedido Telegram</button>}
+            <AdminPwaControls />
             {data && <AdminNotificationCenter
               data={data}
               stockGroups={stockGroups}

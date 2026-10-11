@@ -3,6 +3,9 @@ import React, { Component, ReactNode, ErrorInfo } from 'react';
 import ReactDOM from 'react-dom/client';
 import './src/index.css';
 import App from './App';
+import { registerAllShopPwa } from './src/pwa/pwaClient';
+
+registerAllShopPwa();
 
 // --- ROUTER GUARD PARA URLS LIMPOS ---
 // Se o utilizador vier de uma partilha (ex: /product/17), convertemos para o formato Hash (/#product/17)

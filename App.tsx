@@ -99,6 +99,9 @@ const App: React.FC = () => {
           document.documentElement.classList.remove('dark');
           localStorage.setItem('theme', 'light');
       }
+      document
+          .querySelector('meta[name="theme-color"]')
+          ?.setAttribute('content', isDarkMode ? '#111827' : '#f97316');
   }, [isDarkMode]);
 
   useEffect(() => {
@@ -118,17 +121,6 @@ const App: React.FC = () => {
         }
     } catch(e) {}
     
-    // Registrar o Service Worker para Push Notifications
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/firebase-messaging-sw.js')
-        .then(registration => {
-          console.log('SW registration successful:', registration.scope);
-        })
-        .catch(err => {
-          console.error('SW registration failed:', err);
-        });
-    }
-
     // Lucky Wheel Logic
     /* 
     const hasSpun = localStorage.getItem('lucky_wheel_spun');
