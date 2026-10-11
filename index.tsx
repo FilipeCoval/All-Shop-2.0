@@ -7,6 +7,19 @@ import { registerAllShopPwa } from './src/pwa/pwaClient';
 
 registerAllShopPwa();
 
+// A aplicação de administração tem uma instalação PWA independente.
+// Se um sistema operativo reutilizar por engano a janela da loja, enviamo-lo
+// imediatamente para a entrada exclusiva do admin.
+const handleAdminPwaLaunch = () => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('source') === 'admin-pwa') {
+    window.location.replace('/admin?source=admin-pwa');
+    return true;
+  }
+
+  return false;
+};
+
 // --- ROUTER GUARD PARA URLS LIMPOS ---
 // Se o utilizador vier de uma partilha (ex: /product/17), convertemos para o formato Hash (/#product/17)
 // Isto permite partilhar links bonitos no WhatsApp/Telegram que funcionam no nosso sistema.
@@ -19,7 +32,9 @@ const handleCleanUrlRedirect = () => {
     }
   }
 };
-handleCleanUrlRedirect();
+if (!handleAdminPwaLaunch()) {
+  handleCleanUrlRedirect();
+}
 
 // Error Boundary para capturar crashes e evitar ecrã branco
 interface ErrorBoundaryProps {

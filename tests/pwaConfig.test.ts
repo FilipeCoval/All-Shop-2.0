@@ -6,6 +6,7 @@ const storeManifest = JSON.parse(read('public/manifest.webmanifest')) as Record<
 const adminManifest = JSON.parse(read('public/admin.webmanifest')) as Record<string, unknown>;
 const indexHtml = read('index.html');
 const adminHtml = read('admin.html');
+const indexSource = read('index.tsx');
 const appSource = read('App.tsx');
 const installPromptSource = read('components/InstallPrompt.tsx');
 const firebaseSource = read('services/firebaseConfig.ts');
@@ -17,8 +18,11 @@ const vercelConfig = JSON.parse(read('vercel.json')) as { headers?: Array<{ sour
 
 assert.equal(storeManifest.id, '/');
 assert.equal(storeManifest.start_url, '/?source=pwa');
+assert.equal(storeManifest.scope, '/');
 assert.equal(adminManifest.id, '/admin');
-assert.equal(adminManifest.start_url, '/admin?source=pwa');
+assert.equal(adminManifest.start_url, '/admin?source=admin-pwa');
+assert.equal(adminManifest.scope, '/admin');
+assert.deepEqual(adminManifest.launch_handler, { client_mode: 'navigate-existing' });
 assert.match(indexHtml, /rel="manifest" href="\/manifest\.webmanifest"/);
 assert.match(adminHtml, /rel="manifest" href="\/admin\.webmanifest"/);
 assert.doesNotMatch(indexHtml, /getRegistrations\(\).*unregister/s);
@@ -30,6 +34,8 @@ assert.match(viteSource, /navigateFallbackDenylist/);
 assert.match(installPromptSource, /Nova versão disponível/);
 assert.match(adminPwaSource, /Instalar admin/);
 assert.match(adminPwaSource, /Sem ligação/);
+assert.match(indexSource, /source.*admin-pwa/);
+assert.match(indexSource, /location\.replace\('\/admin\?source=admin-pwa'\)/);
 assert.doesNotMatch(adminHtml, /viewport-fit=cover/);
 assert.match(adminHtml, /apple-mobile-web-app-status-bar-style" content="black"/);
 assert.match(adminStyles, /\.admin-sidebar \{ width: 100%; height: 70px;/);

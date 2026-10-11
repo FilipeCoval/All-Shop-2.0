@@ -4,9 +4,12 @@
   "short_name": "All-Shop Admin",
   "description": "Gestão de encomendas, stock, clientes, alertas e cashback da All-Shop.",
   "lang": "pt-PT",
-  "start_url": "/admin?source=pwa",
-  "scope": "/",
+  "start_url": "/admin?source=admin-pwa",
+  "scope": "/admin",
   "display": "standalone",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "orientation": "any",
   "theme_color": "#0f172a",
   "background_color": "#f3f6fb",
@@ -29,7 +32,7 @@
     {
       "name": "Abrir administração",
       "short_name": "Admin",
-      "url": "/admin?source=pwa"
+      "url": "/admin?source=admin-pwa"
     }
   ]
 }
