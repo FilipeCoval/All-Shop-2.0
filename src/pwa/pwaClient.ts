@@ -50,10 +50,7 @@ const checkForUpdate = (registration?: ServiceWorkerRegistration) => {
   void registration.update().catch(() => undefined);
 };
 
-export function registerAllShopPwa() {
-  if (initialized || !('serviceWorker' in navigator)) return;
-  initialized = true;
-
+const bindWindowLifecycle = () => {
   window.addEventListener('online', () => publish({ online: true, error: null }));
   window.addEventListener('offline', () => publish({ online: false }));
   window.addEventListener('beforeinstallprompt', (event) => {
@@ -65,6 +62,21 @@ export function registerAllShopPwa() {
     installPrompt = null;
     publish({ installable: false, standalone: true });
   });
+};
+
+const bindUpdateChecks = (registration: ServiceWorkerRegistration) => {
+  const requestUpdate = () => checkForUpdate(registration);
+  window.addEventListener('focus', requestUpdate);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') requestUpdate();
+  });
+  window.setInterval(requestUpdate, 60 * 60 * 1000);
+};
+
+export function registerAllShopPwa() {
+  if (initialized || !('serviceWorker' in navigator)) return;
+  initialized = true;
+  bindWindowLifecycle();
 
   updateServiceWorker = registerSW({
     immediate: true,
@@ -72,14 +84,45 @@ export function registerAllShopPwa() {
     onNeedRefresh: () => publish({ needRefresh: true }),
     onRegisterError: () => publish({ error: 'Não foi possível ativar a aplicação offline.' }),
     onRegisteredSW: (_serviceWorkerUrl, registration) => {
-      const requestUpdate = () => checkForUpdate(registration);
-      window.addEventListener('focus', requestUpdate);
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') requestUpdate();
-      });
-      window.setInterval(requestUpdate, 60 * 60 * 1000);
+      if (registration) bindUpdateChecks(registration);
     },
   });
+}
+
+export function registerAdminPwa() {
+  if (initialized || !('serviceWorker' in navigator)) return;
+  initialized = true;
+  bindWindowLifecycle();
+
+  const hadAdminController = navigator.serviceWorker.controller?.scriptURL.endsWith('/admin-sw.js') ?? false;
+  void navigator.serviceWorker.register('/admin-sw.js', { scope: '/admin' })
+    .then((registration) => {
+      const exposeWaitingUpdate = () => {
+        if (!registration.waiting) return;
+        publish({ needRefresh: true });
+        updateServiceWorker = async (reloadPage = true) => {
+          const waiting = registration.waiting;
+          if (!waiting) return;
+          if (reloadPage) {
+            navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
+          }
+          waiting.postMessage({ type: 'SKIP_WAITING' });
+        };
+      };
+
+      exposeWaitingUpdate();
+      registration.addEventListener('updatefound', () => {
+        const installing = registration.installing;
+        if (!installing) return;
+        installing.addEventListener('statechange', () => {
+          if (installing.state !== 'installed') return;
+          if (hadAdminController) exposeWaitingUpdate();
+          else publish({ offlineReady: true });
+        });
+      });
+      bindUpdateChecks(registration);
+    })
+    .catch(() => publish({ error: 'Não foi possível ativar a aplicação Admin offline.' }));
 }
 
 export async function installAllShopPwa() {

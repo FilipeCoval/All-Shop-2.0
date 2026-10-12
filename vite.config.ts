@@ -19,17 +19,8 @@ export default defineConfig({
           cleanupOutdatedCaches: true,
           navigateFallback: '/index.html',
           navigateFallbackDenylist: [/^\/admin(?:\/|$)/, /^\/api\//],
+          globIgnores: ['admin.html', 'admin-sw.js', 'assets/admin-*.js', 'assets/admin-*.css'],
           runtimeCaching: [
-            {
-              urlPattern: ({ request, url }) => request.mode === 'navigate' && (url.pathname === '/admin' || url.pathname === '/admin.html'),
-              handler: 'NetworkFirst',
-              options: {
-                cacheName: 'allshop-admin-shell',
-                networkTimeoutSeconds: 5,
-                expiration: { maxEntries: 3, maxAgeSeconds: 24 * 60 * 60 },
-                cacheableResponse: { statuses: [0, 200] },
-              },
-            },
             {
               urlPattern: ({ request }) => request.destination === 'image',
               handler: 'CacheFirst',

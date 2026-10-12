@@ -1,10 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { AdminPage } from './src/features/admin/AdminPage';
-import { registerAllShopPwa } from './src/pwa/pwaClient';
+import { registerAdminPwa } from './src/pwa/pwaClient';
 import './src/styles/admin3.css';
 
-registerAllShopPwa();
+registerAdminPwa();
 
 const root = document.getElementById('admin-root');
 if (!root) throw new Error('Não foi possível abrir a administração.');
