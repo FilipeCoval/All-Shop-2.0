@@ -8,8 +8,11 @@
   },
   "scripts": {
     "dev": "tsx server.ts",
+    "dev:admin": "vite --config vite.admin.config.ts",
     "build": "vite build",
+    "build:admin": "vite build --config vite.admin.config.ts",
     "preview": "vite preview",
+    "preview:admin": "vite preview --config vite.admin.config.ts",
     "start": "tsx server.ts",
     "lint": "tsc --noEmit",
     "test:fulfillment": "tsx tests/orderFulfillment.test.ts",
@@ -25,7 +28,7 @@
     "test:pwa": "tsx tests/pwaConfig.test.ts",
     "test:checkout": "tsx tests/checkoutCore.test.ts",
     "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock && npm run test:identity && npm run test:admin-request && npm run test:admin-error && npm run test:admin-routing && npm run test:inventory-identity && npm run test:availability && npm run test:cashback && npm run test:pwa",
-    "check": "npm run lint && npm run test:regression && npm run build"
+    "check": "npm run lint && npm run test:regression && npm run build && npm run build:admin"
   },
   "dependencies": {
     "@google/genai": "latest",

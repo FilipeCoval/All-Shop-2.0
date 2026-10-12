@@ -5,10 +5,11 @@ interface AdminLoginProps {
   error: string | null;
   isDarkMode: boolean;
   onLogin: (email: string, password: string) => Promise<void>;
+  storefrontUrl: string;
   onToggleDarkMode: () => void;
 }
 
-export function AdminLogin({ error, isDarkMode, onLogin, onToggleDarkMode }: AdminLoginProps) {
+export function AdminLogin({ error, isDarkMode, onLogin, storefrontUrl, onToggleDarkMode }: AdminLoginProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -29,7 +30,7 @@ export function AdminLogin({ error, isDarkMode, onLogin, onToggleDarkMode }: Adm
     <main className="admin-login-page">
       <section className="admin-login-card">
         <div className="admin-login-toolbar">
-          <a href="/" className="back-link"><ArrowLeft size={17} /> Voltar à loja</a>
+          <a href={storefrontUrl} className="back-link"><ArrowLeft size={17} /> Abrir loja</a>
           <button className="admin-theme-button admin-login-theme" type="button" onClick={onToggleDarkMode} aria-label={isDarkMode ? 'Ativar modo claro' : 'Ativar modo escuro'} aria-pressed={isDarkMode} title={isDarkMode ? 'Modo claro' : 'Modo escuro'}>
             {isDarkMode ? <Sun /> : <Moon />}
           </button>

@@ -89,13 +89,13 @@ export function registerAllShopPwa() {
   });
 }
 
-export function registerAdminPwa() {
+function registerDedicatedAdminPwa(scope: '/admin' | '/') {
   if (initialized || !('serviceWorker' in navigator)) return;
   initialized = true;
   bindWindowLifecycle();
 
   const hadAdminController = navigator.serviceWorker.controller?.scriptURL.endsWith('/admin-sw.js') ?? false;
-  void navigator.serviceWorker.register('/admin-sw.js', { scope: '/admin' })
+  void navigator.serviceWorker.register('/admin-sw.js', { scope })
     .then((registration) => {
       const exposeWaitingUpdate = () => {
         if (!registration.waiting) return;
@@ -123,6 +123,14 @@ export function registerAdminPwa() {
       bindUpdateChecks(registration);
     })
     .catch(() => publish({ error: 'Não foi possível ativar a aplicação Admin offline.' }));
+}
+
+export function registerAdminPwa() {
+  registerDedicatedAdminPwa('/admin');
+}
+
+export function registerStandaloneAdminPwa() {
+  registerDedicatedAdminPwa('/');
 }
 
 export async function installAllShopPwa() {

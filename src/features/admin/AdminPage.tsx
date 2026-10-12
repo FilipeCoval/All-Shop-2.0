@@ -3,7 +3,11 @@ import { AdminDashboard } from './AdminDashboard';
 import { AdminLogin } from './AdminLogin';
 import { useAdminAuth } from './useAdminAuth';
 
-export function AdminPage() {
+interface AdminPageProps {
+  storefrontUrl?: string;
+}
+
+export function AdminPage({ storefrontUrl = '/' }: AdminPageProps) {
   const auth = useAdminAuth();
   const [isDarkMode, setIsDarkMode] = useState(() => {
     try {
@@ -44,6 +48,7 @@ export function AdminPage() {
         error={auth.error}
         isDarkMode={isDarkMode}
         onLogin={auth.login}
+        storefrontUrl={storefrontUrl}
         onToggleDarkMode={() => setIsDarkMode((current) => !current)}
       />
     );
