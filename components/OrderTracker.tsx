@@ -1,8 +1,7 @@
 
 import React, { useState } from 'react';
 import { Search, Package, Truck, CheckCircle, Clock, AlertCircle, Copy, ArrowRight } from 'lucide-react';
-import { modularDb } from '../services/firebaseConfig';
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { trackOrder } from '../services/api';
 import { Order } from '../types';
 
 const OrderTracker: React.FC = () => {
@@ -25,29 +24,11 @@ const OrderTracker: React.FC = () => {
     setOrder(null);
 
     try {
-        // Normalizar ID (remover # se existir, uppercase)
-        let normalizedId = searchId.trim().toUpperCase();
-        const cleanedId = normalizedId.startsWith('#') ? normalizedId.substring(1) : normalizedId;
-        const withHashId = normalizedId.startsWith('#') ? normalizedId : '#' + normalizedId;
-
-        const q = query(
-            collection(modularDb, 'orders'),
-            where('id', 'in', [cleanedId, withHashId]),
-            where('shippingInfo.email', '==', email.trim().toLowerCase()),
-            limit(1)
-        );
-        const snapshot = await getDocs(q);
-
-        if (snapshot.empty) {
-            setError('Encomenda não encontrada. Verifique o ID e o email associado.');
-        } else {
-            const orderData = snapshot.docs[0].data() as Order;
-            orderData.id = snapshot.docs[0].id;
-            setOrder(orderData);
-        }
-    } catch (err) {
+        const response = await trackOrder(searchId, email);
+        setOrder(response.order as Order);
+    } catch (err: any) {
         console.error(err);
-        setError('Ocorreu um erro ao procurar. Tente novamente.');
+        setError(err?.message || 'Ocorreu um erro ao procurar. Tente novamente.');
     } finally {
         setLoading(false);
     }

@@ -11,6 +11,7 @@ import PremiumBentoLayout from './PremiumBentoLayout';
 import { STORE_NAME, PUBLIC_URL, SHARE_URL } from '../constants';
 import {  db , modularDb } from '../services/firebaseConfig';
 import { doc, updateDoc, increment, arrayUnion, collection, addDoc } from 'firebase/firestore';
+import { effectiveProductAvailability } from '../src/domain/productAvailability';
 
 const CountdownTimer: React.FC<{ targetDate: string }> = ({ targetDate }) => {
     const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
@@ -139,9 +140,11 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   const hasVariants = product.variants && product.variants.length > 0;
   const isVariantSelected = !!selectedVariantName;
   
-  const isOutOfStock = currentStock <= 0 && currentStock !== 999;
-  const isUnavailable = isOutOfStock || !!product.comingSoon;
-  const isLowStock = currentStock > 0 && currentStock <= 3 && currentStock !== 999 && !product.comingSoon;
+  const availability = effectiveProductAvailability(product, currentStock);
+  const isComingSoon = availability === 'COMING_SOON';
+  const isOutOfStock = availability === 'OUT_OF_STOCK';
+  const isUnavailable = availability !== 'AVAILABLE';
+  const isLowStock = currentStock > 0 && currentStock <= 3 && currentStock !== 999 && availability === 'AVAILABLE';
   const isFavorite = wishlist.includes(product.id);
   
   // Só mostra promoção se NÃO tiver acabado
@@ -312,7 +315,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
       "priceCurrency": "EUR",
       "price": String(currentPrice),
       "itemCondition": "https://schema.org/NewCondition",
-      "availability": (isOutOfStock && !product.comingSoon) ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
+      "availability": isUnavailable ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
       "shippingDetails": {
         "@type": "OfferShippingDetails",
         "shippingRate": {
@@ -363,8 +366,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                 alt={product.name} 
                 className={`w-full h-full object-contain p-4 transition-all duration-300 ${isUnavailable ? 'grayscale opacity-50' : ''}`} 
             />
-            {isOutOfStock && !product.comingSoon && <div className="absolute inset-0 flex items-center justify-center"><span className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold text-xl shadow-lg transform -rotate-12 border-4 border-white dark:border-gray-800">ESGOTADO</span></div>}
-            {product.comingSoon && <div className="absolute inset-0 flex items-center justify-center bg-purple-900/10"><span className="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold text-xl shadow-lg transform rotate-3 border-4 border-white dark:border-gray-800">EM BREVE</span></div>}
+            {isOutOfStock && <div className="absolute inset-0 flex items-center justify-center"><span className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold text-xl shadow-lg transform -rotate-12 border-4 border-white dark:border-gray-800">ESGOTADO</span></div>}
+            {isComingSoon && <div className="absolute inset-0 flex items-center justify-center bg-purple-900/10"><span className="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold text-xl shadow-lg transform rotate-3 border-4 border-white dark:border-gray-800">EM BREVE</span></div>}
             <button onClick={() => onToggleWishlist(product.id)} className="absolute top-4 right-4 p-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur rounded-full shadow-sm hover:scale-110 transition-transform text-gray-400 hover:text-red-500"><Heart size={24} className={isFavorite ? "fill-red-500 text-red-500" : ""} /></button>
           </div>
           <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
@@ -412,8 +415,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                {showPromo && (
                    <span className="text-xl text-gray-400 line-through mb-1.5">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.originalPrice!)}</span>
                )}
-               {isOutOfStock && !product.comingSoon && <span className="text-red-500 font-bold mb-2">Indisponível</span>}
-               {product.comingSoon && <span className="text-purple-600 dark:text-purple-400 font-bold mb-2 uppercase tracking-wide">Pré-Lançamento</span>}
+               {isOutOfStock && <span className="text-red-500 font-bold mb-2">Indisponível</span>}
+               {isComingSoon && <span className="text-purple-600 dark:text-purple-400 font-bold mb-2 uppercase tracking-wide">Em breve</span>}
            </div>
 
            {hasVariants && product.variants && (
@@ -458,10 +461,10 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                             <>
                                 <h4 className="font-bold text-yellow-900 dark:text-yellow-300 text-lg mb-2 flex items-center gap-2">
                                     <Mail size={20}/> 
-                                    {product.comingSoon ? 'Seja o primeiro a saber!' : 'Avise-me quando chegar!'}
+                                    {isComingSoon ? 'Seja o primeiro a saber!' : 'Avise-me quando chegar!'}
                                 </h4>
                                 <p className="text-sm text-yellow-800 dark:text-yellow-400 mb-4">
-                                    {product.comingSoon ? 'Deixe o seu email para ser notificado assim que este produto for lançado.' : 'Deixe o seu email para ser notificado assim que este produto estiver disponível.'}
+                                    {isComingSoon ? 'Deixe o seu email para ser notificado assim que este produto for lançado.' : 'Deixe o seu email para ser notificado assim que este produto estiver disponível.'}
                                 </p>
                                 <form onSubmit={handleStockAlertSubmit} className="flex flex-col sm:flex-row gap-2">
                                     <input 
@@ -518,7 +521,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                        <>
                            <ShoppingCart size={24} /> 
                            {isUnavailable 
-                               ? (product.comingSoon ? 'Brevemente Disponível' : 'Indisponível') 
+                               ? (isComingSoon ? 'Brevemente Disponível' : 'Indisponível')
                                : (hasVariants && !isVariantSelected) 
                                    ? 'Selecione uma opção'
                                    : 'Comprar Agora'}

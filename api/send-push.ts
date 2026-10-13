@@ -27,10 +27,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             // Caso Especial: Enviar para ADMINS
             // Lista de emails de admin (Sincronizada com firestore.rules)
             const ADMIN_EMAILS = [
-                "filipe_coval_90@hotmail.com", 
+                "filipe_coval_90@hotmail.com",
                 "filipecoval90@gmail.com",
-                "mcpoleca@gmail.com", 
-                "filipe@teste.com"
+                "mcpoleca@gmail.com"
             ].map(e => e.toLowerCase());
             
             // Buscar TODOS os utilizadores e filtrar em memória para evitar problemas de Case Sensitivity

@@ -1,0 +1,21 @@
+ALL-SHOP — COMO ATUALIZAR E PUBLICAR
+
+1. Abrir a pasta do projeto no VS Code.
+2. Confirmar que o ficheiro .env.local continua presente.
+3. No terminal, executar:
+
+   npm install
+   npm run check
+
+4. Se não existirem erros, executar:
+
+   git status
+   git add .
+   git commit -m "Descrição da alteração"
+   git push
+
+5. Abrir a Vercel e confirmar que o deployment terminou com sucesso.
+6. Testar a alteração no site.
+
+NÃO executar: npm audit fix --force
+NÃO enviar o ficheiro .env.local para o GitHub.

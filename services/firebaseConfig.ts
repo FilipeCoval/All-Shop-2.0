@@ -70,17 +70,20 @@ export const requestPushPermission = async (): Promise<string | null> => {
     if (permission === 'granted') {
       
       try {
-        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        // O worker de notificações usa um âmbito próprio para não substituir
+        // o service worker da PWA que mantém a loja e o admin instaláveis.
+        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', {
+          scope: '/firebase-cloud-messaging-push-scope/',
+        });
         console.log("Service Worker registrado com sucesso:", registration.scope);
-        await navigator.serviceWorker.ready; // Aguarda a activação do Service Worker
+        await registration.update();
+        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
+        console.log("Token FCM gerado com sucesso:", token);
+        return token;
       } catch (swError) {
         console.error("Erro ao registrar Service Worker:", swError);
+        return null;
       }
-
-      // Obter Token usando a VAPID Key correta
-      const token = await getToken(messaging, { vapidKey: VAPID_KEY });
-      console.log("Token FCM gerado com sucesso:", token);
-      return token;
     }
   } catch (error: any) {
     console.error("Erro ao ativar notificações:", error);
