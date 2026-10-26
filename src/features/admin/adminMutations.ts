@@ -55,6 +55,7 @@ export const deleteInventoryLot = (publicProductId: number, lotId: string) => ca
 export const syncProductStock = (publicProductId: number) => callAdminApi(adminApiPath('inventory'), { action: 'sync_product', publicProductId });
 export const saveCoupon = (coupon: Record<string, unknown>) => callAdminApi(adminApiPath('misc'), { action: 'save_coupon', coupon });
 export const updateSupportTicket = (ticketId: string, status: string, priority: string, message = '') => callAdminApi(adminApiPath('misc'), { action: 'update_ticket', ticketId, status, priority, message });
+export const markSupportTicketRead = (ticketId: string) => callAdminApi(adminApiPath('misc'), { action: 'mark_ticket_read', ticketId });
 export const updateProductRequest = (requestId: string, status: string, adminComment = '') => callAdminApi(adminApiPath('misc'), { action: 'update_request', requestId, status, adminComment });
 export const updateImportStatus = (shipmentId: string, status: string) => callAdminApi(adminApiPath('misc'), { action: 'update_import_status', shipmentId, status });
 export const saveImportShipment = (shipment: Record<string, unknown>) => callAdminApi(adminApiPath('misc'), { action: 'save_import', shipment });

@@ -1,6 +1,6 @@
 import { AlertTriangle, Boxes, CircleDollarSign, ClipboardList, Database, FileBarChart, Headphones, History, Import, Layers, LayoutDashboard, LogOut, Megaphone, Moon, PackageCheck, PackagePlus, Plus, RefreshCw, Search, Sun, TicketPercent, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { loadAdminSnapshot } from './adminApi';
+import { loadAdminSnapshot, subscribeSupportTickets } from './adminApi';
 import type { AdminOrder, AdminSnapshot, InventoryLot, StockGroup } from './adminTypes';
 import { buildStockGroups } from './stockMetrics';
 import { ClientsSection, CouponsSection, ImportsSection, OrdersSection, ProductsSection, ReportsSection, SupportSection } from './AdminSections';
@@ -106,6 +106,18 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
     };
   }, [refresh]);
 
+  useEffect(() => {
+    try {
+      return subscribeSupportTickets(
+        (tickets) => setData((current) => current ? { ...current, tickets } : current),
+        (cause) => setError(cause.message || 'Não foi possível acompanhar o suporte em tempo real.'),
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível acompanhar o suporte em tempo real.');
+      return undefined;
+    }
+  }, []);
+
   const stockGroups = useMemo(
     () => data ? buildStockGroups(data.lots, data.products, data.reservations) : [],
     [data],
@@ -114,6 +126,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
   const pendingOrders = (data?.orders ?? []).filter((order) => ['Pendente', 'Processamento', 'Pago'].includes(order.status)).length;
   const completedRevenue = (data?.orders ?? []).filter((order) => order.status === 'Entregue').reduce((sum, order) => sum + Number(order.total ?? 0), 0);
   const warningCount = stockGroups.filter((group) => group.warnings.length > 0).length;
+  const unreadSupportCount = (data?.tickets ?? []).filter((ticket) => ticket.unreadAdmin).length;
   const pendingCashbackCount = (data?.lots ?? []).filter((lot) => Number(lot.cashbackValue ?? 0) > 0 && (!lot.cashbackStatus || String(lot.cashbackStatus).toUpperCase() === 'PENDING')).length;
 
   const openCashbackNotification = (_target: AdminCashbackNotificationTarget) => {
@@ -132,7 +145,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
           <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><Boxes /> Produtos e stock</button>
           <button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><ClipboardList /> Encomendas</button>
           <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}><UsersRound /> Clientes</button>
-          <button className={tab === 'support' ? 'active' : ''} onClick={() => setTab('support')}><Headphones /> Suporte</button>
+          <button className={tab === 'support' ? 'active' : ''} onClick={() => setTab('support')}><Headphones /> Suporte{unreadSupportCount > 0 && <span className="admin-nav-count">{unreadSupportCount}</span>}</button>
           <button className={tab === 'reports' ? 'active' : ''} onClick={() => setTab('reports')}><FileBarChart /> Relatórios</button>
           <p className="admin-nav-label">Crescimento</p>
           <button className={tab === 'coupons' ? 'active' : ''} onClick={() => setTab('coupons')}><TicketPercent /> Cupões</button>

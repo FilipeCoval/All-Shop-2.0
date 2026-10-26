@@ -1,7 +1,8 @@
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { firestore } from '../../lib/firebase';
 import type { Product } from '../../types/domain';
 import type { AdminAuditEntry, AdminCoupon, AdminOrder, AdminSnapshot, AdminUser, ImportShipment, InventoryLot, ProductRequest, StockReservation, StoreCategory, SupportTicket } from './adminTypes';
+import { supportTicketActivity } from './supportConversation';
 
 const getCollection = async <T>(name: string): Promise<T[]> => {
   if (!firestore) throw new Error('Firebase não configurado.');
@@ -58,6 +59,16 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
     categories: categories.sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0)),
     audit: audit.sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt)).slice(0, 100),
   };
+}
+
+export function subscribeSupportTickets(onChange: (tickets: SupportTicket[]) => void, onError?: (cause: Error) => void) {
+  if (!firestore) throw new Error('Firebase não configurado.');
+  return onSnapshot(collection(firestore, 'support_tickets'), (snapshot) => {
+    const tickets = snapshot.docs
+      .map((document) => ({ id: document.id, ...document.data() }) as SupportTicket)
+      .sort((left, right) => supportTicketActivity(right) - supportTicketActivity(left));
+    onChange(tickets);
+  }, (cause) => onError?.(cause));
 }
 function timestampMillis(value: AdminAuditEntry['createdAt']) {
   if (!value) return 0;

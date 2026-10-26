@@ -153,14 +153,30 @@ export interface AdminCoupon {
 
 export interface SupportTicket {
   id: string;
+  userId?: string;
   subject?: string;
+  description?: string;
   customerName?: string;
   customerEmail?: string;
   category?: string;
   status?: string;
   priority?: string;
+  createdAt?: string;
   updatedAt?: string;
+  orderId?: string;
+  messages?: SupportTicketMessage[];
+  unreadUser?: boolean;
   unreadAdmin?: boolean;
+}
+
+export interface SupportTicketMessage {
+  id: string;
+  senderId?: string;
+  senderName?: string;
+  role: 'user' | 'admin' | 'system';
+  text: string;
+  timestamp?: string;
+  attachments?: string[];
 }
 
 export interface ImportShipment {

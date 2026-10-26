@@ -1,10 +1,33 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { getApp } from 'firebase-admin/app';
 import { FieldValue } from 'firebase-admin/firestore';
+import { getMessaging } from 'firebase-admin/messaging';
 import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
 import { getAdminDb } from '../firebaseAdmin.js';
 
 const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
+
+async function notifySupportReply(database: ReturnType<typeof getAdminDb>, userId: string, subject: string) {
+  if (!userId) return;
+  try {
+    const userSnapshot = await database.collection('users').doc(userId).get();
+    const user = userSnapshot.data() ?? {};
+    const rawTokens = Array.isArray(user.deviceTokens) ? user.deviceTokens : user.fcmToken ? [user.fcmToken] : [];
+    const tokens = [...new Set(rawTokens.map((token: unknown) => text(token, 500)).filter((token: string) => token.length > 10))].slice(0, 500);
+    if (!tokens.length) return;
+    await getMessaging(getApp()).sendEachForMulticast({
+      tokens,
+      notification: { title: 'Resposta do suporte All-Shop', body: subject || 'Tem uma nova mensagem do suporte.' },
+      webpush: {
+        notification: { icon: 'https://i.imgur.com/nSiZKBf.png' },
+        fcmOptions: { link: 'https://www.all-shop.net/#account' },
+      },
+    });
+  } catch (cause) {
+    console.warn('[support-push] Não foi possível enviar a notificação.', cause instanceof Error ? cause.message : cause);
+  }
+}
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
   if (!requirePost(request, response)) return;
@@ -30,10 +53,25 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const status = text(request.body?.status, 40);
       const priority = text(request.body?.priority, 20);
       if (!['Aberto', 'Em Análise', 'Resolvido', 'Fechado'].includes(status) || !['Baixa', 'Média', 'Alta'].includes(priority)) throw new ApiError(400, 'Estado ou prioridade inválidos.');
+      const ticketRef = database.collection('support_tickets').doc(targetId);
+      const ticketSnapshot = await ticketRef.get();
+      if (!ticketSnapshot.exists) throw new ApiError(404, 'Pedido de suporte não encontrado.');
+      const ticket = ticketSnapshot.data() ?? {};
       const update: Record<string, unknown> = { status, priority, unreadAdmin: false, updatedAt: new Date().toISOString(), updatedBy: admin.uid };
       const message = text(request.body?.message, 3000);
-      if (message) update.messages = FieldValue.arrayUnion({ id: database.collection('_').doc().id, senderId: admin.uid, senderName: 'All-Shop', role: 'admin', text: message, timestamp: new Date().toISOString() });
-      await database.collection('support_tickets').doc(targetId).update(update);
+      if (message) {
+        update.messages = FieldValue.arrayUnion({ id: database.collection('_').doc().id, senderId: admin.uid, senderName: 'All-Shop', role: 'admin', text: message, timestamp: new Date().toISOString() });
+        update.unreadUser = true;
+      }
+      await ticketRef.update(update);
+      if (message) await notifySupportReply(database, text(ticket.userId, 100), text(ticket.subject, 180));
+    } else if (action === 'mark_ticket_read') {
+      targetId = text(request.body?.ticketId, 100);
+      if (!targetId) throw new ApiError(400, 'Ticket inválido.');
+      const ticketRef = database.collection('support_tickets').doc(targetId);
+      if (!(await ticketRef.get()).exists) throw new ApiError(404, 'Pedido de suporte não encontrado.');
+      await ticketRef.update({ unreadAdmin: false, readByAdminAt: new Date().toISOString(), readByAdmin: admin.uid });
+      return response.status(200).json({ success: true, id: targetId });
     } else if (action === 'update_request') {
       targetId = text(request.body?.requestId, 100);
       const status = text(request.body?.status, 30);
