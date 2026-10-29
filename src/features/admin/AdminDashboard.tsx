@@ -122,6 +122,9 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
     () => data ? buildStockGroups(data.lots, data.products, data.reservations) : [],
     [data],
   );
+  const currentSelectedStock = selectedStock
+    ? stockGroups.find((group) => group.productId === selectedStock.productId) ?? selectedStock
+    : null;
   const totalAvailable = stockGroups.reduce((sum, group) => sum + group.available, 0);
   const pendingOrders = (data?.orders ?? []).filter((order) => ['Pendente', 'Processamento', 'Pago'].includes(order.status)).length;
   const completedRevenue = (data?.orders ?? []).filter((order) => order.status === 'Entregue').reduce((sum, order) => sum + Number(order.total ?? 0), 0);
@@ -239,7 +242,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
         {data && tab === 'audit' && <AuditSection entries={data.audit} search={search} />}
         {data && tab === 'backups' && <BackupsSection data={data} />}
       </section>
-      <AdminDetails order={selectedOrder} stock={selectedStock} lots={data?.lots ?? []} onClose={() => { setSelectedOrder(null); setSelectedStock(null); }} onChanged={refresh} onEditLot={(lot) => { setEditingLot(lot); setInitialLotProductId(lot.publicProductId); setLotEditorOpen(true); }} />
+      <AdminDetails order={selectedOrder} stock={currentSelectedStock} lots={data?.lots ?? []} onClose={() => { setSelectedOrder(null); setSelectedStock(null); }} onChanged={refresh} onEditLot={(lot) => { setEditingLot(lot); setInitialLotProductId(lot.publicProductId); setLotEditorOpen(true); }} />
       {data && <CatalogEditor open={catalogEditorOpen} product={editingProduct} categories={data.categories} onClose={() => setCatalogEditorOpen(false)} onSaved={refresh} />}
       {data && <LotEditor open={lotEditorOpen} lot={editingLot} initialProductId={initialLotProductId} products={data.products} onClose={() => setLotEditorOpen(false)} onSaved={refresh} />}
       {data && <ImportEditor open={importEditorOpen} shipment={editingImport} products={data.products} onClose={() => setImportEditorOpen(false)} onSaved={refresh} />}

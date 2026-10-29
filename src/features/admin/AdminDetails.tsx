@@ -1,7 +1,7 @@
-import { AlertTriangle, CalendarDays, Mail, MapPin, Package, Phone, Save, Truck, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, Mail, MapPin, Package, Phone, RefreshCw, Save, Truck, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { AdminOrder, InventoryLot, OrderStatus, StockGroup } from './adminTypes';
-import { adminMutationsAvailable, reviewOrderRequest, setOrderStatus, updateOrderTracking } from './adminMutations';
+import { adminMutationsAvailable, reviewOrderRequest, setOrderStatus, syncProductStock, updateOrderTracking } from './adminMutations';
 import { OrderFulfillmentPanel } from './OrderFulfillmentPanel';
 
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
@@ -18,7 +18,7 @@ export function AdminDetails({ order, stock, lots, onClose, onChanged, onEditLot
     <aside className={`admin-detail-drawer ${open ? 'open' : ''}`} aria-hidden={!open}>
       <header><div><p className="eyebrow">Detalhes</p><h2>{order ? `Encomenda #${order.id.replace(/^#/, '')}` : stock?.name}</h2></div><button className="icon-button" onClick={onClose}><X /></button></header>
       {order && <OrderDetail order={order} lots={lots} onChanged={onChanged} />}
-      {stock && <StockDetail group={stock} onEditLot={onEditLot} />}
+      {stock && <StockDetail group={stock} onChanged={onChanged} onEditLot={onEditLot} />}
     </aside>
   </>;
 }
@@ -74,10 +74,44 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
   </div>;
 }
 
-function StockDetail({ group, onEditLot }: { group: StockGroup; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
+function StockDetail({ group, onChanged, onEditLot }: { group: StockGroup; onChanged: () => Promise<void>; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
+  const [syncing, setSyncing] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const publicProductId = Number(group.productId);
+  const storeNeedsSync = Number.isInteger(publicProductId) && publicProductId > 0 && group.published !== group.available;
+
+  useEffect(() => {
+    setMessage(null);
+    setError(null);
+  }, [group.productId]);
+
+  const syncStore = async () => {
+    setSyncing(true);
+    setMessage(null);
+    setError(null);
+    try {
+      await syncProductStock(publicProductId);
+      await onChanged();
+      setMessage(`Loja sincronizada: ${group.available} ${group.available === 1 ? 'unidade disponível' : 'unidades disponíveis'}.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível sincronizar o stock da loja.');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return <div className="detail-body">
     <div className="stock-detail-kpis"><span><small>Físico</small><strong>{group.physical}</strong></span><span><small>Reservado</small><strong>{group.reserved}</strong></span><span><small>Disponível</small><strong>{group.available}</strong></span><span><small>Loja</small><strong>{group.published}</strong></span></div>
     {group.warnings.length > 0 && <section className="request-alert"><AlertTriangle /><div><strong>Dados a verificar</strong>{group.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div></section>}
+    {storeNeedsSync && <section className="stock-sync-panel">
+      <div><strong>O catálogo está desatualizado</strong><p>Esta ação publica o valor calculado pelos lotes e reservas. Não altera nem apaga S/N.</p></div>
+      <button className="save-button" type="button" onClick={() => void syncStore()} disabled={!adminMutationsAvailable || syncing}>
+        <RefreshCw className={syncing ? 'spin' : ''} /> {syncing ? 'A sincronizar…' : 'Sincronizar loja'}
+      </button>
+    </section>}
+    {message && <p className="form-success" role="status">{message}</p>}
+    {error && <p className="form-error" role="alert">{error}</p>}
     <DetailSection title={`Lotes (${group.lots})`}><div className="lot-list">{group.lotItems.map((lot) => <article key={lot.id}><header><span><strong>{lot.variant || 'Sem variante'}</strong><small>{lot.supplierName || 'Fornecedor não indicado'}</small></span><div className="lot-heading-actions"><b>{Math.max(0, lot.quantityBought - lot.quantitySold)} disponíveis fisicamente</b><button className="table-action" onClick={() => onEditLot(lot)}>Editar</button></div></header><div><span><CalendarDays />{lot.purchaseDate ? formatDate(lot.purchaseDate) : 'Sem data'}</span><span>Comprado: {lot.quantityBought}</span><span>Vendido: {lot.quantitySold}</span><span>Unidades: {lot.units?.length ?? 0}</span></div><small className="lot-id">Lote {lot.id}</small></article>)}</div></DetailSection>
     <div className="safe-action-note">Criar, editar e apagar lotes será feito pelo servidor com sincronização automática da loja.</div>
   </div>;
