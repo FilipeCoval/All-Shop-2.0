@@ -83,6 +83,9 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
       const snapshot = await loadAdminSnapshot();
       setData(snapshot);
       setSelectedOrder((current) => current ? snapshot.orders.find((order) => order.id === current.id) ?? current : null);
+      setActionTarget((current) => current?.kind === 'client'
+        ? { kind: 'client', value: snapshot.users.find((user) => user.id === current.value.id) ?? current.value }
+        : current);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível carregar a dashboard.');
     } finally {
@@ -247,7 +250,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
       {data && <LotEditor open={lotEditorOpen} lot={editingLot} initialProductId={initialLotProductId} products={data.products} onClose={() => setLotEditorOpen(false)} onSaved={refresh} />}
       {data && <ImportEditor open={importEditorOpen} shipment={editingImport} products={data.products} onClose={() => setImportEditorOpen(false)} onSaved={refresh} />}
       {data && <TelegramOrderRecovery open={telegramRecoveryOpen} products={data.products} onClose={() => setTelegramRecoveryOpen(false)} onSaved={refresh} />}
-      <AdminActionEditor target={actionTarget} onClose={() => setActionTarget(null)} onSaved={refresh} />
+      <AdminActionEditor target={actionTarget} orders={data?.orders ?? []} users={data?.users ?? []} onClose={() => setActionTarget(null)} onSaved={refresh} />
     </main>
   );
 }

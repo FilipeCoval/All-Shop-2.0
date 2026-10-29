@@ -4,9 +4,32 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
 import { getAdminDb } from '../firebaseAdmin.js';
+import { isCommercialOrder, orderBelongsToClient, tierForTotal } from '../../features/admin/clientInsights.js';
+import type { AdminOrder, AdminPointHistory } from '../../features/admin/adminTypes.js';
 
 const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
+const uniqueStrings = (...values: unknown[]) => [...new Set(values.flatMap((value) => Array.isArray(value) ? value : value ? [value] : []).map((value) => text(value, 500)).filter(Boolean))];
+
+const mergePointHistories = (...histories: unknown[]) => {
+  const unique = new Map<string, AdminPointHistory>();
+  histories.flatMap((history) => Array.isArray(history) ? history : []).forEach((raw) => {
+    if (!raw || typeof raw !== 'object') return;
+    const item = raw as Record<string, unknown>;
+    const entry: AdminPointHistory = {
+      id: text(item.id, 120) || undefined,
+      date: text(item.date, 80) || undefined,
+      amount: number(item.amount),
+      reason: text(item.reason, 500),
+      adjustedBy: text(item.adjustedBy, 120) || undefined,
+    };
+    const key = entry.id || `${entry.date}|${entry.amount}|${entry.reason}`;
+    unique.set(key, entry);
+  });
+  return [...unique.values()]
+    .sort((left, right) => new Date(right.date ?? 0).getTime() - new Date(left.date ?? 0).getTime())
+    .slice(0, 1000);
+};
 
 async function notifySupportReply(database: ReturnType<typeof getAdminDb>, userId: string, subject: string) {
   if (!userId) return;
@@ -131,6 +154,84 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const current = snapshot.data() ?? {};
         transaction.update(userRef, { loyaltyPoints: Math.max(0, number(current.loyaltyPoints) + amount), pointsHistory: FieldValue.arrayUnion({ id: `admin-${Date.now()}`, date: new Date().toISOString(), amount, reason, adjustedBy: admin.uid }) });
       });
+    } else if (action === 'update_client_quota') {
+      targetId = text(request.body?.userId, 100);
+      const freebieQuota = Math.trunc(number(request.body?.freebieQuota));
+      if (!targetId || freebieQuota < 0 || freebieQuota > 1000) throw new ApiError(400, 'Indique uma quota de ofertas válida entre 0 e 1000.');
+      const userRef = database.collection('users').doc(targetId);
+      await database.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(userRef);
+        if (!snapshot.exists || snapshot.data()?.isMerged) throw new ApiError(404, 'Cliente não encontrado.');
+        transaction.update(userRef, { freebieQuota, updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid });
+      });
+    } else if (action === 'recalculate_client_loyalty') {
+      targetId = text(request.body?.userId, 100);
+      if (!targetId) throw new ApiError(400, 'Cliente inválido.');
+      const userRef = database.collection('users').doc(targetId);
+      const userSnapshot = await userRef.get();
+      if (!userSnapshot.exists || userSnapshot.data()?.isMerged) throw new ApiError(404, 'Cliente não encontrado.');
+      const user = userSnapshot.data() ?? {};
+      const orderSnapshot = await database.collection('orders').get();
+      const commercialOrders = orderSnapshot.docs
+        .map((document) => ({ id: document.id, ...document.data() } as AdminOrder))
+        .filter((order) => orderBelongsToClient(order, { id: targetId, email: text(user.email, 320) }))
+        .filter(isCommercialOrder);
+      const totalSpent = commercialOrders.reduce((sum, order) => sum + Math.max(0, number(order.total)), 0);
+      const tier = tierForTotal(totalSpent);
+      await userRef.update({ totalSpent, tier, loyaltySyncedAt: FieldValue.serverTimestamp(), loyaltySyncedBy: admin.uid });
+    } else if (action === 'merge_client_accounts') {
+      const primaryUserId = text(request.body?.primaryUserId, 100);
+      const duplicateUserId = text(request.body?.duplicateUserId, 100);
+      const confirmation = text(request.body?.confirmation, 20).toUpperCase();
+      if (!primaryUserId || !duplicateUserId || primaryUserId === duplicateUserId) throw new ApiError(400, 'Escolha duas contas diferentes.');
+      if (confirmation !== 'FUNDIR') throw new ApiError(400, 'Escreva FUNDIR para confirmar a operação.');
+      targetId = primaryUserId;
+      const primaryRef = database.collection('users').doc(primaryUserId);
+      const duplicateRef = database.collection('users').doc(duplicateUserId);
+      const [primarySnapshot, duplicateSnapshot, orderSnapshot] = await Promise.all([
+        primaryRef.get(),
+        duplicateRef.get(),
+        database.collection('orders').get(),
+      ]);
+      if (!primarySnapshot.exists || primarySnapshot.data()?.isMerged) throw new ApiError(404, 'A conta principal não foi encontrada.');
+      if (!duplicateSnapshot.exists || duplicateSnapshot.data()?.isMerged) throw new ApiError(404, 'A conta duplicada não foi encontrada ou já foi fundida.');
+      const primary = primarySnapshot.data() ?? {};
+      const duplicate = duplicateSnapshot.data() ?? {};
+      const duplicateEmail = text(duplicate.email, 320).toLocaleLowerCase('pt');
+      const duplicateOrders = orderSnapshot.docs.filter((document) => {
+        const order = document.data() as AdminOrder;
+        if (order.userId === duplicateUserId) return true;
+        return !order.userId && Boolean(duplicateEmail) && text(order.shippingInfo?.email, 320).toLocaleLowerCase('pt') === duplicateEmail;
+      });
+      if (duplicateOrders.length > 440) throw new ApiError(409, 'Esta conta tem demasiadas encomendas para uma fusão automática. Contacte o suporte técnico.');
+      const mergedAt = new Date().toISOString();
+      const mergedTotalSpent = Math.max(0, number(primary.totalSpent) + number(duplicate.totalSpent));
+      const batch = database.batch();
+      duplicateOrders.forEach((order) => batch.update(order.ref, { userId: primaryUserId, mergedFromUserId: duplicateUserId, mergedAt }));
+      const deviceTokens = uniqueStrings(primary.deviceTokens, primary.fcmToken, duplicate.deviceTokens, duplicate.fcmToken);
+      batch.update(primaryRef, {
+        loyaltyPoints: Math.max(0, number(primary.loyaltyPoints) + number(duplicate.loyaltyPoints)),
+        totalSpent: mergedTotalSpent,
+        tier: tierForTotal(mergedTotalSpent),
+        freebieQuota: Math.max(0, Math.trunc(number(primary.freebieQuota) + number(duplicate.freebieQuota))),
+        pointsHistory: mergePointHistories(primary.pointsHistory, duplicate.pointsHistory),
+        deviceTokens,
+        ...(deviceTokens[0] ? { fcmToken: deviceTokens[0] } : {}),
+        mergedAccountIds: FieldValue.arrayUnion(duplicateUserId),
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: admin.uid,
+      });
+      batch.update(duplicateRef, {
+        isMerged: true,
+        mergedInto: primaryUserId,
+        mergedAt,
+        loyaltyPoints: 0,
+        freebieQuota: 0,
+        deviceTokens: [],
+        fcmToken: FieldValue.delete(),
+        updatedBy: admin.uid,
+      });
+      await batch.commit();
     } else if (action === 'save_category') {
       const input = request.body?.category ?? {};
       targetId = text(input.id, 100) || database.collection('store_categories').doc().id;

@@ -26,9 +26,10 @@
     "test:availability": "tsx tests/productAvailability.test.ts",
     "test:cashback": "tsx tests/cashbackReceipt.test.ts",
     "test:support": "tsx tests/supportConversation.test.ts",
+    "test:clients": "tsx tests/clientInsights.test.ts",
     "test:pwa": "tsx tests/pwaConfig.test.ts",
     "test:checkout": "tsx tests/checkoutCore.test.ts",
-    "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock && npm run test:identity && npm run test:admin-request && npm run test:admin-error && npm run test:admin-routing && npm run test:inventory-identity && npm run test:availability && npm run test:cashback && npm run test:support && npm run test:pwa",
+    "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock && npm run test:identity && npm run test:admin-request && npm run test:admin-error && npm run test:admin-routing && npm run test:inventory-identity && npm run test:availability && npm run test:cashback && npm run test:support && npm run test:clients && npm run test:pwa",
     "check": "npm run lint && npm run test:regression && npm run build && npm run build:admin"
   },
   "dependencies": {

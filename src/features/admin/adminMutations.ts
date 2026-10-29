@@ -61,6 +61,9 @@ export const updateImportStatus = (shipmentId: string, status: string) => callAd
 export const saveImportShipment = (shipment: Record<string, unknown>) => callAdminApi(adminApiPath('misc'), { action: 'save_import', shipment });
 export const deleteImportShipment = (shipmentId: string) => callAdminApi(adminApiPath('misc'), { action: 'delete_import', shipmentId });
 export const adjustClientPoints = (userId: string, amount: number, reason: string) => callAdminApi(adminApiPath('misc'), { action: 'adjust_points', userId, amount, reason });
+export const updateClientFreebieQuota = (userId: string, freebieQuota: number) => callAdminApi(adminApiPath('misc'), { action: 'update_client_quota', userId, freebieQuota }, { retryTransient: true });
+export const recalculateClientLoyalty = (userId: string) => callAdminApi(adminApiPath('misc'), { action: 'recalculate_client_loyalty', userId }, { retryTransient: true });
+export const mergeClientAccounts = (primaryUserId: string, duplicateUserId: string, confirmation: string) => callAdminApi(adminApiPath('misc'), { action: 'merge_client_accounts', primaryUserId, duplicateUserId, confirmation });
 export const saveCategory = (category: Record<string, unknown>) => callAdminApi(adminApiPath('misc'), { action: 'save_category', category });
 export const deleteCategory = (categoryId: string) => callAdminApi(adminApiPath('misc'), { action: 'delete_category', categoryId });
 export const sendMarketingPush = (message: Record<string, unknown>) => callAdminApi(adminApiPath('marketing'), message);

@@ -92,7 +92,7 @@ export function OrdersSection({ orders, search, onOpen }: { orders: AdminOrder[]
 }
 
 export function ClientsSection({ users, search, onOpen }: { users: AdminUser[]; search: string; onOpen: (user: AdminUser) => void }) {
-  const visible = users.filter((user) => `${user.name ?? ''} ${user.email ?? ''} ${user.phone ?? ''}`.toLocaleLowerCase('pt').includes(search.toLocaleLowerCase('pt')));
+  const visible = users.filter((user) => !user.isMerged && `${user.name ?? ''} ${user.email ?? ''} ${user.phone ?? ''}`.toLocaleLowerCase('pt').includes(search.toLocaleLowerCase('pt')));
   return <TableCard title="Clientes" description="Contas, pontos e histórico comercial." count={`${visible.length} clientes`}>
     <table><thead><tr><th>Cliente</th><th>Contacto</th><th>Nível</th><th>AllPoints</th><th>Total gasto</th><th>Tipo</th><th></th></tr></thead>
       <tbody>{visible.map((user) => <tr key={user.id}><td><strong>{user.name ?? 'Sem nome'}</strong><small>{user.email ?? '—'}</small></td><td>{user.phone ?? '—'}</td><td>{user.tier ?? 'Bronze'}</td><td>{Number(user.loyaltyPoints ?? 0)}</td><td>{euro.format(Number(user.totalSpent ?? 0))}</td><td>{user.isGuest ? 'Convidado' : 'Conta'}</td><td><button className="table-action" onClick={() => onOpen(user)}>Gerir</button></td></tr>)}</tbody>

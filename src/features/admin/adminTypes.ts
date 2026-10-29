@@ -80,6 +80,8 @@ export interface AdminOrderPackage {
 
 export interface AdminOrder {
   id: string;
+  userId?: string | null;
+  guestToken?: string;
   date?: string;
   total?: number;
   subtotal?: number;
@@ -127,9 +129,21 @@ export interface AdminUser {
   tier?: string;
   loyaltyPoints?: number;
   totalSpent?: number;
+  freebieQuota?: number;
+  pointsHistory?: AdminPointHistory[];
   isGuest?: boolean;
+  isMerged?: boolean;
+  mergedInto?: string;
   fcmToken?: string;
   deviceTokens?: string[];
+}
+
+export interface AdminPointHistory {
+  id?: string;
+  date?: string;
+  amount?: number;
+  reason?: string;
+  adjustedBy?: string;
 }
 
 export interface AdminAuditEntry {

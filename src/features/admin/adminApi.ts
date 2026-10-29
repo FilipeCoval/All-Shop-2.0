@@ -51,7 +51,7 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
         const left = new Date(a.date ?? 0).getTime();
         return (Number.isFinite(right) ? right : 0) - (Number.isFinite(left) ? left : 0);
       }),
-    users,
+    users: users.filter((user) => !user.isMerged),
     coupons,
     tickets,
     imports,
