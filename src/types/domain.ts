@@ -10,6 +10,7 @@ export interface Product {
   category: string;
   price: number;
   originalPrice?: number;
+  promoEndsAt?: string | null;
   image: string;
   images?: string[];
   description: string;
@@ -21,6 +22,9 @@ export interface Product {
   comingSoon?: boolean;
   availabilityMode?: import('../domain/productAvailability').ProductAvailabilityMode;
   isPrivate?: boolean;
+  isFreebie?: boolean;
+  weight?: number;
+  specs?: Record<string, string | boolean>;
   maxQuantityPerOrder?: number;
 }
 

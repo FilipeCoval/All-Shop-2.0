@@ -55,12 +55,22 @@ const clearNewLotDraft = (key: string) => {
 };
 
 const uniqueImages = (images: Array<string | null | undefined>) => Array.from(new Set(images.map((image) => String(image ?? '').trim()).filter(Boolean)));
+const dateTimeInputValue = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return String(value).slice(0, 16);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+};
 
 export function CatalogEditor({ open, product, categories, onClose, onSaved }: EditorProps & { product: Product | null; categories: StoreCategory[] }) {
-  const [form, setForm] = useState({ name: '', category: '', price: '', originalPrice: '', description: '', features: '', badges: '', variantLabel: 'Opção', isPrivate: false, availabilityMode: 'AUTO' as ProductAvailabilityMode, maxQuantityPerOrder: '' });
+  const [form, setForm] = useState({ name: '', category: '', price: '', originalPrice: '', promoEndsAt: '', weight: '', description: '', features: '', badges: '', variantLabel: 'Opção', isPrivate: false, isFreebie: false, availabilityMode: 'AUTO' as ProductAvailabilityMode, maxQuantityPerOrder: '' });
   const [gallery, setGallery] = useState<string[]>([]);
   const [imageUrl, setImageUrl] = useState('');
   const [variants, setVariants] = useState<Array<{ name: string; price: string; image: string }>>([]);
+  const [specs, setSpecs] = useState<Record<string, string | boolean>>({});
+  const [newSpecKey, setNewSpecKey] = useState('');
+  const [newSpecValue, setNewSpecValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -69,12 +79,15 @@ export function CatalogEditor({ open, product, categories, onClose, onSaved }: E
   useEffect(() => {
     if (!open) return;
     setForm(product ? {
-      name: product.name, category: product.category, price: String(product.price), originalPrice: product.originalPrice == null ? '' : String(product.originalPrice), description: product.description ?? '',
-      features: (product.features ?? []).join('\n'), badges: (product.badges ?? []).join('\n'), variantLabel: product.variantLabel ?? 'Opção', isPrivate: Boolean(product.isPrivate), availabilityMode: normalizeProductAvailabilityMode(product), maxQuantityPerOrder: product.maxQuantityPerOrder == null ? '' : String(product.maxQuantityPerOrder),
-    } : { name: '', category: categories[0]?.name ?? 'Outros', price: '', originalPrice: '', description: '', features: '', badges: '', variantLabel: 'Opção', isPrivate: false, availabilityMode: 'AUTO' as ProductAvailabilityMode, maxQuantityPerOrder: '' });
+      name: product.name, category: product.category, price: String(product.price), originalPrice: product.originalPrice == null ? '' : String(product.originalPrice), promoEndsAt: dateTimeInputValue(product.promoEndsAt), weight: product.weight == null ? '' : String(product.weight), description: product.description ?? '',
+      features: (product.features ?? []).join('\n'), badges: (product.badges ?? []).join('\n'), variantLabel: product.variantLabel ?? 'Opção', isPrivate: Boolean(product.isPrivate), isFreebie: Boolean(product.isFreebie), availabilityMode: normalizeProductAvailabilityMode(product), maxQuantityPerOrder: product.maxQuantityPerOrder == null ? '' : String(product.maxQuantityPerOrder),
+    } : { name: '', category: categories[0]?.name ?? 'Outros', price: '', originalPrice: '', promoEndsAt: '', weight: '', description: '', features: '', badges: '', variantLabel: 'Opção', isPrivate: false, isFreebie: false, availabilityMode: 'AUTO' as ProductAvailabilityMode, maxQuantityPerOrder: '' });
     setGallery(uniqueImages([product?.image, ...(product?.images ?? [])]));
     setImageUrl('');
     setVariants((product?.variants ?? []).map((variant) => ({ name: variant.name, price: String(variant.price), image: variant.image ?? '' })));
+    setSpecs({ ...(product?.specs ?? {}) });
+    setNewSpecKey('');
+    setNewSpecValue('');
     setUploading(false);
     setUploadProgress(0);
     setError(null);
@@ -131,11 +144,20 @@ export function CatalogEditor({ open, product, categories, onClose, onSaved }: E
     }
   };
 
+  const addSpec = () => {
+    const key = newSpecKey.trim();
+    const value = newSpecValue.trim();
+    if (!key || !value) { setError('Indique o nome e o valor da especificação.'); return; }
+    const existingKey = Object.keys(specs).find((item) => item.toLocaleLowerCase('pt') === key.toLocaleLowerCase('pt'));
+    setSpecs((current) => ({ ...current, [existingKey ?? key]: value }));
+    setNewSpecKey(''); setNewSpecValue(''); setError(null);
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(null);
     try {
       const images = uniqueImages(gallery);
-      await saveCatalogProduct({ ...form, id: product?.id, image: images[0] ?? '', images, price: Number(form.price), originalPrice: form.originalPrice, maxQuantityPerOrder: form.maxQuantityPerOrder, features: lines(form.features), badges: lines(form.badges), variants: variants.map((variant) => ({ ...variant, image: variant.image.trim(), price: Number(variant.price) })) });
+      await saveCatalogProduct({ ...form, id: product?.id, image: images[0] ?? '', images, price: Number(form.price), originalPrice: form.originalPrice, promoEndsAt: form.promoEndsAt || null, weight: form.weight === '' ? null : Number(form.weight), specs, maxQuantityPerOrder: form.maxQuantityPerOrder, features: lines(form.features), badges: lines(form.badges), variants: variants.map((variant) => ({ ...variant, image: variant.image.trim(), price: Number(variant.price) })) });
       await onSaved(); onClose();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar.'); }
     finally { setBusy(false); }
@@ -152,11 +174,13 @@ export function CatalogEditor({ open, product, categories, onClose, onSaved }: E
         <p className="editor-info"><strong>Na loja:</strong> a foto principal aparece nos cartões e a galeria completa aparece na página do produto.</p>
       </section>
 
-      <section className="editor-section"><header><span>3</span><div><strong>Preço e venda</strong><small>Um preço atual e, se existir promoção, o preço anterior.</small></div></header><div className="form-grid"><Field label="Preço atual"><input type="number" min="0" step="0.01" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required /></Field><Field label="Preço anterior (opcional)"><input type="number" min="0" step="0.01" value={form.originalPrice} onChange={(event) => setForm({ ...form, originalPrice: event.target.value })} /></Field></div><Field label="Máximo por encomenda"><input type="number" min="1" value={form.maxQuantityPerOrder} onChange={(event) => setForm({ ...form, maxQuantityPerOrder: event.target.value })} /></Field><p className="editor-info">O custo, cashback e lucro previsto pertencem a cada compra. Depois de criar o produto, registe esses valores em “Entrada de stock”.</p></section>
+      <section className="editor-section"><header><span>3</span><div><strong>Preço e venda</strong><small>Preço, promoção, limite e dados usados na preparação da encomenda.</small></div></header><div className="form-grid"><Field label="Preço atual"><input type="number" min="0" step="0.01" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required /></Field><Field label="Preço anterior (opcional)"><input type="number" min="0" step="0.01" value={form.originalPrice} onChange={(event) => setForm({ ...form, originalPrice: event.target.value })} /></Field></div><div className="form-grid"><Field label="Fim da promoção (opcional)"><input type="datetime-local" value={form.promoEndsAt} onChange={(event) => setForm({ ...form, promoEndsAt: event.target.value })} /></Field><Field label="Peso por unidade em kg"><input type="number" min="0" step="0.001" placeholder="Ex.: 0,350" value={form.weight} onChange={(event) => setForm({ ...form, weight: event.target.value })} /></Field></div><Field label="Máximo por encomenda"><input type="number" min="1" value={form.maxQuantityPerOrder} onChange={(event) => setForm({ ...form, maxQuantityPerOrder: event.target.value })} /></Field><p className="editor-info">A data permite terminar automaticamente a promoção. O peso é usado para preparar os volumes da encomenda. O custo e cashback continuam a pertencer à Entrada de stock.</p></section>
 
       <section className="editor-section"><header><span>4</span><div><strong>Opções do produto</strong><small>Ex.: tamanho, cor ou comprimento. Cada opção pode ter preço e fotografia próprios.</small></div></header><Field label="Nome apresentado acima das opções"><input placeholder="Ex.: Tamanho, Cor ou Opção" value={form.variantLabel} onChange={(event) => setForm({ ...form, variantLabel: event.target.value })} /></Field><div className="variant-editor"><header><div><strong>Variantes</strong><small>{variants.length ? `${variants.length} opções configuradas` : 'Sem opções — o produto terá um único preço'}</small></div><button type="button" onClick={() => setVariants([...variants, { name: '', price: form.price, image: '' }])}><Plus /> Adicionar opção</button></header>{variants.map((variant, index) => <article className="variant-card" key={index}><div className="variant-row"><input aria-label={`Nome da opção ${index + 1}`} placeholder="Nome (ex.: 1 Metro)" value={variant.name} onChange={(event) => setVariants(variants.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} /><input aria-label={`Preço da opção ${index + 1}`} placeholder="Preço" type="number" min="0" step="0.01" value={variant.price} onChange={(event) => setVariants(variants.map((item, itemIndex) => itemIndex === index ? { ...item, price: event.target.value } : item))} /><button type="button" aria-label={`Remover opção ${index + 1}`} onClick={() => setVariants(variants.filter((_, itemIndex) => itemIndex !== index))}><Trash2 /></button></div><div className="variant-image-row">{variant.image ? <img src={variant.image} alt={`Opção ${variant.name || index + 1}`} /> : <span><ImagePlus /></span>}<input type="url" aria-label={`Imagem da opção ${index + 1}`} placeholder="Imagem específica desta opção (opcional)" value={variant.image} onChange={(event) => setVariants(variants.map((item, itemIndex) => itemIndex === index ? { ...item, image: event.target.value } : item))} /><label className="mini-upload-button"><Upload /> Carregar<input type="file" accept="image/*" disabled={uploading} onChange={(event) => { void uploadImages(event.target.files, index); event.currentTarget.value = ''; }} /></label></div></article>)}</div></section>
 
-      <section className="editor-section"><header><span>5</span><div><strong>Detalhes e publicação</strong><small>Informação complementar e visibilidade na loja.</small></div></header><div className="form-grid"><Field label="Características (uma por linha)"><textarea rows={4} value={form.features} onChange={(event) => setForm({ ...form, features: event.target.value })} /></Field><Field label="Etiquetas (uma por linha)"><textarea rows={4} value={form.badges} onChange={(event) => setForm({ ...form, badges: event.target.value })} /></Field></div><div className="form-grid"><Field label="Estado apresentado na loja"><select value={form.availabilityMode} onChange={(event) => setForm({ ...form, availabilityMode: event.target.value as ProductAvailabilityMode })}><option value="AUTO">Automático (recomendado)</option><option value="AVAILABLE">Disponível</option><option value="COMING_SOON">Em breve</option><option value="OUT_OF_STOCK">Esgotado</option></select></Field><div className="editor-info"><strong>O stock físico não é alterado.</strong><br />“Em breve” e “Esgotado” impedem compras. “Disponível” nunca permite vender sem unidades reais.</div></div><div className="check-row"><label><input type="checkbox" checked={form.isPrivate} onChange={(event) => setForm({ ...form, isPrivate: event.target.checked })} /> Manter privado</label></div></section>
+      <section className="editor-section"><header><span>5</span><div><strong>Destaques e especificações</strong><small>Informação usada na página do produto e na comparação entre artigos.</small></div></header><div className="form-grid"><Field label="Características (uma por linha)"><textarea rows={4} value={form.features} onChange={(event) => setForm({ ...form, features: event.target.value })} /></Field><Field label="Etiquetas (uma por linha)"><textarea rows={4} value={form.badges} onChange={(event) => setForm({ ...form, badges: event.target.value })} /></Field></div><div className="spec-editor"><header><div><strong>Especificações técnicas</strong><small>{Object.keys(specs).length ? `${Object.keys(specs).length} propriedade(s) configurada(s)` : 'Ex.: Marca, Modelo, Capacidade, Ligações'}</small></div></header>{Object.entries(specs).length > 0 && <div className="spec-list">{Object.entries(specs).map(([key, value]) => <article key={key}><strong>{key}</strong><span>{String(value)}</span><button type="button" aria-label={`Remover ${key}`} onClick={() => setSpecs((current) => Object.fromEntries(Object.entries(current).filter(([itemKey]) => itemKey !== key)))}><Trash2 /></button></article>)}</div>}<div className="spec-add-row"><input aria-label="Nome da especificação" placeholder="Propriedade (ex.: Memória)" value={newSpecKey} onChange={(event) => setNewSpecKey(event.target.value)} /><input aria-label="Valor da especificação" placeholder="Valor (ex.: 4 GB)" value={newSpecValue} onChange={(event) => setNewSpecValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addSpec(); } }} /><button type="button" onClick={addSpec}><Plus /> Adicionar</button></div></div></section>
+
+      <section className="editor-section"><header><span>6</span><div><strong>Publicação</strong><small>Estado e visibilidade apresentados na loja.</small></div></header><div className="form-grid"><Field label="Estado apresentado na loja"><select value={form.availabilityMode} onChange={(event) => setForm({ ...form, availabilityMode: event.target.value as ProductAvailabilityMode })}><option value="AUTO">Automático (recomendado)</option><option value="AVAILABLE">Disponível</option><option value="COMING_SOON">Em breve</option><option value="OUT_OF_STOCK">Esgotado</option></select></Field><div className="editor-info"><strong>O stock físico não é alterado.</strong><br />“Em breve” e “Esgotado” impedem compras. “Disponível” nunca permite vender sem unidades reais.</div></div><div className="check-row"><label><input type="checkbox" checked={form.isFreebie} onChange={(event) => setForm({ ...form, isFreebie: event.target.checked })} /> Disponível como oferta para clientes elegíveis</label><label><input type="checkbox" checked={form.isPrivate} onChange={(event) => setForm({ ...form, isPrivate: event.target.checked })} /> Manter privado</label></div></section>
       {!adminMutationsAvailable && <p className="safe-action-note">O formulário já está pronto. Guardar será ativado no endereço Vercel de testes.</p>}{error && <p className="form-error">{error}</p>}
       <div className="editor-footer"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="save-button" disabled={!adminMutationsAvailable || busy || uploading}><Save /> {busy ? 'A guardar…' : uploading ? 'A carregar fotos…' : 'Guardar produto'}</button></div>
     </form>

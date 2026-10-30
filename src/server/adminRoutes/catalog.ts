@@ -7,6 +7,13 @@ import { normalizeProductAvailabilityMode } from '../../domain/productAvailabili
 const text = (value: unknown, max = 2000) => String(value ?? '').trim().slice(0, max);
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const strings = (value: unknown, maxItems = 30) => Array.isArray(value) ? value.map((item) => text(item, 500)).filter(Boolean).slice(0, maxItems) : [];
+const specs = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .slice(0, 40)
+    .map(([key, specValue]) => [text(key, 100), typeof specValue === 'boolean' ? specValue : text(specValue, 300)] as const)
+    .filter(([key, specValue]) => Boolean(key) && (typeof specValue === 'boolean' || Boolean(specValue))));
+};
 const normalize = (value: unknown) => text(value, 120).replace(/\s+/g, ' ').toLocaleLowerCase('pt');
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
@@ -32,6 +39,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const current = currentSnapshot.data() ?? {};
       const hasGalleryImages = Object.prototype.hasOwnProperty.call(input, 'images');
       const hasPromoEndsAt = Object.prototype.hasOwnProperty.call(input, 'promoEndsAt');
+      const hasWeight = Object.prototype.hasOwnProperty.call(input, 'weight');
+      const hasSpecs = Object.prototype.hasOwnProperty.call(input, 'specs');
+      const hasFreebie = Object.prototype.hasOwnProperty.call(input, 'isFreebie');
       const currentVariants = Array.isArray(current.variants) ? current.variants : [];
       const variants = Array.isArray(input.variants) ? input.variants.map((variant: Record<string, unknown>) => {
         const name = text(variant.name, 120);
@@ -67,6 +77,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
         // Compatibility for the 2.0 storefront while all cached clients update.
         comingSoon: availabilityMode === 'COMING_SOON',
         isPrivate: Boolean(input.isPrivate),
+        isFreebie: hasFreebie ? Boolean(input.isFreebie) : Boolean(current.isFreebie),
+        weight: hasWeight ? (input.weight === '' || input.weight == null ? null : Math.max(0, number(input.weight))) : (current.weight ?? null),
+        specs: hasSpecs ? specs(input.specs) : specs(current.specs),
         maxQuantityPerOrder: input.maxQuantityPerOrder ? Math.max(1, Math.floor(number(input.maxQuantityPerOrder))) : null,
         stock: currentSnapshot.exists ? Math.max(0, number(current.stock)) : 0,
         updatedAt: FieldValue.serverTimestamp(),
