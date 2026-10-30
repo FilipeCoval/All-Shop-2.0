@@ -1,6 +1,8 @@
-import { Barcode, Calculator, Camera, CircleDollarSign, Plus, Save, Sparkles, Trash2, Truck, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Barcode, Calculator, Camera, CircleDollarSign, ImagePlus, Plus, Save, Sparkles, Trash2, Truck, Upload, X } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { getDownloadURL, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
 import type { Product, ProductVariant } from '../../types/domain';
+import { storage } from '../../../services/firebaseConfig';
 import type { InventoryLot, StoreCategory } from './adminTypes';
 import { adminMutationsAvailable, deleteInventoryLot, saveCatalogProduct, saveInventoryLot } from './adminMutations';
 import { SerialScanner } from './SerialScanner';
@@ -52,43 +54,111 @@ const clearNewLotDraft = (key: string) => {
   try { window.sessionStorage.removeItem(key); } catch { /* Sem armazenamento, não há rascunho a limpar. */ }
 };
 
+const uniqueImages = (images: Array<string | null | undefined>) => Array.from(new Set(images.map((image) => String(image ?? '').trim()).filter(Boolean)));
+
 export function CatalogEditor({ open, product, categories, onClose, onSaved }: EditorProps & { product: Product | null; categories: StoreCategory[] }) {
-  const [form, setForm] = useState({ name: '', category: '', price: '', originalPrice: '', image: '', description: '', features: '', badges: '', variantLabel: 'Opção', isPrivate: false, availabilityMode: 'AUTO' as ProductAvailabilityMode, maxQuantityPerOrder: '' });
+  const [form, setForm] = useState({ name: '', category: '', price: '', originalPrice: '', description: '', features: '', badges: '', variantLabel: 'Opção', isPrivate: false, availabilityMode: 'AUTO' as ProductAvailabilityMode, maxQuantityPerOrder: '' });
+  const [gallery, setGallery] = useState<string[]>([]);
+  const [imageUrl, setImageUrl] = useState('');
   const [variants, setVariants] = useState<Array<{ name: string; price: string; image: string }>>([]);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setForm(product ? {
-      name: product.name, category: product.category, price: String(product.price), originalPrice: product.originalPrice == null ? '' : String(product.originalPrice), image: product.image ?? '', description: product.description ?? '',
+      name: product.name, category: product.category, price: String(product.price), originalPrice: product.originalPrice == null ? '' : String(product.originalPrice), description: product.description ?? '',
       features: (product.features ?? []).join('\n'), badges: (product.badges ?? []).join('\n'), variantLabel: product.variantLabel ?? 'Opção', isPrivate: Boolean(product.isPrivate), availabilityMode: normalizeProductAvailabilityMode(product), maxQuantityPerOrder: product.maxQuantityPerOrder == null ? '' : String(product.maxQuantityPerOrder),
-    } : { name: '', category: categories[0]?.name ?? 'Outros', price: '', originalPrice: '', image: '', description: '', features: '', badges: '', variantLabel: 'Opção', isPrivate: false, availabilityMode: 'AUTO' as ProductAvailabilityMode, maxQuantityPerOrder: '' });
+    } : { name: '', category: categories[0]?.name ?? 'Outros', price: '', originalPrice: '', description: '', features: '', badges: '', variantLabel: 'Opção', isPrivate: false, availabilityMode: 'AUTO' as ProductAvailabilityMode, maxQuantityPerOrder: '' });
+    setGallery(uniqueImages([product?.image, ...(product?.images ?? [])]));
+    setImageUrl('');
     setVariants((product?.variants ?? []).map((variant) => ({ name: variant.name, price: String(variant.price), image: variant.image ?? '' })));
+    setUploading(false);
+    setUploadProgress(0);
     setError(null);
     // As categorias são lidas ao abrir; uma atualização em segundo plano não pode apagar o formulário.
   }, [product, open]);
 
+  const addImageUrl = () => {
+    const url = imageUrl.trim();
+    if (!/^https?:\/\//i.test(url)) { setError('Cole um endereço de imagem completo, começado por http:// ou https://.'); return; }
+    setGallery((current) => uniqueImages([...current, url]));
+    setImageUrl('');
+    setError(null);
+  };
+
+  const makeMainImage = (index: number) => setGallery((current) => {
+    const next = [...current];
+    const [selected] = next.splice(index, 1);
+    return selected ? [selected, ...next] : current;
+  });
+
+  const moveImage = (index: number, direction: -1 | 1) => setGallery((current) => {
+    const destination = index + direction;
+    if (destination < 0 || destination >= current.length) return current;
+    const next = [...current];
+    [next[index], next[destination]] = [next[destination], next[index]];
+    return next;
+  });
+
+  const uploadImages = async (files: FileList | null, variantIndex?: number) => {
+    if (!files?.length) return;
+    const selected = Array.from(files);
+    const invalid = selected.find((file) => !file.type.startsWith('image/') || file.size > 12 * 1024 * 1024);
+    if (invalid) { setError('Escolha apenas imagens até 12 MB cada.'); return; }
+    setUploading(true); setUploadProgress(0); setError(null);
+    const progress = selected.map(() => 0);
+    try {
+      const urls = await Promise.all(selected.map((file, fileIndex) => new Promise<string>((resolve, reject) => {
+        const safeName = file.name.replace(/[^A-Za-z0-9._-]+/g, '-').slice(-120) || 'imagem';
+        const key = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${fileIndex}`;
+        const task = uploadBytesResumable(storageRef(storage, `products_public/${key}-${safeName}`), file, { contentType: file.type });
+        task.on('state_changed', (snapshot) => {
+          progress[fileIndex] = snapshot.totalBytes ? snapshot.bytesTransferred / snapshot.totalBytes : 0;
+          setUploadProgress(Math.round((progress.reduce((sum, value) => sum + value, 0) / progress.length) * 100));
+        }, reject, async () => resolve(await getDownloadURL(task.snapshot.ref)));
+      })));
+      setGallery((current) => uniqueImages([...current, ...urls]));
+      if (variantIndex != null && urls[0]) {
+        setVariants((current) => current.map((variant, index) => index === variantIndex ? { ...variant, image: urls[0] } : variant));
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? `Não foi possível carregar a imagem: ${cause.message}` : 'Não foi possível carregar a imagem.');
+    } finally {
+      setUploading(false); setUploadProgress(0);
+    }
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(null);
     try {
-      const existingImages = product?.images ?? [];
-      const images = [form.image, ...existingImages.filter((image) => image && image !== form.image)];
-      await saveCatalogProduct({ ...form, id: product?.id, price: Number(form.price), originalPrice: form.originalPrice, maxQuantityPerOrder: form.maxQuantityPerOrder, features: lines(form.features), badges: lines(form.badges), images, variants: variants.map((variant) => ({ ...variant, price: Number(variant.price) })) });
+      const images = uniqueImages(gallery);
+      await saveCatalogProduct({ ...form, id: product?.id, image: images[0] ?? '', images, price: Number(form.price), originalPrice: form.originalPrice, maxQuantityPerOrder: form.maxQuantityPerOrder, features: lines(form.features), badges: lines(form.badges), variants: variants.map((variant) => ({ ...variant, image: variant.image.trim(), price: Number(variant.price) })) });
       await onSaved(); onClose();
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar.'); }
     finally { setBusy(false); }
   };
 
-  return <EditorFrame open={open} title={product ? 'Editar produto' : 'Novo produto'} subtitle="Catálogo" onClose={onClose}>
+  return <EditorFrame open={open} title={product ? 'Editar produto' : 'Novo produto'} subtitle="Catálogo" className="product-editor" onClose={onClose}>
     <form className="editor-form" onSubmit={submit}>
       <p className="editor-lead">Toda a informação visível na loja é editada aqui. O stock continua a ser calculado automaticamente pelos lotes.</p>
-      <section className="editor-section"><header><span>1</span><div><strong>Informação principal</strong><small>Nome, categoria e descrição que o cliente vê.</small></div></header><div className="form-grid"><Field label="Nome do produto"><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></Field><Field label="Categoria"><select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{categories.map((category) => <option key={category.id}>{category.name}</option>)}<option>Outros</option></select></Field></div><Field label="Descrição"><textarea rows={5} placeholder="Explique de forma simples para que serve e quais as vantagens." value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field><Field label="Imagem principal (endereço)"><input type="url" value={form.image} onChange={(event) => setForm({ ...form, image: event.target.value })} /></Field>{form.image && <div className="editor-image-preview"><img src={form.image} alt="Pré-visualização do produto" /></div>}</section>
-      <section className="editor-section"><header><span>2</span><div><strong>Preço e venda</strong><small>Um preço atual e, se existir promoção, o preço anterior.</small></div></header><div className="form-grid"><Field label="Preço atual"><input type="number" min="0" step="0.01" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required /></Field><Field label="Preço anterior (opcional)"><input type="number" min="0" step="0.01" value={form.originalPrice} onChange={(event) => setForm({ ...form, originalPrice: event.target.value })} /></Field></div><Field label="Máximo por encomenda"><input type="number" min="1" value={form.maxQuantityPerOrder} onChange={(event) => setForm({ ...form, maxQuantityPerOrder: event.target.value })} /></Field><p className="editor-info">O custo, cashback e lucro previsto pertencem a cada compra. Depois de criar o produto, registe esses valores em “Entrada de stock”.</p></section>
-      <section className="editor-section"><header><span>3</span><div><strong>Opções do produto</strong><small>Ex.: tamanho, cor ou comprimento. Cada opção poderá ter preço e lote próprios.</small></div></header><Field label="Nome apresentado acima das opções"><input placeholder="Ex.: Tamanho, Cor ou Opção" value={form.variantLabel} onChange={(event) => setForm({ ...form, variantLabel: event.target.value })} /></Field><div className="variant-editor"><header><div><strong>Variantes</strong><small>{variants.length ? `${variants.length} opções configuradas` : 'Sem opções — o produto terá um único preço'}</small></div><button type="button" onClick={() => setVariants([...variants, { name: '', price: form.price, image: '' }])}><Plus /> Adicionar opção</button></header>{variants.map((variant, index) => <div className="variant-row" key={index}><input aria-label={`Nome da opção ${index + 1}`} placeholder="Nome (ex.: 1 Metro)" value={variant.name} onChange={(event) => setVariants(variants.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} /><input aria-label={`Preço da opção ${index + 1}`} placeholder="Preço" type="number" min="0" step="0.01" value={variant.price} onChange={(event) => setVariants(variants.map((item, itemIndex) => itemIndex === index ? { ...item, price: event.target.value } : item))} /><button type="button" aria-label={`Remover opção ${index + 1}`} onClick={() => setVariants(variants.filter((_, itemIndex) => itemIndex !== index))}><Trash2 /></button></div>)}</div></section>
-      <section className="editor-section"><header><span>4</span><div><strong>Detalhes e publicação</strong><small>Informação complementar e visibilidade na loja.</small></div></header><div className="form-grid"><Field label="Características (uma por linha)"><textarea rows={4} value={form.features} onChange={(event) => setForm({ ...form, features: event.target.value })} /></Field><Field label="Etiquetas (uma por linha)"><textarea rows={4} value={form.badges} onChange={(event) => setForm({ ...form, badges: event.target.value })} /></Field></div><div className="form-grid"><Field label="Estado apresentado na loja"><select value={form.availabilityMode} onChange={(event) => setForm({ ...form, availabilityMode: event.target.value as ProductAvailabilityMode })}><option value="AUTO">Automático (recomendado)</option><option value="AVAILABLE">Disponível</option><option value="COMING_SOON">Em breve</option><option value="OUT_OF_STOCK">Esgotado</option></select></Field><div className="editor-info"><strong>O stock físico não é alterado.</strong><br />“Em breve” e “Esgotado” impedem compras. “Disponível” nunca permite vender sem unidades reais.</div></div><div className="check-row"><label><input type="checkbox" checked={form.isPrivate} onChange={(event) => setForm({ ...form, isPrivate: event.target.checked })} /> Manter privado</label></div></section>
+      <section className="editor-section"><header><span>1</span><div><strong>Informação principal</strong><small>Nome, categoria e descrição que o cliente vê.</small></div></header><div className="form-grid"><Field label="Nome do produto"><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></Field><Field label="Categoria"><select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{categories.map((category) => <option key={category.id}>{category.name}</option>)}<option>Outros</option></select></Field></div><Field label="Descrição"><textarea rows={5} placeholder="Explique de forma simples para que serve e quais as vantagens." value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field></section>
+
+      <section className="editor-section product-gallery"><header><span>2</span><div><strong>Fotografias do produto</strong><small>A primeira foto é a principal. Pode carregar várias de uma vez e mudar a ordem.</small></div><b>{gallery.length} foto{gallery.length === 1 ? '' : 's'}</b></header>
+        <div className="gallery-add-row"><label className="image-upload-button"><Upload /> {uploading ? `A carregar ${uploadProgress}%` : 'Carregar fotografias'}<input type="file" accept="image/*" multiple disabled={uploading} onChange={(event) => { void uploadImages(event.target.files); event.currentTarget.value = ''; }} /></label><div><input type="url" placeholder="Ou cole o endereço de uma imagem" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addImageUrl(); } }} /><button type="button" onClick={addImageUrl} disabled={!imageUrl.trim()}><Plus /> Adicionar</button></div></div>
+        {gallery.length ? <div className="product-gallery-grid">{gallery.map((image, index) => <article key={`${image}-${index}`} className={index === 0 ? 'main' : ''}><div><img src={image} alt={`${form.name || 'Produto'} ${index + 1}`} />{index === 0 && <strong>Principal</strong>}</div><footer><button type="button" onClick={() => moveImage(index, -1)} disabled={index === 0} title="Mover para a esquerda"><ArrowLeft /></button>{index !== 0 && <button type="button" className="make-main" onClick={() => makeMainImage(index)}>Usar como principal</button>}<button type="button" onClick={() => moveImage(index, 1)} disabled={index === gallery.length - 1} title="Mover para a direita"><ArrowRight /></button><button type="button" className="remove-image" onClick={() => setGallery((current) => current.filter((_, imageIndex) => imageIndex !== index))} title="Remover fotografia"><Trash2 /></button></footer></article>)}</div> : <div className="gallery-empty"><ImagePlus /><strong>Ainda não há fotografias</strong><span>Carregue imagens do computador ou cole um endereço.</span></div>}
+        <p className="editor-info"><strong>Na loja:</strong> a foto principal aparece nos cartões e a galeria completa aparece na página do produto.</p>
+      </section>
+
+      <section className="editor-section"><header><span>3</span><div><strong>Preço e venda</strong><small>Um preço atual e, se existir promoção, o preço anterior.</small></div></header><div className="form-grid"><Field label="Preço atual"><input type="number" min="0" step="0.01" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} required /></Field><Field label="Preço anterior (opcional)"><input type="number" min="0" step="0.01" value={form.originalPrice} onChange={(event) => setForm({ ...form, originalPrice: event.target.value })} /></Field></div><Field label="Máximo por encomenda"><input type="number" min="1" value={form.maxQuantityPerOrder} onChange={(event) => setForm({ ...form, maxQuantityPerOrder: event.target.value })} /></Field><p className="editor-info">O custo, cashback e lucro previsto pertencem a cada compra. Depois de criar o produto, registe esses valores em “Entrada de stock”.</p></section>
+
+      <section className="editor-section"><header><span>4</span><div><strong>Opções do produto</strong><small>Ex.: tamanho, cor ou comprimento. Cada opção pode ter preço e fotografia próprios.</small></div></header><Field label="Nome apresentado acima das opções"><input placeholder="Ex.: Tamanho, Cor ou Opção" value={form.variantLabel} onChange={(event) => setForm({ ...form, variantLabel: event.target.value })} /></Field><div className="variant-editor"><header><div><strong>Variantes</strong><small>{variants.length ? `${variants.length} opções configuradas` : 'Sem opções — o produto terá um único preço'}</small></div><button type="button" onClick={() => setVariants([...variants, { name: '', price: form.price, image: '' }])}><Plus /> Adicionar opção</button></header>{variants.map((variant, index) => <article className="variant-card" key={index}><div className="variant-row"><input aria-label={`Nome da opção ${index + 1}`} placeholder="Nome (ex.: 1 Metro)" value={variant.name} onChange={(event) => setVariants(variants.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} /><input aria-label={`Preço da opção ${index + 1}`} placeholder="Preço" type="number" min="0" step="0.01" value={variant.price} onChange={(event) => setVariants(variants.map((item, itemIndex) => itemIndex === index ? { ...item, price: event.target.value } : item))} /><button type="button" aria-label={`Remover opção ${index + 1}`} onClick={() => setVariants(variants.filter((_, itemIndex) => itemIndex !== index))}><Trash2 /></button></div><div className="variant-image-row">{variant.image ? <img src={variant.image} alt={`Opção ${variant.name || index + 1}`} /> : <span><ImagePlus /></span>}<input type="url" aria-label={`Imagem da opção ${index + 1}`} placeholder="Imagem específica desta opção (opcional)" value={variant.image} onChange={(event) => setVariants(variants.map((item, itemIndex) => itemIndex === index ? { ...item, image: event.target.value } : item))} /><label className="mini-upload-button"><Upload /> Carregar<input type="file" accept="image/*" disabled={uploading} onChange={(event) => { void uploadImages(event.target.files, index); event.currentTarget.value = ''; }} /></label></div></article>)}</div></section>
+
+      <section className="editor-section"><header><span>5</span><div><strong>Detalhes e publicação</strong><small>Informação complementar e visibilidade na loja.</small></div></header><div className="form-grid"><Field label="Características (uma por linha)"><textarea rows={4} value={form.features} onChange={(event) => setForm({ ...form, features: event.target.value })} /></Field><Field label="Etiquetas (uma por linha)"><textarea rows={4} value={form.badges} onChange={(event) => setForm({ ...form, badges: event.target.value })} /></Field></div><div className="form-grid"><Field label="Estado apresentado na loja"><select value={form.availabilityMode} onChange={(event) => setForm({ ...form, availabilityMode: event.target.value as ProductAvailabilityMode })}><option value="AUTO">Automático (recomendado)</option><option value="AVAILABLE">Disponível</option><option value="COMING_SOON">Em breve</option><option value="OUT_OF_STOCK">Esgotado</option></select></Field><div className="editor-info"><strong>O stock físico não é alterado.</strong><br />“Em breve” e “Esgotado” impedem compras. “Disponível” nunca permite vender sem unidades reais.</div></div><div className="check-row"><label><input type="checkbox" checked={form.isPrivate} onChange={(event) => setForm({ ...form, isPrivate: event.target.checked })} /> Manter privado</label></div></section>
       {!adminMutationsAvailable && <p className="safe-action-note">O formulário já está pronto. Guardar será ativado no endereço Vercel de testes.</p>}{error && <p className="form-error">{error}</p>}
-      <div className="editor-footer"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="save-button" disabled={!adminMutationsAvailable || busy}><Save /> {busy ? 'A guardar…' : 'Guardar produto'}</button></div>
+      <div className="editor-footer"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="save-button" disabled={!adminMutationsAvailable || busy || uploading}><Save /> {busy ? 'A guardar…' : uploading ? 'A carregar fotos…' : 'Guardar produto'}</button></div>
     </form>
   </EditorFrame>;
 }
@@ -294,8 +364,8 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
   </form></EditorFrame>;
 }
 
-function EditorFrame({ open, title, subtitle, onClose, children }: { open: boolean; title: string; subtitle: string; onClose: () => void; children: React.ReactNode }) {
-  return <>{open && <button className="editor-backdrop" onClick={onClose} aria-label="Fechar editor" />}<aside className={`editor-drawer ${open ? 'open' : ''}`} aria-hidden={!open}><header><div><p className="eyebrow">{subtitle}</p><h2>{title}</h2></div><button className="icon-button" onClick={onClose}><X /></button></header>{children}</aside></>;
+function EditorFrame({ open, title, subtitle, className = '', onClose, children }: { open: boolean; title: string; subtitle: string; className?: string; onClose: () => void; children: React.ReactNode }) {
+  return <>{open && <button className="editor-backdrop" onClick={onClose} aria-label="Fechar editor" />}<aside className={`editor-drawer ${className} ${open ? 'open' : ''}`.trim()} aria-hidden={!open}><header><div><p className="eyebrow">{subtitle}</p><h2>{title}</h2></div><button className="icon-button" onClick={onClose}><X /></button></header>{children}</aside></>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="editor-field"><span>{label}</span>{children}</label>; }
