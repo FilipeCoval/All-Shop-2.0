@@ -1,28 +1,27 @@
 
-import React, { useEffect, useState } from 'react';
-import { Download, X, Smartphone } from 'lucide-react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import { Download, RefreshCw, X, Smartphone } from 'lucide-react';
+import {
+  applyAllShopPwaUpdate,
+  getPwaClientState,
+  installAllShopPwa,
+  subscribePwaClient,
+} from '../src/pwa/pwaClient';
 
 const InstallPrompt: React.FC = () => {
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+  const pwaState = useSyncExternalStore(
+    subscribePwaClient,
+    getPwaClientState,
+    getPwaClientState,
+  );
 
   useEffect(() => {
     // Detetar se é iOS (iPhone/iPad) pois eles não suportam o evento automático
     const isIosDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
     setIsIOS(isIosDevice);
-
-    // Ouvir o evento do Chrome/Android
-    const handler = (e: any) => {
-      // Impedir que o Chrome mostre a barra padrão feia automaticamente
-      e.preventDefault();
-      // Guardar o evento para podermos disparar quando o utilizador clicar no botão
-      setDeferredPrompt(e);
-      // Mostrar o nosso botão bonito
-      setIsVisible(true);
-    };
-
-    window.addEventListener('beforeinstallprompt', handler);
 
     // Se for iOS e estiver no navegador (não instalado), mostrar ajuda
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone;
@@ -31,19 +30,40 @@ const InstallPrompt: React.FC = () => {
         setIsVisible(true);
     }
 
-    return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
+  useEffect(() => {
+    if (pwaState.installable && !pwaState.standalone) setIsVisible(true);
+  }, [pwaState.installable, pwaState.standalone]);
+
   const handleInstallClick = async () => {
-    // Fluxo Android / PC
-    if (deferredPrompt) {
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        console.log(`Resultado da instalação: ${outcome}`);
-        setDeferredPrompt(null);
-        setIsVisible(false);
-    }
+    const installed = await installAllShopPwa();
+    if (installed) setIsVisible(false);
   };
+
+  if (pwaState.needRefresh && !updateDismissed) {
+    return (
+      <div className="fixed bottom-4 left-4 right-4 z-[70] bg-white dark:bg-slate-900 p-4 rounded-xl shadow-2xl border border-orange-200 dark:border-slate-700 flex flex-col md:flex-row items-center justify-between gap-4 mb-[env(safe-area-inset-bottom)]" role="status">
+        <div className="flex items-center gap-3">
+          <div className="bg-orange-100 dark:bg-orange-950/60 p-2.5 rounded-xl text-orange-600 shrink-0">
+            <RefreshCw size={24} />
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-900 dark:text-white leading-tight">Nova versão disponível</h3>
+            <p className="text-xs text-gray-500 dark:text-slate-300 mt-0.5">Atualize quando terminar o que está a fazer.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <button onClick={() => setUpdateDismissed(true)} className="p-2 text-gray-500 dark:text-slate-300 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-800">
+            Mais tarde
+          </button>
+          <button onClick={() => void applyAllShopPwaUpdate()} className="flex-1 md:flex-none bg-orange-500 text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md hover:bg-orange-600 transition-all flex items-center justify-center gap-2 active:scale-95">
+            <RefreshCw size={18} /> Atualizar agora
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!isVisible) return null;
 

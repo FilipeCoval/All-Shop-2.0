@@ -35,12 +35,6 @@ export const timestampToMillis = (value: unknown): number => {
 };
 
 export const getBatchPhysical = (data: DocumentData): { bought: number; sold: number; available: number } => {
-  if (Array.isArray(data.units) && data.units.length > 0) {
-    const bought = data.units.length;
-    const sold = data.units.filter((unit: any) => unit?.status === 'SOLD').length;
-    return { bought, sold, available: Math.max(0, bought - sold) };
-  }
-
   const bought = Math.max(0, Number(data.quantityBought || 0));
   const sold = Math.max(0, Number(data.quantitySold || 0));
   return { bought, sold, available: Math.max(0, bought - sold) };
@@ -90,6 +84,7 @@ export const makeReservationId = (ownerKey: string, productId: number, variantKe
 export const allocateReservationSummaries = (
   batches: BatchSnapshot[],
   reservations: ReservationRecord[],
+  saleAdjustments: Map<string, number> = new Map(),
 ): Map<string, number> => {
   const assigned = new Map<string, number>(batches.map((batch) => [batch.id, 0]));
 
@@ -97,7 +92,7 @@ export const allocateReservationSummaries = (
     let remaining = Math.max(0, requested);
     for (const batch of matching) {
       if (remaining <= 0) break;
-      const physical = getBatchPhysical(batch.data()).available;
+      const physical = Math.max(0, getBatchPhysical(batch.data()).available - (saleAdjustments.get(batch.id) || 0));
       const already = assigned.get(batch.id) || 0;
       const put = Math.min(remaining, Math.max(0, physical - already));
       assigned.set(batch.id, already + put);
@@ -125,8 +120,9 @@ export const syncInventoryReservedSummary = (
   transaction: Transaction,
   batches: BatchSnapshot[],
   reservations: ReservationRecord[],
+  saleAdjustments: Map<string, number> = new Map(),
 ) => {
-  const assigned = allocateReservationSummaries(batches, reservations);
+  const assigned = allocateReservationSummaries(batches, reservations, saleAdjustments);
   for (const batch of batches) {
     const reserved = assigned.get(batch.id) || 0;
     if (Number(batch.data().reserved || 0) !== reserved) {

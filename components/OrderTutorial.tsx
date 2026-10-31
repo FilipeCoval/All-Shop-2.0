@@ -25,14 +25,68 @@ const OrderTutorial: React.FC<OrderTutorialProps> = ({ message, platform, action
     return () => clearInterval(interval);
   }, []);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(message);
-    setCopied(true);
+  const copyOrderMessage = async (): Promise<boolean> => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(message);
+        return true;
+      }
+
+      const textarea = document.createElement('textarea');
+      textarea.value = message;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const copiedSuccessfully = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return copiedSuccessfully;
+    } catch (error) {
+      console.error('Não foi possível copiar automaticamente a mensagem do pedido:', error);
+      return false;
+    }
+  };
+
+  const handleCopy = async () => {
+    const copiedSuccessfully = await copyOrderMessage();
+    setCopied(copiedSuccessfully);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleOpenApp = () => {
-    window.open(actionUrl, '_blank');
+    // Copiar de forma síncrona mantém o gesto do utilizador ativo. Isto permite
+    // abrir o Telegram noutra janela/app sem substituir a página atual da loja.
+    let copiedSuccessfully = false;
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = message;
+      textarea.setAttribute('readonly', '');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+      copiedSuccessfully = document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch (error) {
+      console.error('Não foi possível copiar automaticamente a mensagem do pedido:', error);
+    }
+
+    setCopied(copiedSuccessfully);
+    setStep(2);
+
+    // Abrir separadamente preserva o checkout no navegador. Quando o cliente
+    // regressa do Telegram, continua no botão "Já enviei o pedido".
+    const appLink = document.createElement('a');
+    appLink.href = actionUrl;
+    appLink.target = '_blank';
+    appLink.rel = 'noopener noreferrer';
+    document.body.appendChild(appLink);
+    appLink.click();
+    document.body.removeChild(appLink);
   };
 
   return (
@@ -164,7 +218,7 @@ const OrderTutorial: React.FC<OrderTutorialProps> = ({ message, platform, action
                 className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-white transition-all ${platformColor} hover:opacity-90 shadow-lg shadow-blue-500/20`}
             >
                 <ExternalLink size={18} />
-                Abrir App
+                {platform === 'tg' ? 'Abrir Telegram' : 'Abrir WhatsApp'}
             </button>
         </div>
 

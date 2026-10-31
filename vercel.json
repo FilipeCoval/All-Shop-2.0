@@ -1,6 +1,63 @@
 
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/admin.ts": {
+      "maxDuration": 60
+    }
+  },
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/" }
+      ]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, must-revalidate" },
+        { "key": "Content-Type", "value": "application/manifest+json; charset=utf-8" }
+      ]
+    },
+    {
+      "source": "/admin.webmanifest",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, must-revalidate" },
+        { "key": "Content-Type", "value": "application/manifest+json; charset=utf-8" }
+      ]
+    },
+    {
+      "source": "/admin-sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Service-Worker-Allowed", "value": "/admin" },
+        { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
+      ]
+    }
+  ],
   "rewrites": [
+    {
+      "source": "/api/admin/:resource",
+      "destination": "/api/admin?resource=:resource"
+    },
+    {
+      "source": "/api/checkout",
+      "destination": "/api/admin?resource=legacy"
+    },
+    {
+      "source": "/api/cleanup-reservations",
+      "destination": "/api/admin?resource=legacy"
+    },
+    {
+      "source": "/api/update-stock-summary",
+      "destination": "/api/admin?resource=legacy"
+    },
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    },
     {
       "source": "/product/(.*)",
       "destination": "/api/og?id=$1"
