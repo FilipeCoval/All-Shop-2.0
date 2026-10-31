@@ -1,4 +1,4 @@
-import type { Product } from '../../types/domain';
+import type { Product, ProductReview } from '../../types/domain';
 
 export type OrderStatus =
   | 'Pendente'
@@ -109,6 +109,7 @@ export interface AdminOrder {
 
 export interface AdminSnapshot {
   products: Product[];
+  reviews: ProductReview[];
   lots: InventoryLot[];
   reservations: StockReservation[];
   orders: AdminOrder[];

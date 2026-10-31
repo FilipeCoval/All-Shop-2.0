@@ -1,10 +1,10 @@
-import { ArrowLeft, ArrowRight, Barcode, Calculator, Camera, CircleDollarSign, ImagePlus, Plus, Save, Sparkles, Trash2, Truck, Upload, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Barcode, Calculator, Camera, CircleDollarSign, ImagePlus, MessageSquare, Plus, Save, Sparkles, Star, Trash2, Truck, Upload, X } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { getDownloadURL, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
-import type { Product, ProductVariant } from '../../types/domain';
+import type { Product, ProductReview, ProductVariant } from '../../types/domain';
 import { storage } from '../../../services/firebaseConfig';
 import type { InventoryLot, StoreCategory } from './adminTypes';
-import { adminMutationsAvailable, deleteInventoryLot, saveCatalogProduct, saveInventoryLot } from './adminMutations';
+import { adminMutationsAvailable, deleteInventoryLot, deleteProductReview, saveCatalogProduct, saveInventoryLot } from './adminMutations';
 import { SerialScanner } from './SerialScanner';
 import { displayUnitCode, normalizeUnitCode, resolveUnitIdForSerial, stableUnitId, unitCodes } from './unitIdentity';
 import { normalizeProductAvailabilityMode, type ProductAvailabilityMode } from '../../domain/productAvailability';
@@ -62,8 +62,12 @@ const dateTimeInputValue = (value?: string | null) => {
   const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
   return local.toISOString().slice(0, 16);
 };
+const reviewDateLabel = (value?: string) => {
+  const date = new Date(value ?? '');
+  return Number.isFinite(date.getTime()) ? date.toLocaleDateString('pt-PT') : 'Data indisponível';
+};
 
-export function CatalogEditor({ open, product, categories, onClose, onSaved }: EditorProps & { product: Product | null; categories: StoreCategory[] }) {
+export function CatalogEditor({ open, product, categories, reviews, onClose, onSaved }: EditorProps & { product: Product | null; categories: StoreCategory[]; reviews: ProductReview[] }) {
   const [form, setForm] = useState({ name: '', category: '', price: '', originalPrice: '', promoEndsAt: '', weight: '', description: '', features: '', badges: '', variantLabel: 'Opção', isPrivate: false, isFreebie: false, availabilityMode: 'AUTO' as ProductAvailabilityMode, maxQuantityPerOrder: '' });
   const [gallery, setGallery] = useState<string[]>([]);
   const [imageUrl, setImageUrl] = useState('');
@@ -74,7 +78,10 @@ export function CatalogEditor({ open, product, categories, onClose, onSaved }: E
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const productReviews = useMemo(() => product ? reviews.filter((review) => Number(review.productId) === product.id) : [], [product, reviews]);
+  const averageRating = productReviews.length ? productReviews.reduce((sum, review) => sum + Number(review.rating ?? 0), 0) / productReviews.length : 0;
 
   useEffect(() => {
     if (!open) return;
@@ -90,6 +97,7 @@ export function CatalogEditor({ open, product, categories, onClose, onSaved }: E
     setNewSpecValue('');
     setUploading(false);
     setUploadProgress(0);
+    setDeletingReviewId(null);
     setError(null);
     // As categorias são lidas ao abrir; uma atualização em segundo plano não pode apagar o formulário.
   }, [product, open]);
@@ -153,6 +161,19 @@ export function CatalogEditor({ open, product, categories, onClose, onSaved }: E
     setNewSpecKey(''); setNewSpecValue(''); setError(null);
   };
 
+  const removeReview = async (review: ProductReview) => {
+    if (!product || !window.confirm(`Apagar a avaliação de ${review.userName || 'este cliente'}?`)) return;
+    setDeletingReviewId(review.id); setError(null);
+    try {
+      await deleteProductReview(review.id, product.id);
+      await onSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível apagar a avaliação.');
+    } finally {
+      setDeletingReviewId(null);
+    }
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setBusy(true); setError(null);
     try {
@@ -181,6 +202,9 @@ export function CatalogEditor({ open, product, categories, onClose, onSaved }: E
       <section className="editor-section"><header><span>5</span><div><strong>Destaques e especificações</strong><small>Informação usada na página do produto e na comparação entre artigos.</small></div></header><div className="form-grid"><Field label="Características (uma por linha)"><textarea rows={4} value={form.features} onChange={(event) => setForm({ ...form, features: event.target.value })} /></Field><Field label="Etiquetas (uma por linha)"><textarea rows={4} value={form.badges} onChange={(event) => setForm({ ...form, badges: event.target.value })} /></Field></div><div className="spec-editor"><header><div><strong>Especificações técnicas</strong><small>{Object.keys(specs).length ? `${Object.keys(specs).length} propriedade(s) configurada(s)` : 'Ex.: Marca, Modelo, Capacidade, Ligações'}</small></div></header>{Object.entries(specs).length > 0 && <div className="spec-list">{Object.entries(specs).map(([key, value]) => <article key={key}><strong>{key}</strong><span>{String(value)}</span><button type="button" aria-label={`Remover ${key}`} onClick={() => setSpecs((current) => Object.fromEntries(Object.entries(current).filter(([itemKey]) => itemKey !== key)))}><Trash2 /></button></article>)}</div>}<div className="spec-add-row"><input aria-label="Nome da especificação" placeholder="Propriedade (ex.: Memória)" value={newSpecKey} onChange={(event) => setNewSpecKey(event.target.value)} /><input aria-label="Valor da especificação" placeholder="Valor (ex.: 4 GB)" value={newSpecValue} onChange={(event) => setNewSpecValue(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addSpec(); } }} /><button type="button" onClick={addSpec}><Plus /> Adicionar</button></div></div></section>
 
       <section className="editor-section"><header><span>6</span><div><strong>Publicação</strong><small>Estado e visibilidade apresentados na loja.</small></div></header><div className="form-grid"><Field label="Estado apresentado na loja"><select value={form.availabilityMode} onChange={(event) => setForm({ ...form, availabilityMode: event.target.value as ProductAvailabilityMode })}><option value="AUTO">Automático (recomendado)</option><option value="AVAILABLE">Disponível</option><option value="COMING_SOON">Em breve</option><option value="OUT_OF_STOCK">Esgotado</option></select></Field><div className="editor-info"><strong>O stock físico não é alterado.</strong><br />“Em breve” e “Esgotado” impedem compras. “Disponível” nunca permite vender sem unidades reais.</div></div><div className="check-row"><label><input type="checkbox" checked={form.isFreebie} onChange={(event) => setForm({ ...form, isFreebie: event.target.checked })} /> Disponível como oferta para clientes elegíveis</label><label><input type="checkbox" checked={form.isPrivate} onChange={(event) => setForm({ ...form, isPrivate: event.target.checked })} /> Manter privado</label></div></section>
+      {product && <section className="editor-section product-reviews"><header><span>7</span><div><strong>Avaliações de clientes</strong><small>Consulte as opiniões publicadas neste produto e remova apenas conteúdo impróprio.</small></div><b>{productReviews.length} avaliação{productReviews.length === 1 ? '' : 'ões'}</b></header>
+        {productReviews.length > 0 ? <><div className="review-summary"><span><Star /><strong>{averageRating.toFixed(1)}</strong><small>média de 5</small></span><p>As avaliações aparecem automaticamente na página do produto. Apagar uma avaliação não altera os AllPoints já atribuídos ao cliente.</p></div><div className="admin-review-list">{productReviews.map((review) => <article key={review.id}><header><div><span className="review-stars" aria-label={`${review.rating} de 5 estrelas`}>{[1, 2, 3, 4, 5].map((star) => <Star key={star} className={star <= Number(review.rating) ? 'filled' : ''} />)}</span><strong>{review.userName || 'Cliente'}</strong><small>{reviewDateLabel(review.date)}</small></div><button type="button" disabled={deletingReviewId === review.id} onClick={() => void removeReview(review)}><Trash2 /> {deletingReviewId === review.id ? 'A apagar…' : 'Apagar'}</button></header><p>{review.comment || 'Sem comentário escrito.'}</p>{Boolean(review.images?.length) && <div className="review-images">{review.images?.map((image, index) => <a key={`${image}-${index}`} href={image} target="_blank" rel="noreferrer"><img src={image} alt={`Fotografia da avaliação ${index + 1}`} /></a>)}</div>}</article>)}</div></> : <div className="reviews-empty"><MessageSquare /><strong>Ainda não existem avaliações</strong><span>Quando um cliente avaliar este produto, a opinião aparecerá aqui.</span></div>}
+      </section>}
       {!adminMutationsAvailable && <p className="safe-action-note">O formulário já está pronto. Guardar será ativado no endereço Vercel de testes.</p>}{error && <p className="form-error">{error}</p>}
       <div className="editor-footer"><button type="button" className="secondary-button" onClick={onClose}>Cancelar</button><button className="save-button" disabled={!adminMutationsAvailable || busy || uploading}><Save /> {busy ? 'A guardar…' : uploading ? 'A carregar fotos…' : 'Guardar produto'}</button></div>
     </form>

@@ -246,7 +246,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
         {data && tab === 'backups' && <BackupsSection data={data} />}
       </section>
       <AdminDetails order={selectedOrder} stock={currentSelectedStock} lots={data?.lots ?? []} onClose={() => { setSelectedOrder(null); setSelectedStock(null); }} onChanged={refresh} onEditLot={(lot) => { setEditingLot(lot); setInitialLotProductId(lot.publicProductId); setLotEditorOpen(true); }} />
-      {data && <CatalogEditor open={catalogEditorOpen} product={editingProduct} categories={data.categories} onClose={() => setCatalogEditorOpen(false)} onSaved={refresh} />}
+      {data && <CatalogEditor open={catalogEditorOpen} product={editingProduct} categories={data.categories} reviews={data.reviews} onClose={() => setCatalogEditorOpen(false)} onSaved={refresh} />}
       {data && <LotEditor open={lotEditorOpen} lot={editingLot} initialProductId={initialLotProductId} products={data.products} onClose={() => setLotEditorOpen(false)} onSaved={refresh} />}
       {data && <ImportEditor open={importEditorOpen} shipment={editingImport} products={data.products} onClose={() => setImportEditorOpen(false)} onSaved={refresh} />}
       {data && <TelegramOrderRecovery open={telegramRecoveryOpen} products={data.products} onClose={() => setTelegramRecoveryOpen(false)} onSaved={refresh} />}

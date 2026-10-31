@@ -20,8 +20,24 @@ export default async function handler(request: VercelRequest, response: VercelRe
   if (!requirePost(request, response)) return;
   try {
     const admin = await requireAdmin(request);
-    if (request.body?.action !== 'save_product') throw new ApiError(400, 'Ação de catálogo inválida.');
+    const action = text(request.body?.action, 40);
     const database = getAdminDb();
+    if (action === 'delete_review') {
+      const reviewId = text(request.body?.reviewId, 200);
+      const productId = Number(request.body?.productId);
+      if (!reviewId) throw new ApiError(400, 'Avaliação inválida.');
+      const reviewRef = database.collection('reviews').doc(reviewId);
+      await database.runTransaction(async (transaction) => {
+        const reviewSnapshot = await transaction.get(reviewRef);
+        if (!reviewSnapshot.exists) throw new ApiError(404, 'A avaliação já não existe.');
+        const savedProductId = Number(reviewSnapshot.data()?.productId);
+        if (Number.isFinite(productId) && productId > 0 && savedProductId !== productId) throw new ApiError(409, 'A avaliação não pertence a este produto.');
+        transaction.delete(reviewRef);
+        transaction.set(database.collection('admin_audit_log').doc(), { action: 'delete_review', adminId: admin.uid, adminEmail: admin.email, reviewId, productId: savedProductId, createdAt: FieldValue.serverTimestamp() });
+      });
+      return response.status(200).json({ success: true, reviewId });
+    }
+    if (action !== 'save_product') throw new ApiError(400, 'Ação de catálogo inválida.');
     const input = request.body?.product ?? {};
     const requestedId = Number(input.id);
     const id = Number.isInteger(requestedId) && requestedId > 0 ? requestedId : Date.now();

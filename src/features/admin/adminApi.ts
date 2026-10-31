@@ -1,6 +1,6 @@
 import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { firestore } from '../../lib/firebase';
-import type { Product } from '../../types/domain';
+import type { Product, ProductReview } from '../../types/domain';
 import type { AdminAuditEntry, AdminCoupon, AdminOrder, AdminSnapshot, AdminUser, ImportShipment, InventoryLot, ProductRequest, StockReservation, StoreCategory, SupportTicket } from './adminTypes';
 import { supportTicketActivity } from './supportConversation';
 
@@ -11,8 +11,9 @@ const getCollection = async <T>(name: string): Promise<T[]> => {
 };
 
 export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
-  const [products, lots, reservations, orders, users, coupons, tickets, imports, requests, categories, audit] = await Promise.all([
+  const [products, reviews, lots, reservations, orders, users, coupons, tickets, imports, requests, categories, audit] = await Promise.all([
     getCollection<Product>('products_public'),
+    getCollection<ProductReview>('reviews'),
     getCollection<InventoryLot>('products_inventory'),
     getCollection<StockReservation>('stock_reservations'),
     getCollection<AdminOrder>('orders'),
@@ -33,6 +34,17 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
         stock: Math.max(0, Number(product.stock ?? 0)),
       }))
       .filter((product) => Number.isFinite(product.id) && product.id > 0 && Boolean(product.name)),
+    reviews: reviews
+      .map((review) => {
+        const rating = Number(review.rating);
+        return {
+          ...review,
+          productId: Number(review.productId),
+          rating: Number.isFinite(rating) ? Math.min(5, Math.max(1, rating)) : 1,
+        };
+      })
+      .filter((review) => Number.isFinite(review.productId) && review.productId > 0)
+      .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime()),
     lots: lots.map((lot) => ({
       ...lot,
       publicProductId: lot.publicProductId == null ? undefined : Number(lot.publicProductId),
