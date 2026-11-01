@@ -1,4 +1,5 @@
 import type { Product } from '../../types/domain';
+import { inventoryLotIncomingQuantity, inventoryLotPhysicalQuantity } from '../../domain/inventoryReceipt';
 import type { InventoryLot, StockGroup, StockReservation } from './adminTypes';
 
 const normalize = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('pt');
@@ -22,7 +23,7 @@ const activeReservationQuantity = (
   )
   .reduce((sum, reservation) => sum + Math.max(0, Number(reservation.quantity ?? 0)), 0);
 
-const lotPhysical = (lot: InventoryLot) => Math.max(0, lot.quantityBought - lot.quantitySold);
+const lotPhysical = (lot: InventoryLot) => inventoryLotPhysicalQuantity(lot);
 
 const productPublishedStock = (product?: Product) => {
   if (!product) return 0;
@@ -46,6 +47,7 @@ export function buildStockGroups(
     const product = products.find((item) => item.id === productId);
     const variants = [...new Set(productLots.map((lot) => lot.variant?.trim()).filter(Boolean) as string[])];
     const physical = productLots.reduce((sum, lot) => sum + lotPhysical(lot), 0);
+    const incoming = productLots.reduce((sum, lot) => sum + inventoryLotIncomingQuantity(lot), 0);
     const sold = productLots.reduce((sum, lot) => sum + lot.quantitySold, 0);
     const cartReserved = productId == null ? 0 : activeReservationQuantity(reservations, productId);
     const reserved = Math.min(physical, cartReserved);
@@ -69,6 +71,7 @@ export function buildStockGroups(
       lots: productLots.length,
       variants,
       physical,
+      incoming,
       reserved,
       available,
       sold,

@@ -30,4 +30,15 @@ assert.notEqual(
   'o lote genérico não deve ser somado novamente por cada variante no stock público total',
 );
 
+const incomingProjection = projectPublicStock(
+  22,
+  { stock: 99 },
+  [
+    { id: 'RECEIVED', publicProductId: 22, quantityBought: 2, quantitySold: 0, receiptStatus: 'RECEIVED' },
+    { id: 'ON-THE-WAY', publicProductId: 22, quantityBought: 8, quantitySold: 0, receiptStatus: 'IN_TRANSIT' },
+  ],
+  [],
+);
+assert.equal(incomingProjection.stock, 2, 'um lote a caminho nunca pode entrar no stock público');
+
 console.log('stock projection regressions: OK');

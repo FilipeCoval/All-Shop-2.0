@@ -15,6 +15,17 @@ const fallback = allocateSale(lots, 7, 'Azul', 2, 0);
 assert.deepEqual(fallback.map((entry) => entry.lot.id), ['GENERIC']);
 assert.equal(fallback[0].sold, 2, 'um lote antigo genérico continua compatível quando não existe variante exata');
 
+const receivedOnly = allocateSale([
+  { id: 'INCOMING', publicProductId: 9, variant: 'Preto', quantityBought: 5, quantitySold: 0, receiptStatus: 'IN_TRANSIT' },
+  { id: 'RECEIVED', publicProductId: 9, variant: 'Preto', quantityBought: 1, quantitySold: 0, receiptStatus: 'RECEIVED' },
+], 9, 'Preto', 1, 0);
+assert.deepEqual(receivedOnly.map((entry) => entry.lot.id), ['RECEIVED'], 'o checkout deve ignorar completamente lotes ainda não recebidos');
+assert.throws(
+  () => allocateSale([{ id: 'INCOMING', publicProductId: 9, variant: 'Preto', quantityBought: 5, quantitySold: 0, receiptStatus: 'IN_TRANSIT' }], 9, 'Preto', 1, 0),
+  /stock suficiente/i,
+  'uma compra ao fornecedor não pode ser vendida antes da confirmação de receção',
+);
+
 assert.throws(
   () => allocateSale(lots, 7, 'Preto', 2, 1),
   /stock suficiente/i,

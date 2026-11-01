@@ -28,11 +28,12 @@ export function ProductsSection({ products, groups, search, onCreateProduct, onE
   const visible = products.filter((product) => `${product.name} ${product.category}`.toLocaleLowerCase('pt').includes(query));
   const groupFor = (product: Product) => groups.find((group) => group.productId === product.id);
   const available = groups.reduce((sum, group) => sum + group.available, 0);
+  const incoming = groups.reduce((sum, group) => sum + group.incoming, 0);
   const attention = groups.filter((group) => group.warnings.length).length;
   return <div className="products-workspace">
     <section className="products-summary">
       <div><small>Produtos</small><strong>{products.length}</strong><span>{products.filter((item) => !item.isPrivate).length} publicados</span></div>
-      <div><small>Unidades disponíveis</small><strong>{available}</strong><span>calculadas a partir dos lotes</span></div>
+      <div><small>Disponível / a caminho</small><strong>{available} <em>+ {incoming}</em></strong><span>{available} para venda · {incoming} por receber</span></div>
       <div className={attention ? 'needs-attention' : ''}><small>A verificar</small><strong>{attention}</strong><span>{attention ? 'divergências encontradas' : 'inventário consistente'}</span></div>
       <div className="products-primary-actions"><button onClick={onCreateProduct}><Plus /> Novo produto</button><button onClick={() => onCreateLot()}><PackagePlus /> Entrada de stock</button></div>
     </section>

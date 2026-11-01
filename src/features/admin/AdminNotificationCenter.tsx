@@ -18,6 +18,7 @@ import type {
   StockGroup,
   SupportTicket,
 } from './adminTypes';
+import { inventoryLotIncomingQuantity, isInventoryLotInTransit } from '../../domain/inventoryReceipt';
 
 export type AdminNotificationFilter = 'all' | 'orders' | 'support' | 'requests' | 'stock' | 'cashback';
 
@@ -181,6 +182,30 @@ function buildNotifications(data: AdminSnapshot, stockGroups: StockGroup[], now:
       description: group.warnings.slice(0, 2).join(' · '),
       meta: `${group.available} disponível${group.warnings.length > 2 ? ` · +${group.warnings.length - 2} aviso${group.warnings.length - 2 === 1 ? '' : 's'}` : ''}`,
       sortTime: 0,
+      target: { kind: 'stock', group },
+    });
+  }
+
+  for (const lot of data.lots) {
+    if (!isInventoryLotInTransit(lot)) continue;
+    const group = stockGroups.find((entry) => entry.productId === lot.publicProductId);
+    if (!group) continue;
+    const expected = parseLocalDate(lot.expectedArrivalDate);
+    const days = expected ? calendarDayNumber(expected) - calendarDayNumber(now) : null;
+    const severity: NotificationSeverity = days != null && days <= 0 ? 'urgent' : days != null && days <= 7 ? 'warning' : 'info';
+    const timing = days == null
+      ? 'Sem previsão de chegada'
+      : days < 0 ? `Previsão ultrapassada há ${Math.abs(days)} dia${Math.abs(days) === 1 ? '' : 's'}`
+        : days === 0 ? 'Chegada prevista para hoje'
+          : `Chegada prevista dentro de ${days} dia${days === 1 ? '' : 's'}`;
+    const quantity = inventoryLotIncomingQuantity(lot);
+    items.push({
+      id: `incoming-lot:${lot.id}`,
+      severity,
+      title: `Lote a caminho · ${lot.name}`,
+      description: `${lot.supplierName || 'Fornecedor não indicado'} · ${timing}`,
+      meta: `${quantity} unidade${quantity === 1 ? '' : 's'} por receber`,
+      sortTime: expected?.getTime() ?? toTimestamp(lot.purchaseDate),
       target: { kind: 'stock', group },
     });
   }

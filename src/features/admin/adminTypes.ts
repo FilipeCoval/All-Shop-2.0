@@ -40,6 +40,9 @@ export interface InventoryLot {
   purchasePrice?: number;
   salePrice?: number;
   status?: string;
+  receiptStatus?: 'IN_TRANSIT' | 'RECEIVED';
+  expectedArrivalDate?: string;
+  receivedAt?: string | { seconds?: number; toDate?: () => Date };
   cashbackStatus?: string;
   cashbackValue?: number;
   cashbackPlatform?: string;
@@ -257,6 +260,7 @@ export interface StockGroup {
   lots: number;
   variants: string[];
   physical: number;
+  incoming: number;
   reserved: number;
   available: number;
   sold: number;

@@ -51,6 +51,7 @@ export const reviewOrderRequest = (orderId: string, requestKind: 'cancellation' 
 export const saveCatalogProduct = (product: Record<string, unknown>) => callAdminApi(adminApiPath('catalog'), { action: 'save_product', product });
 export const deleteProductReview = (reviewId: string, productId: number) => callAdminApi(adminApiPath('catalog'), { action: 'delete_review', reviewId, productId });
 export const saveInventoryLot = (lot: Record<string, unknown>, lotId: string) => callAdminApi(adminApiPath('inventory'), { action: 'save_lot', lotId, lot }, { retryTransient: true });
+export const confirmInventoryLotReceived = (lotId: string, publicProductId: number) => callAdminApi(adminApiPath('inventory'), { action: 'confirm_lot_received', lotId, publicProductId }, { retryTransient: true });
 export const confirmInventoryCashbackReceived = (lotId: string, paidDate: string) => callAdminApi(adminApiPath('inventory'), { action: 'confirm_cashback_received', lotId, paidDate }, { retryTransient: true });
 export const deleteInventoryLot = (publicProductId: number, lotId: string) => callAdminApi(adminApiPath('inventory'), { action: 'delete_lot', publicProductId, lotId });
 export const syncProductStock = (publicProductId: number) => callAdminApi(adminApiPath('inventory'), { action: 'sync_product', publicProductId }, { retryTransient: true });

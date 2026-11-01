@@ -1,13 +1,14 @@
-import { ArrowLeft, ArrowRight, Barcode, Calculator, Camera, CircleDollarSign, ImagePlus, MessageSquare, Plus, Save, Sparkles, Star, Trash2, Truck, Upload, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Barcode, Calculator, Camera, CheckCircle2, CircleDollarSign, ImagePlus, MessageSquare, Plus, Save, Sparkles, Star, Trash2, Truck, Upload, X } from 'lucide-react';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { getDownloadURL, ref as storageRef, uploadBytesResumable } from 'firebase/storage';
 import type { Product, ProductReview, ProductVariant } from '../../types/domain';
 import { storage } from '../../../services/firebaseConfig';
 import type { InventoryLot, StoreCategory } from './adminTypes';
-import { adminMutationsAvailable, deleteInventoryLot, deleteProductReview, saveCatalogProduct, saveInventoryLot } from './adminMutations';
+import { adminMutationsAvailable, confirmInventoryLotReceived, deleteInventoryLot, deleteProductReview, saveCatalogProduct, saveInventoryLot } from './adminMutations';
 import { SerialScanner } from './SerialScanner';
 import { displayUnitCode, normalizeUnitCode, resolveUnitIdForSerial, stableUnitId, unitCodes } from './unitIdentity';
 import { normalizeProductAvailabilityMode, type ProductAvailabilityMode } from '../../domain/productAvailability';
+import { isInventoryLotInTransit, normalizeInventoryReceiptStatus } from '../../domain/inventoryReceipt';
 
 type EditorProps = { open: boolean; onClose: () => void; onSaved: () => Promise<void> };
 const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
@@ -19,7 +20,7 @@ const localIsoDate = (date = new Date()) => {
   return `${year}-${month}-${day}`;
 };
 const NEW_LOT_DRAFT_PREFIX = 'allshop:admin:new-lot-draft:v1';
-const emptyLotForm = () => ({ publicProductId: '', variant: '', name: '', supplierName: '', supplierOrderId: '', purchaseDate: '', quantityBought: '1', quantitySold: '0', grossPurchaseTotal: '', supplierShippingCost: '', customsCost: '', salePrice: '', cashbackValue: '', cashbackStatus: 'NONE', cashbackPlatform: '', cashbackExpectedDate: '', cashbackPaidDate: '' });
+const emptyLotForm = () => ({ publicProductId: '', variant: '', name: '', supplierName: '', supplierOrderId: '', purchaseDate: '', receiptStatus: 'IN_TRANSIT', expectedArrivalDate: '', quantityBought: '1', quantitySold: '0', grossPurchaseTotal: '', supplierShippingCost: '', customsCost: '', salePrice: '', cashbackValue: '', cashbackStatus: 'NONE', cashbackPlatform: '', cashbackExpectedDate: '', cashbackPaidDate: '' });
 type LotFormState = ReturnType<typeof emptyLotForm>;
 type NewLotDraft = { version: 1; lotId: string; savedAt: number; form: LotFormState; units: NonNullable<InventoryLot['units']>; nextSerial: string };
 
@@ -227,7 +228,8 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     const selectedVariant = product?.variants?.find((variant) => normalizeUnitCode(variant.name) === normalizeUnitCode(form.variant));
     return Math.max(0, Number(selectedVariant?.price ?? product?.price ?? 0));
   }, [form.variant, product]);
-  const variantLocked = Boolean(lot && (Number(lot.quantitySold ?? 0) > 0 || (lot.units ?? []).some((unit) => unit.status && unit.status !== 'AVAILABLE')));
+  const variantLocked = Boolean(lot && (Number(lot.quantitySold ?? 0) > 0 || (lot.units ?? []).some((unit) => unit.status && !['AVAILABLE', 'IN_TRANSIT'].includes(unit.status))));
+  const lotInTransit = Boolean(lot && isInventoryLotInTransit(lot));
   const calculation = useMemo(() => {
     const quantity = Math.max(1, Number(form.quantityBought) || 1);
     const paid = Math.max(0, Number(form.grossPurchaseTotal) || 0);
@@ -273,7 +275,7 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     const quantity = Math.max(1, Number(lot?.quantityBought ?? 1));
     const extras = Number(lot?.supplierShippingCost ?? 0) + Number(lot?.customsCost ?? 0);
     const total = lot?.grossPurchaseTotal ?? Math.max(0, Number(lot?.purchasePrice ?? 0) * quantity - extras);
-    setForm({ publicProductId: productId ? String(productId) : '', variant: lot?.variant ?? '', name: lot?.name ?? selected?.name ?? '', supplierName: lot?.supplierName ?? '', supplierOrderId: lot?.supplierOrderId ?? '', purchaseDate: lot?.purchaseDate?.slice(0, 10) ?? new Date().toISOString().slice(0, 10), quantityBought: String(lot?.quantityBought ?? 1), quantitySold: String(lot?.quantitySold ?? 0), grossPurchaseTotal: total ? String(total) : '', supplierShippingCost: lot?.supplierShippingCost ? String(lot.supplierShippingCost) : '', customsCost: lot?.customsCost ? String(lot.customsCost) : '', salePrice: lot?.salePrice == null ? String(selected?.price ?? '') : String(lot.salePrice), cashbackValue: lot?.cashbackValue ? String(lot.cashbackValue) : '', cashbackStatus: lot?.cashbackStatus ?? 'NONE', cashbackPlatform: lot?.cashbackPlatform ?? '', cashbackExpectedDate: lot?.cashbackExpectedDate?.slice(0, 10) ?? '', cashbackPaidDate: lot?.cashbackPaidDate?.slice(0, 10) ?? '' });
+    setForm({ publicProductId: productId ? String(productId) : '', variant: lot?.variant ?? '', name: lot?.name ?? selected?.name ?? '', supplierName: lot?.supplierName ?? '', supplierOrderId: lot?.supplierOrderId ?? '', purchaseDate: lot?.purchaseDate?.slice(0, 10) ?? new Date().toISOString().slice(0, 10), receiptStatus: normalizeInventoryReceiptStatus(lot ?? { receiptStatus: 'IN_TRANSIT' }), expectedArrivalDate: lot?.expectedArrivalDate?.slice(0, 10) ?? '', quantityBought: String(lot?.quantityBought ?? 1), quantitySold: String(lot?.quantitySold ?? 0), grossPurchaseTotal: total ? String(total) : '', supplierShippingCost: lot?.supplierShippingCost ? String(lot.supplierShippingCost) : '', customsCost: lot?.customsCost ? String(lot.customsCost) : '', salePrice: lot?.salePrice == null ? String(selected?.price ?? '') : String(lot.salePrice), cashbackValue: lot?.cashbackValue ? String(lot.cashbackValue) : '', cashbackStatus: lot?.cashbackStatus ?? 'NONE', cashbackPlatform: lot?.cashbackPlatform ?? '', cashbackExpectedDate: lot?.cashbackExpectedDate?.slice(0, 10) ?? '', cashbackPaidDate: lot?.cashbackPaidDate?.slice(0, 10) ?? '' });
     setUnits((lot?.units ?? []).map((unit) => ({ ...unit })));
     setNextSerial(''); setDraftRestored(false); setScannerOpen(false); setError(null);
     // A lista de produtos é lida ao abrir; refreshes automáticos não podem reiniciar um lote em curso.
@@ -298,18 +300,19 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     + Math.max(0, Number(form.supplierShippingCost) || 0)
     + Math.max(0, Number(form.customsCost) || 0);
   const today = localIsoDate();
-  const visibleUnits = Array.from({ length: Math.max(quantityForUnits, units.length) }, (_, index) => units[index] ?? { id: '', status: 'AVAILABLE' });
+  const editableUnitStatus = form.receiptStatus === 'IN_TRANSIT' ? 'IN_TRANSIT' : 'AVAILABLE';
+  const visibleUnits = Array.from({ length: Math.max(quantityForUnits, units.length) }, (_, index) => units[index] ?? { id: '', status: editableUnitStatus });
   const registeredUnits = visibleUnits.slice(0, quantityForUnits).filter((unit) => displayUnitCode(unit)).length;
   const setUnitSerial = (index: number, value: string) => setUnits((previous) => {
     const next = [...previous];
-    while (next.length <= index) next.push({ id: '', status: 'AVAILABLE' });
+    while (next.length <= index) next.push({ id: '', status: editableUnitStatus });
     const current = next[index];
     const serialNumber = normalizeUnitCode(value);
     next[index] = {
       ...current,
       id: resolveUnitIdForSerial(current, serialNumber, !lot),
       serialNumber,
-      status: current.status || 'AVAILABLE',
+      status: current.status || editableUnitStatus,
     };
     return next;
   });
@@ -329,11 +332,11 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     if (current && displayUnitCode(current)) return current;
     const random = crypto.randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase();
     const internalLabel = `INT-${random}`;
-    return { id: internalLabel, internalLabel, status: 'AVAILABLE', addedAt: new Date().toISOString() };
+    return { id: internalLabel, internalLabel, status: editableUnitStatus, addedAt: new Date().toISOString() };
   }));
   const submit = async (event: FormEvent) => {
     event.preventDefault(); setError(null);
-    const lockedOutsideQuantity = units.slice(quantityForUnits).some((unit) => unit.status && unit.status !== 'AVAILABLE');
+    const lockedOutsideQuantity = units.slice(quantityForUnits).some((unit) => unit.status && !['AVAILABLE', 'IN_TRANSIT'].includes(unit.status));
     if (lockedOutsideQuantity) { setError('A quantidade não pode ser inferior ao número de unidades já reservadas ou vendidas.'); return; }
     const unitsToSave = units.slice(0, quantityForUnits).filter((unit) => displayUnitCode(unit)).map((unit) => {
       const serialNumber = unit.serialNumber ? normalizeUnitCode(unit.serialNumber) : undefined;
@@ -343,7 +346,7 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
         serialNumber,
         internalLabel: unit.internalLabel ? normalizeUnitCode(unit.internalLabel) : undefined,
         barcode: unit.barcode ? normalizeUnitCode(unit.barcode) : undefined,
-        status: unit.status || 'AVAILABLE',
+        status: unit.status && !['AVAILABLE', 'IN_TRANSIT'].includes(unit.status) ? unit.status : editableUnitStatus,
         addedAt: unit.addedAt || new Date().toISOString(),
       };
     });
@@ -359,9 +362,16 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     try { await saveInventoryLot({ ...form, publicProductId: Number(form.publicProductId), quantityBought: Number(form.quantityBought), quantitySold: Number(form.quantitySold), grossPurchaseTotal: calculation.paid, supplierShippingCost: Number(form.supplierShippingCost), customsCost: Number(form.customsCost), purchasePrice: calculation.grossUnitCost, salePrice: catalogSalePrice, cashbackValue: Number(form.cashbackValue), units: unitsToSave }, lot?.id || draftLotIdRef.current); if (!lot) clearNewLotDraft(draftKey); await onSaved(); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar o lote.'); } finally { setBusy(false); }
   };
   const remove = async () => { if (!lot?.id || !lot.publicProductId || !window.confirm('Apagar este lote e recalcular o stock da loja?')) return; setBusy(true); try { await deleteInventoryLot(lot.publicProductId, lot.id); await onSaved(); onClose(); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível apagar o lote.'); } finally { setBusy(false); } };
+  const confirmReceived = async () => {
+    if (!lot?.id || !lot.publicProductId || !window.confirm(`Confirmar que recebeu ${lot.quantityBought} unidade(s) de “${lot.name}”? Depois desta confirmação entram no stock disponível.`)) return;
+    setBusy(true); setError(null);
+    try { await confirmInventoryLotReceived(lot.id, lot.publicProductId); await onSaved(); onClose(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível confirmar a receção do lote.'); }
+    finally { setBusy(false); }
+  };
 
   return <EditorFrame open={open} title={lot ? 'Editar lote' : 'Entrada de stock'} subtitle="Produtos e stock" onClose={closePreservingDraft}><form className="editor-form" onSubmit={submit}>
-    <p className="editor-lead">Este é o único local para registar stock. Escolha o produto e a opção correta; a disponibilidade da loja será recalculada automaticamente.</p>
+    <p className="editor-lead">Registe a compra logo que a fizer. Um lote “A caminho” guarda custos, cashback e quantidades, mas só entra no stock vendável depois de confirmar a receção.</p>
     {!lot && <p className="editor-info">{draftRestored ? 'Rascunho recuperado. Pode continuar exatamente onde ficou.' : 'Este lote fica guardado como rascunho neste separador até ser concluído.'}</p>}
     <section className="editor-section"><header><span>1</span><div><strong>Produto e opção</strong><small>Associe o lote ao artigo exato que será vendido.</small></div></header>
       <Field label="Produto do catálogo"><select value={form.publicProductId} disabled={Boolean(lot)} onChange={(event) => { const selected = products.find((item) => item.id === Number(event.target.value)); setForm({ ...form, publicProductId: event.target.value, name: selected?.name ?? form.name, variant: '' }); }} required>{products.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></Field>
@@ -373,6 +383,8 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     <section className="editor-section"><header><span>2</span><div><strong>Origem da compra</strong><small>Dados úteis para custos e rastreabilidade.</small></div></header>
       <div className="form-grid"><Field label="Fornecedor"><input value={form.supplierName} onChange={(event) => setForm({ ...form, supplierName: event.target.value })} /></Field><Field label="Data de compra"><input type="date" value={form.purchaseDate} onChange={(event) => setForm({ ...form, purchaseDate: event.target.value })} /></Field></div>
       <Field label="N.º encomenda fornecedor"><input value={form.supplierOrderId} onChange={(event) => setForm({ ...form, supplierOrderId: event.target.value })} /></Field>
+      <div className="form-grid"><Field label="Situação do lote"><select value={form.receiptStatus} disabled={Boolean(lot)} onChange={(event) => setForm({ ...form, receiptStatus: event.target.value })}><option value="IN_TRANSIT">A caminho — não disponibilizar</option><option value="RECEIVED">Já recebido — adicionar ao stock</option></select></Field>{form.receiptStatus === 'IN_TRANSIT' && <Field label="Previsão de chegada"><input type="date" min={form.purchaseDate || undefined} value={form.expectedArrivalDate} onChange={(event) => setForm({ ...form, expectedArrivalDate: event.target.value })} /></Field>}</div>
+      <p className={`receipt-status-note ${form.receiptStatus === 'IN_TRANSIT' ? 'incoming' : 'received'}`}>{form.receiptStatus === 'IN_TRANSIT' ? 'Estas unidades ficam registadas como “A caminho”: não aparecem na loja e não podem ser reservadas nem compradas.' : 'Estas unidades entram imediatamente no stock físico e podem ficar disponíveis para compra.'}</p>
     </section>
     <section className="editor-section"><header><span>3</span><div><strong>Quantidade e custo da compra</strong><small>Indique os totais; o custo por produto é calculado automaticamente.</small></div></header>
       <div className="form-grid"><Field label="Quantidade comprada"><input type="number" min="0" value={form.quantityBought} onChange={(event) => setForm({ ...form, quantityBought: event.target.value })} required /></Field><Field label="Já vendida"><input type="number" min="0" max={form.quantityBought || undefined} value={form.quantitySold} onChange={(event) => setForm({ ...form, quantitySold: event.target.value })} required /></Field></div>
@@ -395,8 +407,8 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
         <button type="button" onClick={addNextSerial} disabled={!nextSerial.trim()}>Adicionar</button>
       </div>
       <div className="serial-unit-list">{visibleUnits.map((unit, index) => {
-        const locked = Boolean(unit.status && unit.status !== 'AVAILABLE');
-        return <label key={stableUnitId(unit) || index} className={index >= quantityForUnits ? 'outside-quantity' : ''}><span><b>Unidade {index + 1}</b><small>{locked ? unit.status === 'SOLD' ? 'Vendida — S/N protegido' : 'Reservada — S/N protegido' : index >= quantityForUnits ? 'Fora da quantidade indicada' : displayUnitCode(unit) ? 'Pronta' : 'S/N por registar'}</small></span><input value={displayUnitCode(unit)} disabled={locked || index >= quantityForUnits} onChange={(event) => setUnitSerial(index, event.target.value)} placeholder="Número de série" /></label>;
+        const locked = Boolean(unit.status && !['AVAILABLE', 'IN_TRANSIT'].includes(unit.status));
+        return <label key={stableUnitId(unit) || index} className={index >= quantityForUnits ? 'outside-quantity' : ''}><span><b>Unidade {index + 1}</b><small>{locked ? unit.status === 'SOLD' ? 'Vendida — S/N protegido' : 'Reservada — S/N protegido' : index >= quantityForUnits ? 'Fora da quantidade indicada' : displayUnitCode(unit) ? form.receiptStatus === 'IN_TRANSIT' ? 'Identificada · a caminho' : 'Pronta' : 'S/N por registar'}</small></span><input value={displayUnitCode(unit)} disabled={locked || index >= quantityForUnits} onChange={(event) => setUnitSerial(index, event.target.value)} placeholder="Número de série" /></label>;
       })}</div>
       <div className="serial-management-footer"><p>{registeredUnits === quantityForUnits ? 'Todas as unidades têm identificação.' : `Faltam registar ${quantityForUnits - registeredUnits} unidade(s). Pode guardar e continuar mais tarde.`}</p><button type="button" onClick={generateInternalSerials} disabled={!quantityForUnits || registeredUnits === quantityForUnits}><Sparkles /> Gerar códigos internos</button></div>
     </section>
@@ -407,7 +419,7 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
       <p className="calculator-note">A previsão assume uma venda individual com envio: acima de 50 € desconta 5,40 € de portes; abaixo de 50 € desconta apenas a diferença entre os portes cobrados e pagos pela loja. O levantamento em loja não terá este custo.</p>
     </section>
     {!adminMutationsAvailable && <p className="safe-action-note">O formulário já está pronto. Guardar será ativado no endereço Vercel de testes.</p>}{error && <p className="form-error">{error}</p>}
-    <div className="editor-footer">{lot && <button type="button" className="danger-button" onClick={() => void remove()} disabled={!adminMutationsAvailable || busy}><Trash2 /> Apagar lote</button>}<span /><button type="button" className="secondary-button" onClick={closePreservingDraft}>Fechar</button><button className="save-button" disabled={!adminMutationsAvailable || busy}><Save /> {busy ? 'A guardar…' : 'Guardar lote'}</button></div>
+    <div className="editor-footer">{lot && <button type="button" className="danger-button" onClick={() => void remove()} disabled={!adminMutationsAvailable || busy}><Trash2 /> Apagar lote</button>}{lotInTransit && <button type="button" className="receive-lot-button" onClick={() => void confirmReceived()} disabled={!adminMutationsAvailable || busy}><CheckCircle2 /> {busy ? 'A confirmar…' : 'Confirmar receção'}</button>}<span /><button type="button" className="secondary-button" onClick={closePreservingDraft}>Fechar</button><button className="save-button" disabled={!adminMutationsAvailable || busy}><Save /> {busy ? 'A guardar…' : 'Guardar lote'}</button></div>
     {scannerOpen && <SerialScanner onClose={() => setScannerOpen(false)} onScan={(value) => { setScannerOpen(false); addSerial(value); }} />}
   </form></EditorFrame>;
 }

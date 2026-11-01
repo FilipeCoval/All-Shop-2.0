@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { FieldValue } from 'firebase-admin/firestore';
 import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
 import { cashbackReceiptUpdate, CashbackReceiptValidationError, prepareCashbackForLotSave, prepareCashbackReceipt } from '../cashbackReceipt.js';
+import { normalizeInventoryReceiptStatus } from '../../domain/inventoryReceipt.js';
 import { getAdminDb } from '../firebaseAdmin.js';
 import { inventoryUnitCodeDocumentId } from '../inventoryIdentity.js';
 import { projectPublicStock, type LotData, type ReservationData } from '../stockProjection.js';
@@ -25,9 +26,9 @@ const unitCodes = (unit: UnitRecord) => [...new Set([
 
 const stableUnitKey = (unit: UnitRecord) => serial(unit.id);
 const identitySignature = (unit: UnitRecord) => unitCodes(unit).sort().join('|');
-const isLockedUnit = (unit: UnitRecord) => Boolean(unit.status && unit.status !== 'AVAILABLE');
+const isProtectedUnit = (unit: UnitRecord) => Boolean(unit.status && !['AVAILABLE', 'IN_TRANSIT'].includes(text(unit.status, 30).toUpperCase()));
 
-const sanitizeUnit = (incoming: UnitRecord, current?: UnitRecord): UnitRecord | null => {
+const sanitizeUnit = (incoming: UnitRecord, receiptStatus: 'IN_TRANSIT' | 'RECEIVED', current?: UnitRecord): UnitRecord | null => {
   const id = text(incoming.id, 160)
     || text(incoming.serialNumber, 160)
     || text(incoming.internalLabel, 160)
@@ -49,7 +50,9 @@ const sanitizeUnit = (incoming: UnitRecord, current?: UnitRecord): UnitRecord | 
     ...(serial(incoming.serialNumber) ? { serialNumber: serial(incoming.serialNumber) } : {}),
     ...(serial(incoming.internalLabel) ? { internalLabel: serial(incoming.internalLabel) } : {}),
     ...(serial(incoming.barcode) ? { barcode: serial(incoming.barcode) } : {}),
-    status: text(current?.status ?? incoming.status, 30) || 'AVAILABLE',
+    status: current && isProtectedUnit(current)
+      ? text(current.status, 30)
+      : receiptStatus === 'IN_TRANSIT' ? 'IN_TRANSIT' : 'AVAILABLE',
     addedAt: text(current?.addedAt ?? incoming.addedAt, 50) || new Date().toISOString(),
   });
 };
@@ -102,9 +105,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const publicProductId = Number(request.body?.lot?.publicProductId ?? request.body?.publicProductId);
     if (!Number.isInteger(publicProductId) || publicProductId <= 0) throw new ApiError(400, 'Escolha um produto válido do catálogo.');
 
-    if (!['save_lot', 'delete_lot', 'sync_product'].includes(action)) throw new ApiError(400, 'Ação de inventário inválida.');
+    if (!['save_lot', 'delete_lot', 'sync_product', 'confirm_lot_received'].includes(action)) throw new ApiError(400, 'Ação de inventário inválida.');
     if (action === 'save_lot' && !lotId) throw new ApiError(400, 'A página precisa de ser atualizada antes de criar este lote. O rascunho fica guardado neste dispositivo.');
-    if (action === 'delete_lot' && !lotId) throw new ApiError(400, 'O lote não foi indicado.');
+    if (['delete_lot', 'confirm_lot_received'].includes(action) && !lotId) throw new ApiError(400, 'O lote não foi indicado.');
     if (lotId.includes('/')) throw new ApiError(400, 'O identificador do lote é inválido. Atualize a dashboard e tente novamente.');
 
     const inventoryCollection = database.collection('products_inventory');
@@ -140,7 +143,30 @@ export default async function handler(request: VercelRequest, response: VercelRe
       ].map((document) => [document.id, document]));
       let lots: LotData[] = [...productLotDocuments.values()]
         .map((document) => ({ id: document.id, ...document.data() }));
-      if (action === 'save_lot' && lotRef) {
+      if (action === 'confirm_lot_received' && lotRef) {
+        if (!currentLotSnapshot?.exists) throw new ApiError(404, 'O lote já não existe.');
+        const current = currentLotSnapshot.data() ?? {};
+        if (Number(current.publicProductId) !== publicProductId) throw new ApiError(400, 'O lote não pertence a este produto.');
+        const rawUnits: unknown[] = Array.isArray(current.units) ? current.units : [];
+        if (!rawUnits.every(isUnitRecord)) throw new ApiError(409, 'Este lote contém uma unidade inválida. Corrija o lote antes de confirmar a receção.');
+        const alreadyReceived = normalizeInventoryReceiptStatus(current) === 'RECEIVED';
+        if (!alreadyReceived) {
+          const receivedUnits = rawUnits.map((unit) => ({
+            ...unit,
+            status: text(unit.status, 30).toUpperCase() === 'IN_TRANSIT' ? 'AVAILABLE' : text(unit.status, 30) || 'AVAILABLE',
+          }));
+          const received = {
+            ...current,
+            receiptStatus: 'RECEIVED' as const,
+            units: receivedUnits,
+            receivedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedBy: admin.uid,
+          };
+          lots = [...lots.filter((lot) => lot.id !== lotRef.id), { id: lotRef.id, ...received } as LotData];
+          transaction.update(lotRef, received);
+        }
+      } else if (action === 'save_lot' && lotRef) {
         const input = request.body?.lot ?? {};
         const quantityBought = number(input.quantityBought);
         const quantitySold = number(input.quantitySold);
@@ -148,7 +174,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
         if (!Number.isInteger(quantityBought) || quantityBought < 0 || !Number.isInteger(quantitySold) || quantitySold < 0 || quantitySold > quantityBought) {
           throw new ApiError(400, 'As quantidades do lote são inválidas.');
         }
-        const existing = currentLotSnapshot?.exists ? currentLotSnapshot.data() : {};
+        const existing = currentLotSnapshot?.exists ? (currentLotSnapshot.data() ?? {}) : {};
         if (currentLotSnapshot?.exists && Number(existing?.publicProductId) !== publicProductId) {
           throw new ApiError(409, 'Um lote existente não pode ser mudado para outro produto. Crie um novo lote no produto correto.');
         }
@@ -162,7 +188,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const validVariantNames = new Set(productVariants.map((variant: Record<string, unknown>) => text(variant?.name).toLocaleLowerCase('pt')).filter(Boolean));
         if (incomingVariant && !validVariantNames.has(incomingVariant.toLocaleLowerCase('pt'))) throw new ApiError(409, 'A opção escolhida já não existe neste produto. Atualize a dashboard.');
         if (!currentLotSnapshot?.exists && validVariantNames.size > 0 && !incomingVariant) throw new ApiError(400, 'Escolha a opção/variante deste lote para evitar stock ambíguo.');
-        const lockedVariant = Number(existing?.quantitySold ?? 0) > 0 || existingUnits.some(isLockedUnit);
+        const lockedVariant = Number(existing?.quantitySold ?? 0) > 0 || existingUnits.some(isProtectedUnit);
         if (currentLotSnapshot?.exists && lockedVariant && text(existing?.variant).toLocaleLowerCase('pt') !== incomingVariant.toLocaleLowerCase('pt')) {
           throw new ApiError(409, 'A opção de um lote com vendas ou unidades bloqueadas não pode ser alterada.');
         }
@@ -176,9 +202,14 @@ export default async function handler(request: VercelRequest, response: VercelRe
           const key = stableUnitKey(unit);
           if (key) existingById.set(key, unit);
         }
+        const receiptStatus = normalizeInventoryReceiptStatus({ receiptStatus: input.receiptStatus });
+        const existingReceiptStatus = normalizeInventoryReceiptStatus(existing);
+        if (currentLotSnapshot?.exists && existingReceiptStatus === 'RECEIVED' && receiptStatus === 'IN_TRANSIT') {
+          throw new ApiError(409, 'Um lote já recebido não pode voltar a “A caminho”. Crie um novo lote para uma nova compra.');
+        }
         const units = incomingUnits.map((incoming) => {
           const current = existingById.get(stableUnitKey(incoming));
-          const sanitized = sanitizeUnit(incoming, current);
+          const sanitized = sanitizeUnit(incoming, receiptStatus, current);
           if (!sanitized) throw new ApiError(400, 'Existe uma unidade sem identificador válido.');
           return sanitized;
         });
@@ -196,7 +227,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
           }
         }
 
-        const lockedUnits = existingUnits.filter(isLockedUnit);
+        const lockedUnits = existingUnits.filter(isProtectedUnit);
         for (const locked of lockedUnits) {
           const lockedCodes = new Set(unitCodes(locked));
           const requested = units.find((unit) => stableUnitKey(unit) === stableUnitKey(locked)
@@ -248,6 +279,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
           supplierName: text(input.supplierName) || '',
           supplierOrderId: text(input.supplierOrderId) || '',
           purchaseDate: text(input.purchaseDate, 30) || new Date().toISOString(),
+          receiptStatus,
+          expectedArrivalDate: receiptStatus === 'IN_TRANSIT' ? text(input.expectedArrivalDate, 30) : '',
+          ...(receiptStatus === 'RECEIVED' && (!currentLotSnapshot?.exists || existingReceiptStatus === 'IN_TRANSIT') ? { receivedAt: FieldValue.serverTimestamp() } : {}),
           quantityBought,
           quantitySold,
           purchasePrice: Math.max(0, number(input.purchasePrice)),
@@ -284,7 +318,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const current = currentLotSnapshot.data() ?? {};
         const rawCurrentUnits: unknown[] = Array.isArray(current.units) ? current.units : [];
         if (!rawCurrentUnits.every(isUnitRecord)) throw new ApiError(409, 'Este lote contém uma unidade inválida e não pode ser apagado automaticamente.');
-        if (Number(current.quantitySold ?? 0) > 0 || rawCurrentUnits.some(isLockedUnit)) {
+        if (Number(current.quantitySold ?? 0) > 0 || rawCurrentUnits.some(isProtectedUnit)) {
           throw new ApiError(409, 'Este lote já tem unidades reservadas ou vendidas e não pode ser apagado.');
         }
         const currentCodes = [...new Set(rawCurrentUnits.flatMap(unitCodes))];

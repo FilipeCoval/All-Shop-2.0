@@ -1,8 +1,9 @@
-import { AlertTriangle, CalendarDays, Mail, MapPin, Package, Phone, RefreshCw, Save, Truck, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, Mail, MapPin, Package, Phone, RefreshCw, Save, Truck, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { AdminOrder, InventoryLot, OrderStatus, StockGroup } from './adminTypes';
-import { adminMutationsAvailable, reviewOrderRequest, setOrderStatus, syncProductStock, updateOrderTracking } from './adminMutations';
+import { adminMutationsAvailable, confirmInventoryLotReceived, reviewOrderRequest, setOrderStatus, syncProductStock, updateOrderTracking } from './adminMutations';
 import { OrderFulfillmentPanel } from './OrderFulfillmentPanel';
+import { inventoryLotIncomingQuantity, inventoryLotPhysicalQuantity, isInventoryLotInTransit } from '../../domain/inventoryReceipt';
 
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const date = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'medium', timeStyle: 'short' });
@@ -76,6 +77,7 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
 
 function StockDetail({ group, onChanged, onEditLot }: { group: StockGroup; onChanged: () => Promise<void>; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
   const [syncing, setSyncing] = useState(false);
+  const [receivingLotId, setReceivingLotId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const publicProductId = Number(group.productId);
@@ -101,8 +103,22 @@ function StockDetail({ group, onChanged, onEditLot }: { group: StockGroup; onCha
     }
   };
 
+  const receiveLot = async (lot: InventoryLot) => {
+    if (!lot.publicProductId || !window.confirm(`Confirmar que recebeu ${lot.quantityBought} unidade(s) de “${lot.name}”?`)) return;
+    setReceivingLotId(lot.id); setMessage(null); setError(null);
+    try {
+      await confirmInventoryLotReceived(lot.id, lot.publicProductId);
+      await onChanged();
+      setMessage('Receção confirmada. O stock da loja foi recalculado automaticamente.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível confirmar a receção do lote.');
+    } finally {
+      setReceivingLotId(null);
+    }
+  };
+
   return <div className="detail-body">
-    <div className="stock-detail-kpis"><span><small>Físico</small><strong>{group.physical}</strong></span><span><small>Reservado</small><strong>{group.reserved}</strong></span><span><small>Disponível</small><strong>{group.available}</strong></span><span><small>Loja</small><strong>{group.published}</strong></span></div>
+    <div className="stock-detail-kpis"><span><small>Físico</small><strong>{group.physical}</strong></span><span><small>A caminho</small><strong>{group.incoming}</strong></span><span><small>Reservado</small><strong>{group.reserved}</strong></span><span><small>Disponível</small><strong>{group.available}</strong></span><span><small>Loja</small><strong>{group.published}</strong></span></div>
     {group.warnings.length > 0 && <section className="request-alert"><AlertTriangle /><div><strong>Dados a verificar</strong>{group.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div></section>}
     {storeNeedsSync && <section className="stock-sync-panel">
       <div><strong>O catálogo está desatualizado</strong><p>Esta ação publica o valor calculado pelos lotes e reservas. Não altera nem apaga S/N.</p></div>
@@ -112,7 +128,10 @@ function StockDetail({ group, onChanged, onEditLot }: { group: StockGroup; onCha
     </section>}
     {message && <p className="form-success" role="status">{message}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
-    <DetailSection title={`Lotes (${group.lots})`}><div className="lot-list">{group.lotItems.map((lot) => <article key={lot.id}><header><span><strong>{lot.variant || 'Sem variante'}</strong><small>{lot.supplierName || 'Fornecedor não indicado'}</small></span><div className="lot-heading-actions"><b>{Math.max(0, lot.quantityBought - lot.quantitySold)} disponíveis fisicamente</b><button className="table-action" onClick={() => onEditLot(lot)}>Editar</button></div></header><div><span><CalendarDays />{lot.purchaseDate ? formatDate(lot.purchaseDate) : 'Sem data'}</span><span>Comprado: {lot.quantityBought}</span><span>Vendido: {lot.quantitySold}</span><span>Unidades: {lot.units?.length ?? 0}</span></div><small className="lot-id">Lote {lot.id}</small></article>)}</div></DetailSection>
+    <DetailSection title={`Lotes (${group.lots})`}><div className="lot-list">{group.lotItems.map((lot) => {
+      const inTransit = isInventoryLotInTransit(lot);
+      return <article key={lot.id} className={inTransit ? 'lot-in-transit' : ''}><header><span><strong>{lot.variant || 'Sem variante'}</strong><small>{lot.supplierName || 'Fornecedor não indicado'}</small></span><div className="lot-heading-actions"><b className={inTransit ? 'incoming' : ''}>{inTransit ? `${inventoryLotIncomingQuantity(lot)} a caminho` : `${inventoryLotPhysicalQuantity(lot)} disponíveis fisicamente`}</b>{inTransit && <button className="receive-lot-button compact" onClick={() => void receiveLot(lot)} disabled={!adminMutationsAvailable || receivingLotId !== null}><CheckCircle2 /> {receivingLotId === lot.id ? 'A confirmar…' : 'Confirmar receção'}</button>}<button className="table-action" onClick={() => onEditLot(lot)}>Editar</button></div></header><div><span><CalendarDays />Compra: {lot.purchaseDate ? formatDate(lot.purchaseDate) : 'sem data'}</span>{inTransit && <span><Truck />Previsão: {lot.expectedArrivalDate ? formatDate(lot.expectedArrivalDate) : 'não indicada'}</span>}<span>Comprado: {lot.quantityBought}</span><span>Vendido: {lot.quantitySold}</span><span>Unidades: {lot.units?.length ?? 0}</span></div><small className="lot-id">Lote {lot.id}</small></article>;
+    })}</div></DetailSection>
     <div className="safe-action-note">Criar, editar e apagar lotes será feito pelo servidor com sincronização automática da loja.</div>
   </div>;
 }

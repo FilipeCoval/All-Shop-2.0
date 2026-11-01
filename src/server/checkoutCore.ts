@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { inventoryLotPhysicalQuantity } from '../domain/inventoryReceipt.js';
 import type { LotData, ReservationData } from './stockProjection.js';
 
 export const normalizeVariant = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('pt');
@@ -14,7 +15,7 @@ export const sellableInLot = (lot: LotData) => {
   // A loja 2.0 considera o stock físico (comprado - vendido) como fonte de
   // verdade. Os S/N identificam as unidades na expedição, mas podem ser
   // registados mais tarde e não devem esconder stock já recebido.
-  return Math.max(0, Number(lot.quantityBought ?? 0) - Number(lot.quantitySold ?? 0));
+  return inventoryLotPhysicalQuantity(lot);
 };
 export const activeReservedQuantity = (reservations: ReservationData[], productId: number, variant: string, excludedId?: string) => reservations
   .filter((reservation) => reservation.id !== excludedId && Number(reservation.productId) === productId && normalizeVariant(reservation.variantName ?? reservation.variantKey) === normalizeVariant(variant) && toMillis(reservation.expiresAt) > Date.now())

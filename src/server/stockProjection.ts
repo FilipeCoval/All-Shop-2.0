@@ -1,5 +1,7 @@
+import { inventoryLotPhysicalQuantity } from '../domain/inventoryReceipt.js';
+
 type UnitData = { id?: string; status?: string; reservedUntil?: unknown; soldAt?: string; soldToOrder?: string; soldToCustomerName?: string; soldToCustomerEmail?: string };
-export type LotData = { id?: string; publicProductId?: number; variant?: string; quantityBought?: number; quantitySold?: number; units?: UnitData[] };
+export type LotData = { id?: string; publicProductId?: number; variant?: string; quantityBought?: number; quantitySold?: number; receiptStatus?: string; units?: UnitData[] };
 export type ReservationData = { id?: string; productId?: number; variantName?: string; variantKey?: string; quantity?: number; expiresAt?: unknown };
 type ProductData = { stock?: number; variants?: Array<{ name?: string; stock?: number; [key: string]: unknown }> };
 
@@ -12,7 +14,7 @@ const toMillis = (value: unknown): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-export const physicalQuantity = (lot: LotData) => Math.max(0, Number(lot.quantityBought ?? 0) - Number(lot.quantitySold ?? 0));
+export const physicalQuantity = (lot: LotData) => inventoryLotPhysicalQuantity(lot);
 
 const projectionForLots = (lots: LotData[], reservations: ReservationData[], productId: number, variant?: string) => {
   const exactLots = variant === undefined ? lots : lots.filter((lot) => normalize(lot.variant) === normalize(variant));
