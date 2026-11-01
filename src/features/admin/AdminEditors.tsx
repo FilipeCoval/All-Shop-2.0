@@ -9,6 +9,7 @@ import { SerialScanner } from './SerialScanner';
 import { displayUnitCode, normalizeUnitCode, resolveUnitIdForSerial, stableUnitId, unitCodes } from './unitIdentity';
 import { normalizeProductAvailabilityMode, type ProductAvailabilityMode } from '../../domain/productAvailability';
 import { isInventoryLotInTransit, normalizeInventoryReceiptStatus } from '../../domain/inventoryReceipt';
+import { catalogContentIssues } from '../../domain/catalogContentHealth';
 
 type EditorProps = { open: boolean; onClose: () => void; onSaved: () => Promise<void> };
 const lines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
@@ -83,6 +84,16 @@ export function CatalogEditor({ open, product, categories, reviews, onClose, onS
   const [error, setError] = useState<string | null>(null);
   const productReviews = useMemo(() => product ? reviews.filter((review) => Number(review.productId) === product.id) : [], [product, reviews]);
   const averageRating = productReviews.length ? productReviews.reduce((sum, review) => sum + Number(review.rating ?? 0), 0) / productReviews.length : 0;
+  const contentIssues = useMemo(() => catalogContentIssues({
+    name: form.name,
+    category: form.category,
+    description: form.description,
+    image: gallery[0],
+    images: gallery,
+    features: lines(form.features),
+    specs,
+    variants: variants.map((variant) => ({ name: variant.name, description: variant.description, features: lines(variant.features) })),
+  }), [form.category, form.description, form.features, form.name, gallery, specs, variants]);
 
   useEffect(() => {
     if (!open) return;
@@ -188,7 +199,8 @@ export function CatalogEditor({ open, product, categories, reviews, onClose, onS
   return <EditorFrame open={open} title={product ? 'Editar produto' : 'Novo produto'} subtitle="Catálogo" className="product-editor" onClose={onClose}>
     <form className="editor-form" onSubmit={submit}>
       <p className="editor-lead">Toda a informação visível na loja é editada aqui. O stock continua a ser calculado automaticamente pelos lotes.</p>
-      <section className="editor-section"><header><span>1</span><div><strong>Informação principal</strong><small>Nome, categoria e descrição que o cliente vê.</small></div></header><div className="form-grid"><Field label="Nome do produto"><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></Field><Field label="Categoria"><select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{categories.map((category) => <option key={category.id}>{category.name}</option>)}<option>Outros</option></select></Field></div><Field label="Descrição"><textarea rows={5} placeholder="Explique de forma simples para que serve e quais as vantagens." value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field></section>
+      <aside className={`catalog-health-panel ${contentIssues.length ? 'has-issues' : 'is-complete'}`}><div><Sparkles /><span><strong>{contentIssues.length ? 'Ficha a melhorar' : 'Ficha completa'}</strong><small>{contentIssues.length ? `${contentIssues.length} ponto${contentIssues.length === 1 ? '' : 's'} antes de a ficha ficar completa` : 'Descrição, imagens e informação essenciais estão preenchidas.'}</small></span></div>{contentIssues.length > 0 && <ul>{contentIssues.map((issue) => <li key={issue.code}>{issue.label}</li>)}</ul>}</aside>
+      <section className="editor-section"><header><span>1</span><div><strong>Informação principal</strong><small>Nome, categoria e apresentação geral que todos os clientes veem.</small></div></header><div className="form-grid"><Field label="Nome do produto"><input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required /></Field><Field label="Categoria"><select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>{categories.map((category) => <option key={category.id}>{category.name}</option>)}<option>Outros</option></select></Field></div><Field label="Descrição geral do produto"><textarea rows={6} placeholder="Apresente o produto, para que serve e as vantagens comuns a todas as versões." value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></Field><p className="editor-info"><strong>Esta descrição aparece sempre em “Sobre este produto”.</strong><br />Se existirem opções, não coloque aqui memória, cor ou tamanho de uma única versão; esses dados ficam na respetiva opção.</p></section>
 
       <section className="editor-section product-gallery"><header><span>2</span><div><strong>Fotografias do produto</strong><small>A primeira foto é a principal. Pode carregar várias de uma vez e mudar a ordem.</small></div><b>{gallery.length} foto{gallery.length === 1 ? '' : 's'}</b></header>
         <div className="gallery-add-row"><label className="image-upload-button"><Upload /> {uploading ? `A carregar ${uploadProgress}%` : 'Carregar fotografias'}<input type="file" accept="image/*" multiple disabled={uploading} onChange={(event) => { void uploadImages(event.target.files); event.currentTarget.value = ''; }} /></label><div><input type="url" placeholder="Ou cole o endereço de uma imagem" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addImageUrl(); } }} /><button type="button" onClick={addImageUrl} disabled={!imageUrl.trim()}><Plus /> Adicionar</button></div></div>

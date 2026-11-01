@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
 import { getAdminDb } from '../firebaseAdmin.js';
 import { normalizeProductAvailabilityMode } from '../../domain/productAvailability.js';
+import { CATALOG_COPY_REVIEW, CATALOG_COPY_REVIEW_VERSION } from '../catalogCopyReview.js';
 
 const text = (value: unknown, max = 2000) => String(value ?? '').trim().slice(0, max);
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -36,6 +37,53 @@ export default async function handler(request: VercelRequest, response: VercelRe
         transaction.set(database.collection('admin_audit_log').doc(), { action: 'delete_review', adminId: admin.uid, adminEmail: admin.email, reviewId, productId: savedProductId, createdAt: FieldValue.serverTimestamp() });
       });
       return response.status(200).json({ success: true, reviewId });
+    }
+    if (action === 'review_catalog_content') {
+      const entries = Object.entries(CATALOG_COPY_REVIEW);
+      const references = entries.map(([productId]) => database.collection('products_public').doc(productId));
+      const snapshots = await Promise.all(references.map((reference) => reference.get()));
+      const batch = database.batch();
+      let updated = 0;
+      let skipped = 0;
+      let missing = 0;
+
+      snapshots.forEach((snapshot, index) => {
+        if (!snapshot.exists) { missing += 1; return; }
+        const current = snapshot.data() ?? {};
+        if (current.contentReviewVersion === CATALOG_COPY_REVIEW_VERSION) { skipped += 1; return; }
+        const review = entries[index][1];
+        const reviewedVariants = Array.isArray(current.variants) ? current.variants.map((variant: Record<string, unknown>) => {
+          const proposal = review.variants?.[text(variant.name, 120)];
+          return proposal ? { ...variant, description: proposal.description, features: proposal.features } : variant;
+        }) : current.variants;
+        const reviewedProduct = {
+          ...(review.name ? { name: review.name } : {}),
+          ...(review.category ? { category: review.category } : {}),
+          description: review.description,
+          features: review.features,
+          specs: review.specs,
+          ...(reviewedVariants ? { variants: reviewedVariants } : {}),
+          contentReviewVersion: CATALOG_COPY_REVIEW_VERSION,
+          contentReviewedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: admin.uid,
+        };
+        batch.set(snapshot.ref, reviewedProduct, { merge: true });
+        updated += 1;
+      });
+
+      batch.set(database.collection('admin_audit_log').doc(), {
+        action: 'review_catalog_content',
+        adminId: admin.uid,
+        adminEmail: admin.email,
+        reviewVersion: CATALOG_COPY_REVIEW_VERSION,
+        updated,
+        skipped,
+        missing,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+      return response.status(200).json({ success: true, updated, skipped, missing, reviewVersion: CATALOG_COPY_REVIEW_VERSION });
     }
     if (action !== 'save_product') throw new ApiError(400, 'Ação de catálogo inválida.');
     const input = request.body?.product ?? {};

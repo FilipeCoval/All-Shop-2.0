@@ -15,6 +15,7 @@ import { LOGO_URL, STORE_NAME } from '../../../constants';
 import { AdminCashbackSection } from './AdminCashbackSection';
 import { AdminNotificationCenter, type AdminCashbackNotificationTarget } from './AdminNotificationCenter';
 import { AdminPwaControls } from './AdminPwaControls';
+import { reviewCatalogContent } from './adminMutations';
 
 interface AdminDashboardProps {
   email: string;
@@ -63,6 +64,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
   const [importEditorOpen, setImportEditorOpen] = useState(false);
   const [editingImport, setEditingImport] = useState<AdminSnapshot['imports'][number] | null>(null);
   const [telegramRecoveryOpen, setTelegramRecoveryOpen] = useState(false);
+  const [catalogReviewBusy, setCatalogReviewBusy] = useState(false);
   const refreshInFlight = useRef(false);
   const automaticRefreshPaused = useRef(false);
   automaticRefreshPaused.current = Boolean(
@@ -93,6 +95,19 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
       refreshInFlight.current = false;
     }
   }, []);
+
+  const reviewCatalog = async () => {
+    if (!window.confirm('Aplicar a revisão preparada às descrições, destaques e especificações do catálogo? Preços, stock e fotografias não serão alterados.')) return;
+    setCatalogReviewBusy(true); setError(null);
+    try {
+      await reviewCatalogContent();
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível rever o conteúdo do catálogo.');
+    } finally {
+      setCatalogReviewBusy(false);
+    }
+  };
 
   useEffect(() => {
     void refresh();
@@ -232,7 +247,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
           </>
         )}
 
-        {data && tab === 'products' && <ProductsSection products={data.products} groups={stockGroups} search={search} onCreateProduct={() => { setEditingProduct(null); setCatalogEditorOpen(true); }} onEditProduct={(product) => { setEditingProduct(product); setCatalogEditorOpen(true); }} onCreateLot={(productId) => { setEditingLot(null); setInitialLotProductId(productId); setLotEditorOpen(true); }} onOpenStock={(group) => { setSelectedStock(group); setSelectedOrder(null); }} />}
+        {data && tab === 'products' && <ProductsSection products={data.products} groups={stockGroups} search={search} reviewingContent={catalogReviewBusy} onReviewContent={() => void reviewCatalog()} onCreateProduct={() => { setEditingProduct(null); setCatalogEditorOpen(true); }} onEditProduct={(product) => { setEditingProduct(product); setCatalogEditorOpen(true); }} onCreateLot={(productId) => { setEditingLot(null); setInitialLotProductId(productId); setLotEditorOpen(true); }} onOpenStock={(group) => { setSelectedStock(group); setSelectedOrder(null); }} />}
         {data && tab === 'orders' && <OrdersSection orders={data.orders} search={search} onOpen={(order) => { setSelectedOrder(order); setSelectedStock(null); }} />}
         {data && tab === 'clients' && <ClientsSection users={data.users} search={search} onOpen={(user) => setActionTarget({ kind: 'client', value: user })} />}
         {data && tab === 'coupons' && <CouponsSection coupons={data.coupons} search={search} onCreate={() => setActionTarget({ kind: 'coupon', value: null })} onEdit={(coupon) => setActionTarget({ kind: 'coupon', value: coupon })} />}

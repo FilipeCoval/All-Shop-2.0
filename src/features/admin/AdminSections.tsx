@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, CircleDollarSign, Clock3, PackagePlus, PackageSearch, Pencil, Plus, ShoppingBag, TrendingUp, UsersRound } from 'lucide-react';
+import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, CircleDollarSign, Clock3, PackagePlus, PackageSearch, Pencil, Plus, ShoppingBag, Sparkles, TrendingUp, UsersRound } from 'lucide-react';
 import type { Product } from '../../types/domain';
 import type { AdminCoupon, AdminOrder, AdminUser, ImportShipment, ProductRequest, StockGroup, StoreCategory, SupportTicket } from './adminTypes';
 import { unitMatchesCode } from './unitIdentity';
 import { normalizeProductAvailabilityMode } from '../../domain/productAvailability';
+import { catalogContentIssues } from '../../domain/catalogContentHealth';
 
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const shortDate = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'short' });
@@ -15,10 +16,12 @@ const safeDate = (value?: string) => {
 const statusClass = (status = '') => `status status-${status.toLocaleLowerCase('pt').replace(/\s/g, '-')}`;
 const availabilityLabel = (product: Product) => ({ AUTO: 'Automático', AVAILABLE: 'Disponível', COMING_SOON: 'Em breve', OUT_OF_STOCK: 'Esgotado' }[normalizeProductAvailabilityMode(product)]);
 
-export function ProductsSection({ products, groups, search, onCreateProduct, onEditProduct, onCreateLot, onOpenStock }: {
+export function ProductsSection({ products, groups, search, reviewingContent, onReviewContent, onCreateProduct, onEditProduct, onCreateLot, onOpenStock }: {
   products: Product[];
   groups: StockGroup[];
   search: string;
+  reviewingContent: boolean;
+  onReviewContent: () => void;
   onCreateProduct: () => void;
   onEditProduct: (product: Product) => void;
   onCreateLot: (productId?: number) => void;
@@ -30,17 +33,18 @@ export function ProductsSection({ products, groups, search, onCreateProduct, onE
   const available = groups.reduce((sum, group) => sum + group.available, 0);
   const incoming = groups.reduce((sum, group) => sum + group.incoming, 0);
   const attention = groups.filter((group) => group.warnings.length).length;
+  const contentAttention = products.filter((product) => catalogContentIssues(product).length).length;
   return <div className="products-workspace">
     <section className="products-summary">
       <div><small>Produtos</small><strong>{products.length}</strong><span>{products.filter((item) => !item.isPrivate).length} publicados</span></div>
       <div><small>Disponível / a caminho</small><strong>{available} <em>+ {incoming}</em></strong><span>{available} para venda · {incoming} por receber</span></div>
-      <div className={attention ? 'needs-attention' : ''}><small>A verificar</small><strong>{attention}</strong><span>{attention ? 'divergências encontradas' : 'inventário consistente'}</span></div>
-      <div className="products-primary-actions"><button onClick={onCreateProduct}><Plus /> Novo produto</button><button onClick={() => onCreateLot()}><PackagePlus /> Entrada de stock</button></div>
+      <div className={attention || contentAttention ? 'needs-attention' : ''}><small>A verificar</small><strong>{attention + contentAttention}</strong><span>{attention ? `${attention} no inventário · ${contentAttention} no conteúdo` : contentAttention ? `${contentAttention} fichas de produto a melhorar` : 'inventário e conteúdo consistentes'}</span></div>
+      <div className="products-primary-actions"><button onClick={onCreateProduct}><Plus /> Novo produto</button><button onClick={() => onCreateLot()}><PackagePlus /> Entrada de stock</button><button className="catalog-review-action" onClick={onReviewContent} disabled={reviewingContent}><Sparkles /> {reviewingContent ? 'A rever…' : 'Rever fichas'}</button></div>
     </section>
     <TableCard title="Produtos e inventário" description="Preço, descrição, variantes e lotes organizados por produto — sem caminhos duplicados." count={`${visible.length} produtos`}>
       <table className="products-table"><colgroup><col className="product-col" /><col className="price-col" /><col className="number-col" /><col className="number-col" /><col className="number-col" /><col className="state-col" /><col className="actions-col" /></colgroup><thead><tr><th>Produto</th><th>Preço e opções</th><th>Físico</th><th>Reserva</th><th>Livre</th><th>Estado</th><th>Ações</th></tr></thead>
-        <tbody>{visible.map((product) => { const group = groupFor(product); return <tr key={product.id}>
-          <td><div className="product-cell"><img src={product.image} alt="" /><span><strong>{product.name}</strong><small>{product.category} · ID {product.id}</small></span></div></td>
+        <tbody>{visible.map((product) => { const group = groupFor(product); const contentIssues = catalogContentIssues(product); return <tr key={product.id}>
+          <td><div className="product-cell"><img src={product.image} alt="" /><span><strong>{product.name}</strong><small>{product.category} · ID {product.id}</small>{contentIssues.length ? <button type="button" className="catalog-content-warning" onClick={() => onEditProduct(product)} title={contentIssues.map((issue) => issue.label).join('\n')}>{contentIssues.length} melhoria{contentIssues.length === 1 ? '' : 's'} no conteúdo</button> : <em className="catalog-content-ok">Conteúdo completo</em>}</span></div></td>
           <td><strong>{euro.format(product.price)}</strong><small>{product.variants?.length ? `${product.variants.length} opções: ${product.variants.map((item) => item.name).join(' · ')}` : 'Sem variantes'}</small></td>
           <td>{group?.physical ?? 0}</td><td>{group?.reserved ?? 0}</td><td><b className="number-good">{group?.available ?? 0}</b></td>
           <td>{group?.warnings.length ? <button className="warning-pill workspace-status" onClick={() => group && onOpenStock(group)} title={group.warnings.join('\n')}><AlertTriangle /> Verificar</button> : <span className={product.isPrivate ? 'neutral-pill' : normalizeProductAvailabilityMode(product) === 'OUT_OF_STOCK' ? 'warning-pill' : 'ok-pill'}>{product.isPrivate ? 'Privado' : availabilityLabel(product)}</span>}</td>

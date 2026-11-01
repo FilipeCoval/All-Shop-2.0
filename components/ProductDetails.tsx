@@ -155,16 +155,10 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   const discountPercentage = showPromo && currentOriginalPrice
     ? Math.round((1 - currentPrice / currentOriginalPrice) * 100)
     : 0;
-  const productDetailDescription = hasVariants
-    ? selectedVariant?.description || (selectedVariant
-      ? `${product.name}, na configuração ${selectedVariant.name}. O preço, stock e encomenda ficam associados especificamente a esta versão.`
-      : `Este produto está disponível em ${product.variants?.length ?? 0} versões. Escolha a memória e o armazenamento para consultar o preço, stock e características corretos.`)
-    : product.description;
-  const featureList = hasVariants
-    ? selectedVariant?.features?.length ? selectedVariant.features : selectedVariant
-      ? [`Configuração selecionada: ${selectedVariant.name}`]
-      : (product.variants ?? []).map((variant) => `Versão disponível: ${variant.name}`)
-    : product.features || [];
+  const generalDescription = String(product.description ?? '').trim();
+  const generalFeatures = (product.features || []).filter(Boolean);
+  const variantDescription = String(selectedVariant?.description ?? '').trim();
+  const variantFeatures = (selectedVariant?.features || []).filter(Boolean);
   const specEntries = Object.entries(product.specs || {});
   const shippingIsFree = currentPrice > 50;
   const selectedImageIndex = Math.max(0, uniqueImages.indexOf(selectedImage));
@@ -290,7 +284,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
     "@type": "Product",
     "name": product.name,
     "image": selectedImage,
-    "description": productDetailDescription || "Compre na All-Shop com stock nacional e garantia de entrega rápida.",
+    "description": [generalDescription, variantDescription].filter(Boolean).join(' ') || "Compre na All-Shop com stock nacional e garantia de entrega rápida.",
     "brand": {
       "@type": "Brand",
       "name": "All-Shop"
@@ -534,7 +528,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                       );
                     })}
                   </div>
-                  {selectedVariant && <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-950 dark:border-orange-900/70 dark:bg-orange-950/25 dark:text-orange-100"><strong className="block">Versão escolhida: {selectedVariant.name}</strong><span className="mt-1 block text-xs leading-relaxed text-orange-800 dark:text-orange-200/80">{selectedVariant.description || 'Esta versão ficará identificada no carrinho, na encomenda e na fatura.'}</span></div>}
+                  {selectedVariant && <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-950 dark:border-orange-900/70 dark:bg-orange-950/25 dark:text-orange-100"><strong className="block">Versão escolhida: {selectedVariant.name}</strong><span className="mt-1 block text-xs leading-relaxed text-orange-800 dark:text-orange-200/80">{variantDescription || 'Esta versão ficará identificada no carrinho, na encomenda e na fatura.'}</span>{variantFeatures.length > 0 && <ul className="mt-3 grid gap-1.5 text-xs text-orange-900 dark:text-orange-100 sm:grid-cols-2">{variantFeatures.map((feature, index) => <li key={`${feature}-${index}`} className="flex items-start gap-1.5"><Check size={13} className="mt-0.5 shrink-0" />{feature}</li>)}</ul>}</div>}
                 </div>
               )}
 
@@ -596,15 +590,15 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           </div>
         </div>
 
-        {(productDetailDescription || featureList.length > 0 || specEntries.length > 0) && (
+        {(generalDescription || generalFeatures.length > 0 || specEntries.length > 0) && (
           <section className="mt-12 grid gap-6 lg:grid-cols-[1.05fr_.95fr]" aria-labelledby="product-information-title">
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900 sm:p-8">
               <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-600 dark:text-orange-400">Conheça melhor</p>
               <h2 id="product-information-title" className="mt-2 text-2xl font-black text-slate-950 dark:text-white">Sobre este produto</h2>
-              {productDetailDescription && <p className="mt-4 whitespace-pre-line text-base leading-7 text-slate-600 dark:text-slate-300">{productDetailDescription}</p>}
-              {featureList.length > 0 && (
+              {generalDescription && <p className="mt-4 whitespace-pre-line text-base leading-7 text-slate-600 dark:text-slate-300">{generalDescription}</p>}
+              {generalFeatures.length > 0 && (
                 <ul className="mt-6 grid gap-3 sm:grid-cols-2">
-                  {featureList.map((feature, index) => (
+                  {generalFeatures.map((feature, index) => (
                     <li key={`${feature}-${index}`} className="flex items-start gap-3 rounded-xl bg-slate-50 p-3 text-sm font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                       <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-600 dark:bg-orange-950 dark:text-orange-300"><Check size={13} strokeWidth={3} /></span>
                       {feature}
