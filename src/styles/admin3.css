@@ -866,6 +866,12 @@ img { display: block; max-width: 100%; }
 .stock-sync-panel strong { font-size: 13px; }
 .stock-sync-panel p { margin: 4px 0 0; font-size: 11px; line-height: 1.5; color: #475569; }
 .stock-sync-panel .save-button { flex: 0 0 auto; }
+.legacy-variant-panel { margin-top: 12px; padding: 14px; display: grid; gap: 12px; border: 1px solid #fed7aa; border-radius: 13px; background: #fff7ed; color: #9a3412; }
+.legacy-variant-panel strong { font-size: 13px; }
+.legacy-variant-panel p { margin: 4px 0 0; font-size: 11px; line-height: 1.5; color: #7c2d12; }
+.legacy-variant-actions { display: flex; align-items: center; gap: 8px; }
+.legacy-variant-actions select { min-width: 0; flex: 1; padding: 11px 12px; border: 1px solid #fdba74; border-radius: 10px; background: white; color: #0f172a; font: inherit; font-size: 12px; font-weight: 700; }
+.legacy-variant-actions .save-button { flex: 0 0 auto; }
 .detail-section { margin-top: 15px; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: white; }
 .detail-section > h3 { margin: 0 0 15px; font-size: 13px; text-transform: uppercase; letter-spacing: .045em; }
 .contact-list { display: grid; gap: 10px; }
@@ -1276,6 +1282,7 @@ img { display: block; max-width: 100%; }
 .gallery-empty span { font-size: 10px; }
 .variant-card { margin-top: 9px; padding: 10px; display: grid; gap: 8px; border: 1px solid #e2e8f0; border-radius: 11px; background: #f8fafc; }
 .variant-card .variant-row { margin: 0; }
+.variant-description { width: 100%; resize: vertical; }
 .variant-image-row { display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 7px; }
 .variant-image-row > img, .variant-image-row > span { width: 42px; height: 42px; overflow: hidden; display: grid; place-items: center; border: 1px solid #dbe2ea; border-radius: 8px; background: white; color: #94a3b8; object-fit: contain; }
 .variant-image-row > span svg { width: 18px; }
@@ -1505,6 +1512,8 @@ html.dark .review-images a { border-color: #405169; background: #101e31; }
   .stock-detail-kpis { grid-template-columns: 1fr 1fr; }
   .stock-sync-panel { align-items: stretch; flex-direction: column; }
   .stock-sync-panel .save-button { width: 100%; }
+  .legacy-variant-actions { align-items: stretch; flex-direction: column; }
+  .legacy-variant-actions select, .legacy-variant-actions .save-button { width: 100%; }
   .lot-list article header { flex-direction: column; }
   .admin-form-row { grid-template-columns: 1fr; }
   .save-button { justify-content: center; }
@@ -1915,6 +1924,9 @@ html.dark .import-currency-warning,
 html.dark .recovery-fallback { border-color: #9a3412; background: rgba(124,45,18,.2); color: #fdba74; }
 html.dark .stock-sync-panel { border-color: #1e3a8a; background: rgba(30,64,175,.18); color: #bfdbfe; }
 html.dark .stock-sync-panel p { color: #94a3b8; }
+html.dark .legacy-variant-panel { border-color: #9a3412; background: rgba(154,52,18,.16); color: #fed7aa; }
+html.dark .legacy-variant-panel p { color: #fdba74; }
+html.dark .legacy-variant-actions select { border-color: #9a3412; background: #0b1627; color: #f8fafc; }
 html.dark .recovery-fallback small { color: #fb923c; }
 html.dark .login-error,
 html.dark .admin-error,

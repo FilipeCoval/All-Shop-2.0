@@ -525,6 +525,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                       );
                     })}
                   </div>
+                  {selectedVariant && <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-950 dark:border-orange-900/70 dark:bg-orange-950/25 dark:text-orange-100"><strong className="block">Versão escolhida: {selectedVariant.name}</strong><span className="mt-1 block text-xs leading-relaxed text-orange-800 dark:text-orange-200/80">{selectedVariant.description || 'Esta versão ficará identificada no carrinho, na encomenda e na fatura.'}</span></div>}
                 </div>
               )}
 

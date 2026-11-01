@@ -105,7 +105,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const publicProductId = Number(request.body?.lot?.publicProductId ?? request.body?.publicProductId);
     if (!Number.isInteger(publicProductId) || publicProductId <= 0) throw new ApiError(400, 'Escolha um produto válido do catálogo.');
 
-    if (!['save_lot', 'delete_lot', 'sync_product', 'confirm_lot_received'].includes(action)) throw new ApiError(400, 'Ação de inventário inválida.');
+    if (!['save_lot', 'delete_lot', 'sync_product', 'confirm_lot_received', 'classify_legacy_lots'].includes(action)) throw new ApiError(400, 'Ação de inventário inválida.');
     if (action === 'save_lot' && !lotId) throw new ApiError(400, 'A página precisa de ser atualizada antes de criar este lote. O rascunho fica guardado neste dispositivo.');
     if (['delete_lot', 'confirm_lot_received'].includes(action) && !lotId) throw new ApiError(400, 'O lote não foi indicado.');
     if (lotId.includes('/')) throw new ApiError(400, 'O identificador do lote é inválido. Atualize a dashboard e tente novamente.');
@@ -143,7 +143,29 @@ export default async function handler(request: VercelRequest, response: VercelRe
       ].map((document) => [document.id, document]));
       let lots: LotData[] = [...productLotDocuments.values()]
         .map((document) => ({ id: document.id, ...document.data() }));
-      if (action === 'confirm_lot_received' && lotRef) {
+      let classifiedLotCount = 0;
+      let classifiedVariant = '';
+      if (action === 'classify_legacy_lots') {
+        const requestedVariant = text(request.body?.variant, 120);
+        const productVariants = Array.isArray(productSnapshot.data()?.variants) ? productSnapshot.data()!.variants : [];
+        const canonicalVariant = productVariants
+          .map((variant: Record<string, unknown>) => text(variant?.name, 120))
+          .find((variant: string) => variant.toLocaleLowerCase('pt') === requestedVariant.toLocaleLowerCase('pt'));
+        if (!canonicalVariant) throw new ApiError(409, 'A opção escolhida já não existe neste produto. Atualize a dashboard.');
+
+        const legacyDocuments = [...productLotDocuments.values()].filter((document) => !text(document.data()?.variant, 120));
+        if (legacyDocuments.length > 400) throw new ApiError(409, 'Existem demasiados lotes antigos para classificar de uma só vez. Contacte o suporte antes de continuar.');
+        classifiedLotCount = legacyDocuments.length;
+        classifiedVariant = canonicalVariant;
+        for (const document of legacyDocuments) {
+          transaction.update(document.ref, {
+            variant: canonicalVariant,
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedBy: admin.uid,
+          });
+        }
+        lots = lots.map((lot) => text(lot.variant, 120) ? lot : { ...lot, variant: canonicalVariant });
+      } else if (action === 'confirm_lot_received' && lotRef) {
         if (!currentLotSnapshot?.exists) throw new ApiError(404, 'O lote já não existe.');
         const current = currentLotSnapshot.data() ?? {};
         if (Number(current.publicProductId) !== publicProductId) throw new ApiError(400, 'O lote não pertence a este produto.');
@@ -187,9 +209,11 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const productVariants = Array.isArray(productSnapshot.data()?.variants) ? productSnapshot.data()!.variants : [];
         const validVariantNames = new Set(productVariants.map((variant: Record<string, unknown>) => text(variant?.name).toLocaleLowerCase('pt')).filter(Boolean));
         if (incomingVariant && !validVariantNames.has(incomingVariant.toLocaleLowerCase('pt'))) throw new ApiError(409, 'A opção escolhida já não existe neste produto. Atualize a dashboard.');
-        if (!currentLotSnapshot?.exists && validVariantNames.size > 0 && !incomingVariant) throw new ApiError(400, 'Escolha a opção/variante deste lote para evitar stock ambíguo.');
+        if (validVariantNames.size > 0 && !incomingVariant) throw new ApiError(400, 'Escolha a opção/variante deste lote para evitar stock ambíguo.');
         const lockedVariant = Number(existing?.quantitySold ?? 0) > 0 || existingUnits.some(isProtectedUnit);
-        if (currentLotSnapshot?.exists && lockedVariant && text(existing?.variant).toLocaleLowerCase('pt') !== incomingVariant.toLocaleLowerCase('pt')) {
+        const existingVariant = text(existing?.variant);
+        const isOneTimeLegacyClassification = currentLotSnapshot?.exists && lockedVariant && !existingVariant && Boolean(incomingVariant);
+        if (currentLotSnapshot?.exists && lockedVariant && !isOneTimeLegacyClassification && existingVariant.toLocaleLowerCase('pt') !== incomingVariant.toLocaleLowerCase('pt')) {
           throw new ApiError(409, 'A opção de um lote com vendas ou unidades bloqueadas não pode ser alterada.');
         }
         const rawIncomingUnits: unknown[] = Array.isArray(input.units) ? input.units : existingUnits;
@@ -337,8 +361,16 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const projection = projectPublicStock(publicProductId, productSnapshot.data() ?? {}, lots, reservations);
       transaction.update(productRef, { ...projection, stockUpdatedAt: FieldValue.serverTimestamp() });
       const auditRef = database.collection('admin_audit_log').doc();
-      transaction.set(auditRef, { action, adminId: admin.uid, adminEmail: admin.email, publicProductId, lotId: lotRef?.id ?? null, createdAt: FieldValue.serverTimestamp() });
-      return { lotId: lotRef?.id, projection };
+      transaction.set(auditRef, {
+        action,
+        adminId: admin.uid,
+        adminEmail: admin.email,
+        publicProductId,
+        lotId: lotRef?.id ?? null,
+        ...(action === 'classify_legacy_lots' ? { variant: classifiedVariant, updatedLots: classifiedLotCount } : {}),
+        createdAt: FieldValue.serverTimestamp(),
+      });
+      return { lotId: lotRef?.id, projection, ...(action === 'classify_legacy_lots' ? { variant: classifiedVariant, updatedLots: classifiedLotCount } : {}) };
     });
 
     return response.status(200).json({ success: true, ...result });

@@ -41,4 +41,29 @@ const incomingProjection = projectPublicStock(
 );
 assert.equal(incomingProjection.stock, 2, 'um lote a caminho nunca pode entrar no stock público');
 
+const versionedProjection = projectPublicStock(
+  2,
+  {
+    stock: 99,
+    variants: [
+      { name: '4 GB RAM + 32 GB', price: 39.49, stock: 99 },
+      { name: '2 GB RAM + 16 GB', price: 29.49, stock: 99 },
+    ],
+  },
+  [
+    { id: 'OLD-CLASSIFIED', publicProductId: 2, variant: '4 GB RAM + 32 GB', quantityBought: 7, quantitySold: 6, receiptStatus: 'RECEIVED' },
+    { id: 'NEW-INCOMING', publicProductId: 2, variant: '2 GB RAM + 16 GB', quantityBought: 5, quantitySold: 0, receiptStatus: 'IN_TRANSIT' },
+  ],
+  [],
+);
+assert.equal(versionedProjection.stock, 1, 'apenas a unidade fisicamente recebida deve ficar disponível');
+assert.deepEqual(
+  versionedProjection.variants?.map((variant) => ({ name: variant.name, stock: variant.stock })),
+  [
+    { name: '4 GB RAM + 32 GB', stock: 1 },
+    { name: '2 GB RAM + 16 GB', stock: 0 },
+  ],
+  'cada versão deve ter stock independente e a compra a caminho não pode aparecer à venda',
+);
+
 console.log('stock projection regressions: OK');

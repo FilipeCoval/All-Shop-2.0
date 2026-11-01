@@ -118,6 +118,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
                                );
                            })}
                        </div>
+                       {selectedVariant && <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-950 dark:border-orange-900/70 dark:bg-orange-950/25 dark:text-orange-100"><strong className="block">{selectedVariant.name}</strong>{selectedVariant.description && <span className="mt-1 block text-xs">{selectedVariant.description}</span>}</div>}
                    </div>
                 )}
 

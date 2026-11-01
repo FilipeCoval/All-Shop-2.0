@@ -1,7 +1,8 @@
 import { AlertTriangle, CalendarDays, CheckCircle2, Mail, MapPin, Package, Phone, RefreshCw, Save, Truck, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { AdminOrder, InventoryLot, OrderStatus, StockGroup } from './adminTypes';
-import { adminMutationsAvailable, confirmInventoryLotReceived, reviewOrderRequest, setOrderStatus, syncProductStock, updateOrderTracking } from './adminMutations';
+import type { Product } from '../../types/domain';
+import { adminMutationsAvailable, classifyLegacyInventoryLots, confirmInventoryLotReceived, reviewOrderRequest, setOrderStatus, syncProductStock, updateOrderTracking } from './adminMutations';
 import { OrderFulfillmentPanel } from './OrderFulfillmentPanel';
 import { inventoryLotIncomingQuantity, inventoryLotPhysicalQuantity, isInventoryLotInTransit } from '../../domain/inventoryReceipt';
 
@@ -12,14 +13,14 @@ const formatDate = (value?: string) => {
   return parsed && Number.isFinite(parsed.getTime()) ? date.format(parsed) : '—';
 };
 
-export function AdminDetails({ order, stock, lots, onClose, onChanged, onEditLot }: { order: AdminOrder | null; stock: StockGroup | null; lots: InventoryLot[]; onClose: () => void; onChanged: () => Promise<void>; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
+export function AdminDetails({ order, stock, lots, products, onClose, onChanged, onEditLot }: { order: AdminOrder | null; stock: StockGroup | null; lots: InventoryLot[]; products: Product[]; onClose: () => void; onChanged: () => Promise<void>; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
   const open = Boolean(order || stock);
   return <>
     <button className={`drawer-backdrop ${open ? 'visible' : ''}`} onClick={onClose} aria-label="Fechar detalhes" />
     <aside className={`admin-detail-drawer ${open ? 'open' : ''}`} aria-hidden={!open}>
       <header><div><p className="eyebrow">Detalhes</p><h2>{order ? `Encomenda #${order.id.replace(/^#/, '')}` : stock?.name}</h2></div><button className="icon-button" onClick={onClose}><X /></button></header>
       {order && <OrderDetail order={order} lots={lots} onChanged={onChanged} />}
-      {stock && <StockDetail group={stock} onChanged={onChanged} onEditLot={onEditLot} />}
+      {stock && <StockDetail group={stock} product={products.find((product) => product.id === Number(stock.productId))} onChanged={onChanged} onEditLot={onEditLot} />}
     </aside>
   </>;
 }
@@ -75,17 +76,22 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
   </div>;
 }
 
-function StockDetail({ group, onChanged, onEditLot }: { group: StockGroup; onChanged: () => Promise<void>; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
+function StockDetail({ group, product, onChanged, onEditLot }: { group: StockGroup; product?: Product; onChanged: () => Promise<void>; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
   const [syncing, setSyncing] = useState(false);
+  const [classifying, setClassifying] = useState(false);
+  const [legacyVariant, setLegacyVariant] = useState('');
   const [receivingLotId, setReceivingLotId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const publicProductId = Number(group.productId);
   const storeNeedsSync = Number.isInteger(publicProductId) && publicProductId > 0 && group.published !== group.available;
+  const legacyLots = group.lotItems.filter((lot) => !String(lot.variant ?? '').trim());
+  const catalogVariants = product?.variants ?? [];
 
   useEffect(() => {
     setMessage(null);
     setError(null);
+    setLegacyVariant('');
   }, [group.productId]);
 
   const syncStore = async () => {
@@ -117,9 +123,29 @@ function StockDetail({ group, onChanged, onEditLot }: { group: StockGroup; onCha
     }
   };
 
+  const classifyLegacyLots = async () => {
+    if (!legacyVariant || !legacyLots.length || !Number.isInteger(publicProductId) || publicProductId <= 0) return;
+    if (!window.confirm(`Classificar definitivamente ${legacyLots.length} lote(s) antigo(s) de “${group.name}” como “${legacyVariant}”? Os S/N, vendas, quantidades, custos e histórico serão preservados.`)) return;
+    setClassifying(true); setMessage(null); setError(null);
+    try {
+      const result = await classifyLegacyInventoryLots(publicProductId, legacyVariant) as { updatedLots?: number };
+      await onChanged();
+      setMessage(`${Number(result.updatedLots ?? legacyLots.length)} lote(s) classificado(s) como “${legacyVariant}”. O stock de cada versão foi recalculado.`);
+      setLegacyVariant('');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível classificar os lotes antigos.');
+    } finally {
+      setClassifying(false);
+    }
+  };
+
   return <div className="detail-body">
     <div className="stock-detail-kpis"><span><small>Físico</small><strong>{group.physical}</strong></span><span><small>A caminho</small><strong>{group.incoming}</strong></span><span><small>Reservado</small><strong>{group.reserved}</strong></span><span><small>Disponível</small><strong>{group.available}</strong></span><span><small>Loja</small><strong>{group.published}</strong></span></div>
     {group.warnings.length > 0 && <section className="request-alert"><AlertTriangle /><div><strong>Dados a verificar</strong>{group.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div></section>}
+    {legacyLots.length > 0 && catalogVariants.length > 0 && <section className="legacy-variant-panel">
+      <div><strong>Classificar stock antigo</strong><p>{legacyLots.length} lote(s) ainda estão “Sem variante”. Escolha a versão correta uma única vez; nenhum S/N, venda, quantidade, custo ou histórico será alterado.</p></div>
+      <div className="legacy-variant-actions"><select aria-label="Versão dos lotes antigos" value={legacyVariant} onChange={(event) => setLegacyVariant(event.target.value)}><option value="">Escolher versão</option>{catalogVariants.map((variant) => <option key={variant.name} value={variant.name}>{variant.name}</option>)}</select><button className="save-button" type="button" onClick={() => void classifyLegacyLots()} disabled={!adminMutationsAvailable || classifying || !legacyVariant}>{classifying ? 'A classificar…' : `Aplicar aos ${legacyLots.length} lotes`}</button></div>
+    </section>}
     {storeNeedsSync && <section className="stock-sync-panel">
       <div><strong>O catálogo está desatualizado</strong><p>Esta ação publica o valor calculado pelos lotes e reservas. Não altera nem apaga S/N.</p></div>
       <button className="save-button" type="button" onClick={() => void syncStore()} disabled={!adminMutationsAvailable || syncing}>

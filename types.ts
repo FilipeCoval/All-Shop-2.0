@@ -237,6 +237,7 @@ export interface ProductVariant {
   name: string;
   price: number;
   image?: string;
+  description?: string;
   stock?: number;
 }
 

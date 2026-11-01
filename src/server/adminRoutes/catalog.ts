@@ -48,9 +48,11 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const productRef = database.collection('products_public').doc(String(id));
     const saved = await database.runTransaction(async (transaction) => {
       const inventoryQuery = database.collection('products_inventory').where('publicProductId', '==', id);
-      const [currentSnapshot, inventorySnapshot] = await Promise.all([
+      const legacyInventoryQuery = database.collection('products_inventory').where('publicProductId', '==', String(id));
+      const [currentSnapshot, inventorySnapshot, legacyInventorySnapshot] = await Promise.all([
         transaction.get(productRef),
         transaction.get(inventoryQuery),
+        transaction.get(legacyInventoryQuery),
       ]);
       const current = currentSnapshot.data() ?? {};
       const hasGalleryImages = Object.prototype.hasOwnProperty.call(input, 'images');
@@ -62,14 +64,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const variants = Array.isArray(input.variants) ? input.variants.map((variant: Record<string, unknown>) => {
         const name = text(variant.name, 120);
         const existing = currentVariants.find((item: Record<string, unknown>) => text(item.name, 120).toLowerCase() === name.toLowerCase());
-        return { name, price: Math.max(0, number(variant.price)), image: text(variant.image, 1000), stock: Math.max(0, number(existing?.stock ?? 0)) };
+        return { name, price: Math.max(0, number(variant.price)), image: text(variant.image, 1000), description: text(variant.description, 500), stock: Math.max(0, number(existing?.stock ?? 0)) };
       }).filter((variant: { name: string }) => variant.name) : currentVariants;
       const variantKeys = variants.map((variant: Record<string, unknown>) => normalize(variant.name));
       if (new Set(variantKeys).size !== variantKeys.length) throw new ApiError(400, 'Existem opções do produto com o mesmo nome.');
       const removedVariantKeys = new Set(currentVariants
         .map((variant: Record<string, unknown>) => normalize(variant.name))
         .filter((name: string) => name && !variantKeys.includes(name)));
-      const removedVariantWithInventory = inventorySnapshot.docs.some((document) => removedVariantKeys.has(normalize(document.data().variant)));
+      const removedVariantWithInventory = [...inventorySnapshot.docs, ...legacyInventorySnapshot.docs]
+        .some((document) => removedVariantKeys.has(normalize(document.data().variant)));
       if (removedVariantWithInventory) {
         throw new ApiError(409, 'Não é possível apagar ou mudar o nome de uma opção que já tem lotes. Edite apenas o preço ou crie uma nova opção.');
       }
