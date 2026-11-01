@@ -24,13 +24,17 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
   if (!product) return null;
 
   const selectedVariant = product.variants?.find(v => v.name === selectedVariantName);
-  const currentPrice = selectedVariant?.price || product.price;
+  const hasVariants = Boolean(product.variants?.length);
+  const currentPrice = selectedVariant?.price ?? (hasVariants && product.variants ? Math.min(...product.variants.map((variant) => variant.price)) : product.price);
+  const currentOriginalPrice = selectedVariant && Number(selectedVariant.originalPrice ?? 0) > Number(selectedVariant.price) ? Number(selectedVariant.originalPrice) : !hasVariants && Number(product.originalPrice ?? 0) > Number(product.price) ? Number(product.originalPrice) : null;
+  const publicDescription = hasVariants
+    ? selectedVariant?.description || (selectedVariant ? `${product.name}, versão ${selectedVariant.name}.` : `Disponível em ${product.variants?.length ?? 0} versões. Escolha uma opção para ver a informação correta.`)
+    : product.description;
   const currentStock = getStock(product.id, selectedVariantName);
   const availability = effectiveProductAvailability(product, currentStock);
   const isOutOfStock = availability === 'OUT_OF_STOCK';
   const isComingSoon = availability === 'COMING_SOON';
   const isUnavailable = availability !== 'AVAILABLE';
-  const hasVariants = product.variants && product.variants.length > 0;
   const isVariantSelected = !!selectedVariantName;
 
   const handleAddToCart = () => {
@@ -55,7 +59,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
             <div className="absolute top-4 left-4 flex flex-col gap-2">
                 {isOutOfStock && <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded shadow-sm">ESGOTADO</span>}
                 {isComingSoon && <span className="bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded shadow-sm">EM BREVE</span>}
-                {product.badges && product.badges.map(badge => {
+                {product.badges && product.badges.filter((badge) => !(hasVariants && badge.toUpperCase() === 'PROMOÇÃO' && !currentOriginalPrice)).map(badge => {
                     const upperBadge = badge.toUpperCase();
                     let color = "bg-indigo-600";
                     if (upperBadge === 'MAIS VENDIDO') color = "bg-orange-500";
@@ -84,13 +88,14 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
                 </button>
             </div>
 
-            <p className="text-gray-600 dark:text-slate-300 text-sm mb-6 line-clamp-3">{product.description}</p>
+            <p className="text-gray-600 dark:text-slate-300 text-sm mb-6 line-clamp-3">{publicDescription}</p>
 
             <div className="mt-auto">
                 <div className="flex items-baseline gap-3 mb-6">
+                    {hasVariants && !selectedVariant && <span className="text-xs font-extrabold uppercase tracking-wide text-gray-500">Desde</span>}
                     <span className="text-3xl font-bold text-gray-900 dark:text-white">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(currentPrice)}</span>
-                    {product.originalPrice && product.originalPrice > currentPrice && (
-                        <span className="text-lg text-gray-400 line-through">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.originalPrice)}</span>
+                    {currentOriginalPrice && (
+                        <span className="text-lg text-gray-400 line-through">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(currentOriginalPrice)}</span>
                     )}
                 </div>
 

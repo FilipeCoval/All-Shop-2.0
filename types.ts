@@ -236,8 +236,10 @@ export interface Product {
 export interface ProductVariant {
   name: string;
   price: number;
+  originalPrice?: number | null;
   image?: string;
   description?: string;
+  features?: string[];
   stock?: number;
 }
 

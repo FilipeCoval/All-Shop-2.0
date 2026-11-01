@@ -7,6 +7,7 @@ import QuickViewModal from './QuickViewModal';
 import InteractiveProductCard from './InteractiveProductCard';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 import { effectiveProductAvailability, type EffectiveProductAvailability } from '../src/domain/productAvailability';
+import { productStartingPrice, publicProductSummary } from '../src/domain/productPresentation';
 
 interface ProductListProps {
   products: Product[];
@@ -122,7 +123,7 @@ const ProductList: React.FC<ProductListProps> = ({
       // 2. Ordenação
       result.sort((a, b) => {
           // Helper para obter o menor preço (se tiver variantes)
-          const getPrice = (p: Product) => p.variants && p.variants.length > 0 ? Math.min(...p.variants.map(v => v.price)) : p.price;
+          const getPrice = (p: Product) => productStartingPrice(p);
 
           if (sortOption === 'price-asc') {
               return getPrice(a) - getPrice(b);
@@ -180,14 +181,15 @@ const ProductList: React.FC<ProductListProps> = ({
 
   const getProductBadge = (product: Product, availability: EffectiveProductAvailability) => {
       if (availability === 'COMING_SOON') return { text: 'EM BREVE', color: 'bg-purple-600', icon: <CalendarClock size={10} /> };
-      if (product.promoEndsAt && new Date(product.promoEndsAt) > new Date()) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
+      const variantPromotion = product.variants?.some((variant) => Number(variant.originalPrice ?? 0) > Number(variant.price ?? 0));
+      if (variantPromotion || (!product.variants?.length && product.promoEndsAt && new Date(product.promoEndsAt) > new Date())) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
       
       if (product.badges && product.badges.length > 0) {
           const upperBadges = product.badges.map(b => b.toUpperCase());
           
           if (upperBadges.includes('NOVIDADE')) return { text: 'NOVIDADE', color: 'bg-indigo-600', icon: <Sparkles size={10} /> };
           if (upperBadges.includes('MAIS VENDIDO')) return { text: 'MAIS VENDIDO', color: 'bg-orange-500', icon: <Flame size={10} /> };
-          if (upperBadges.includes('PROMOÇÃO')) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
+          if (upperBadges.includes('PROMOÇÃO') && (!product.variants?.length || variantPromotion)) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
           if (upperBadges.includes('LIMITADO')) return { text: 'EDIÇÃO LIMITADA', color: 'bg-purple-600', icon: <Star size={10} /> };
           if (upperBadges.includes('OUTLET')) return { text: 'OUTLET', color: 'bg-gray-600', icon: <ArrowDown size={10} /> };
           if (upperBadges.includes('ESSENCIAL')) return { text: 'ESSENCIAL', color: 'bg-blue-600', icon: <Star size={10} /> };
@@ -281,24 +283,19 @@ const ProductList: React.FC<ProductListProps> = ({
                 const isUnavailable = availability !== 'AVAILABLE';
                 
                 const promoEnded = product.promoEndsAt ? new Date(product.promoEndsAt) <= new Date() : false;
-                const badge = isComingSoon || !promoEnded ? getProductBadge(product, availability) : null; // "Em breve" prevalece sobre promoções terminadas.
+                const hasVariants = Boolean(product.variants?.length);
+                const badge = getProductBadge(product, availability);
 
-                // Calculate Display Price (Revert to original if promo ended)
-                let displayPrice = product.price;
-                let pricePrefix = null;
-                
-                const hasVariants = product.variants && product.variants.length > 0;
-                
-                if (promoEnded && product.originalPrice) {
-                    displayPrice = product.originalPrice;
-                } else if (hasVariants && product.variants) {
-                    const minPrice = Math.min(...product.variants.map(v => v.price));
-                    displayPrice = minPrice;
-                    pricePrefix = "A partir de";
-                }
+                // Num produto com versões, o cartão mostra apenas o menor preço.
+                // Promoções e preços anteriores pertencem à versão escolhida e só aparecem no detalhe.
+                const displayPrice = hasVariants
+                    ? productStartingPrice(product)
+                    : promoEnded && product.originalPrice ? product.originalPrice : product.price;
+                const pricePrefix = hasVariants ? 'Desde' : null;
+                const publicDescription = publicProductSummary(product);
 
                 const isProcessing = processingProductIds.includes(product.id);
-                const showPromo = !promoEnded && product.originalPrice && product.originalPrice > displayPrice;
+                const showPromo = !hasVariants && !promoEnded && product.originalPrice && product.originalPrice > displayPrice;
 
                 if (viewMode === 'list') {
                     return (
@@ -324,7 +321,7 @@ const ProductList: React.FC<ProductListProps> = ({
                                     <a href={`#product/${product.id}`} onClick={handleProductClick(product.id)} className="block hover:text-primary transition-colors">
                                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{product.name}</h3>
                                     </a>
-                                    <p className="text-sm text-gray-500 dark:text-slate-400 line-clamp-2 mb-3">{product.description}</p>
+                                    <p className="text-sm text-gray-500 dark:text-slate-400 line-clamp-2 mb-3">{publicDescription}</p>
                                 </div>
                                 <div className="flex flex-row sm:flex-col justify-between items-end sm:items-end gap-4 min-w-[140px] sm:border-l border-gray-100 dark:border-slate-800 sm:pl-6">
                                     <div className="text-right">
@@ -368,6 +365,7 @@ const ProductList: React.FC<ProductListProps> = ({
                         displayPrice={displayPrice}
                         pricePrefix={pricePrefix}
                         showPromo={!!showPromo}
+                        publicDescription={publicDescription}
                     />
                 );
             })}

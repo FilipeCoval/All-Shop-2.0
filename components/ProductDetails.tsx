@@ -125,19 +125,18 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   }, [product]);
 
   const selectedVariant = product.variants?.find(v => v.name === selectedVariantName);
-  
+  const hasVariants = Boolean(product.variants?.length);
   const promoEnded = product.promoEndsAt ? new Date(product.promoEndsAt) <= new Date() : false;
-
-  // Se a promoção acabou, reverte para o preço original (se existir e não for variante específica)
-  // Nota: Variantes não têm originalPrice no modelo atual, logo mantêm o preço da DB.
-  let currentPrice = selectedVariant?.price ?? product.price;
-  if (promoEnded && !selectedVariant && product.originalPrice) {
-      currentPrice = product.originalPrice;
-  }
+  const variantStartingPrice = hasVariants && product.variants ? Math.min(...product.variants.map((variant) => Number(variant.price))) : null;
+  const currentPrice = selectedVariant?.price
+    ?? variantStartingPrice
+    ?? (promoEnded && product.originalPrice ? product.originalPrice : product.price);
+  const currentOriginalPrice = selectedVariant
+    ? Number(selectedVariant.originalPrice ?? 0) > Number(selectedVariant.price) ? Number(selectedVariant.originalPrice) : null
+    : !hasVariants && !promoEnded && Number(product.originalPrice ?? 0) > Number(currentPrice) ? Number(product.originalPrice) : null;
 
   const currentStock = getStock(product.id, selectedVariantName);
   
-  const hasVariants = product.variants && product.variants.length > 0;
   const isVariantSelected = !!selectedVariantName;
   
   const availability = effectiveProductAvailability(product, currentStock);
@@ -147,16 +146,25 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   const isLowStock = currentStock > 0 && currentStock <= 3 && currentStock !== 999 && availability === 'AVAILABLE';
   const isFavorite = wishlist.includes(product.id);
   
-  // Só mostra promoção se NÃO tiver acabado
-  const showPromo = Boolean(!promoEnded && product.originalPrice && product.originalPrice > currentPrice);
+  const showPromo = Boolean(currentOriginalPrice);
+  const publicBadges = (product.badges || []).filter((badge) => !(hasVariants && badge.toLocaleUpperCase('pt') === 'PROMOÇÃO' && !showPromo));
   const currentReviews = (reviews || []).filter(r => r.productId === product.id);
   const averageRating = currentReviews.length
     ? currentReviews.reduce((total, review) => total + review.rating, 0) / currentReviews.length
     : 0;
-  const discountPercentage = showPromo && product.originalPrice
-    ? Math.round((1 - currentPrice / product.originalPrice) * 100)
+  const discountPercentage = showPromo && currentOriginalPrice
+    ? Math.round((1 - currentPrice / currentOriginalPrice) * 100)
     : 0;
-  const featureList = product.features || [];
+  const productDetailDescription = hasVariants
+    ? selectedVariant?.description || (selectedVariant
+      ? `${product.name}, na configuração ${selectedVariant.name}. O preço, stock e encomenda ficam associados especificamente a esta versão.`
+      : `Este produto está disponível em ${product.variants?.length ?? 0} versões. Escolha a memória e o armazenamento para consultar o preço, stock e características corretos.`)
+    : product.description;
+  const featureList = hasVariants
+    ? selectedVariant?.features?.length ? selectedVariant.features : selectedVariant
+      ? [`Configuração selecionada: ${selectedVariant.name}`]
+      : (product.variants ?? []).map((variant) => `Versão disponível: ${variant.name}`)
+    : product.features || [];
   const specEntries = Object.entries(product.specs || {});
   const shippingIsFree = currentPrice > 50;
   const selectedImageIndex = Math.max(0, uniqueImages.indexOf(selectedImage));
@@ -282,7 +290,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
     "@type": "Product",
     "name": product.name,
     "image": selectedImage,
-    "description": product.description || "Compre na All-Shop com stock nacional e garantia de entrega rápida.",
+    "description": productDetailDescription || "Compre na All-Shop com stock nacional e garantia de entrega rápida.",
     "brand": {
       "@type": "Brand",
       "name": "All-Shop"
@@ -367,7 +375,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                 {showPromo && (
                   <span className="rounded-full bg-red-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-lg">-{discountPercentage}%</span>
                 )}
-                {(product.badges || []).map(badge => (
+                {publicBadges.map(badge => (
                   <span key={badge} className="rounded-full bg-slate-950/90 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide text-white shadow-lg backdrop-blur dark:bg-white/90 dark:text-slate-950">
                     {badge}
                   </span>
@@ -484,15 +492,16 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                 </div>
               </div>
 
-              {product.promoEndsAt && !promoEnded && <CountdownTimer targetDate={product.promoEndsAt} />}
+              {!hasVariants && product.promoEndsAt && !promoEnded && <CountdownTimer targetDate={product.promoEndsAt} />}
 
               <div className="mt-6 rounded-2xl bg-slate-50 p-4 dark:bg-slate-800/80">
                 <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                  {hasVariants && !selectedVariant && <span className="mb-1 basis-full text-xs font-extrabold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">Desde</span>}
                   <span className={`text-4xl font-black tracking-tight ${showPromo ? 'text-red-600' : 'text-slate-950 dark:text-white'}`}>{formatCurrency(currentPrice)}</span>
-                  {showPromo && product.originalPrice && (
-                    <span className="mb-1 text-lg font-semibold text-slate-400 line-through">{formatCurrency(product.originalPrice)}</span>
+                  {showPromo && currentOriginalPrice && (
+                    <span className="mb-1 text-lg font-semibold text-slate-400 line-through">{formatCurrency(currentOriginalPrice)}</span>
                   )}
-                  {showPromo && <span className="mb-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-700 dark:bg-red-950 dark:text-red-300">Poupe {formatCurrency(product.originalPrice! - currentPrice)}</span>}
+                  {showPromo && currentOriginalPrice && <span className="mb-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-700 dark:bg-red-950 dark:text-red-300">Poupe {formatCurrency(currentOriginalPrice - currentPrice)}</span>}
                 </div>
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">IVA incluído. Custos de envio calculados antes do pagamento.</p>
               </div>
@@ -520,7 +529,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                             <span className="block text-sm font-bold">{variant.name}</span>
                             <span className={`mt-0.5 block text-[11px] font-semibold ${isSoldOut ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>{isSoldOut ? 'Esgotado' : variantStock === 999 ? 'Disponível' : `${variantStock} em stock`}</span>
                           </span>
-                          <span className="text-sm font-extrabold">{formatCurrency(variant.price)}</span>
+                          <span className="text-right"><span className="block text-sm font-extrabold">{formatCurrency(variant.price)}</span>{Number(variant.originalPrice ?? 0) > Number(variant.price) && <span className="mt-0.5 block text-[10px] font-semibold text-slate-400 line-through">{formatCurrency(Number(variant.originalPrice))}</span>}</span>
                         </button>
                       );
                     })}
@@ -587,12 +596,12 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           </div>
         </div>
 
-        {(product.description || featureList.length > 0 || specEntries.length > 0) && (
+        {(productDetailDescription || featureList.length > 0 || specEntries.length > 0) && (
           <section className="mt-12 grid gap-6 lg:grid-cols-[1.05fr_.95fr]" aria-labelledby="product-information-title">
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900 sm:p-8">
               <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-600 dark:text-orange-400">Conheça melhor</p>
               <h2 id="product-information-title" className="mt-2 text-2xl font-black text-slate-950 dark:text-white">Sobre este produto</h2>
-              {product.description && <p className="mt-4 whitespace-pre-line text-base leading-7 text-slate-600 dark:text-slate-300">{product.description}</p>}
+              {productDetailDescription && <p className="mt-4 whitespace-pre-line text-base leading-7 text-slate-600 dark:text-slate-300">{productDetailDescription}</p>}
               {featureList.length > 0 && (
                 <ul className="mt-6 grid gap-3 sm:grid-cols-2">
                   {featureList.map((feature, index) => (
@@ -660,7 +669,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                     <div className="p-4">
                       <p className="text-[10px] font-extrabold uppercase tracking-wider text-orange-600 dark:text-orange-400">{related.category}</p>
                       <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-bold leading-5 text-slate-900 transition-colors group-hover:text-orange-600 dark:text-white">{related.name}</h3>
-                      <p className="mt-3 text-lg font-black text-slate-950 dark:text-white">{formatCurrency(related.price)}</p>
+                      <p className="mt-3 text-lg font-black text-slate-950 dark:text-white">{related.variants?.length ? `Desde ${formatCurrency(Math.min(...related.variants.map((variant) => variant.price)))}` : formatCurrency(related.price)}</p>
                     </div>
                   </a>
                 );

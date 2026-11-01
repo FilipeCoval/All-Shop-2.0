@@ -21,6 +21,7 @@ interface InteractiveProductCardProps {
   displayPrice: number;
   pricePrefix: string | null;
   showPromo: boolean | number;
+  publicDescription: string;
 }
 
 const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
@@ -38,7 +39,8 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
   setQuickViewProduct,
   displayPrice,
   pricePrefix,
-  showPromo
+  showPromo,
+  publicDescription
 }) => {
   const isOutOfStock = availability === 'OUT_OF_STOCK';
   const isComingSoon = availability === 'COMING_SOON';
@@ -119,12 +121,13 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
             </h3>
           </a>
           <p className="text-sm text-gray-500 dark:text-slate-400 lg:group-hover:text-white/70 line-clamp-2 mb-4 transition-colors">
-            {product.description}
+            {publicDescription}
           </p>
         </div>
 
         <div className="mt-auto flex items-end justify-between">
           <div className="flex flex-col">
+            {pricePrefix && <span className="mb-0.5 text-xs font-extrabold uppercase tracking-wide text-gray-500 transition-colors lg:group-hover:text-white/70">{pricePrefix}</span>}
             {showPromo && (
               <span className="text-sm text-gray-400 lg:group-hover:text-white/50 line-through font-bold transition-colors">
                 {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.originalPrice!)}

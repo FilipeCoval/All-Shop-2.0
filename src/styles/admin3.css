@@ -1281,7 +1281,7 @@ img { display: block; max-width: 100%; }
 .gallery-empty strong { color: #475569; font-size: 12px; }
 .gallery-empty span { font-size: 10px; }
 .variant-card { margin-top: 9px; padding: 10px; display: grid; gap: 8px; border: 1px solid #e2e8f0; border-radius: 11px; background: #f8fafc; }
-.variant-card .variant-row { margin: 0; }
+.variant-card .variant-row { margin: 0; grid-template-columns: minmax(160px,1fr) 105px 105px 34px; }
 .variant-description { width: 100%; resize: vertical; }
 .variant-image-row { display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 7px; }
 .variant-image-row > img, .variant-image-row > span { width: 42px; height: 42px; overflow: hidden; display: grid; place-items: center; border: 1px solid #dbe2ea; border-radius: 8px; background: white; color: #94a3b8; object-fit: contain; }
@@ -1518,6 +1518,8 @@ html.dark .review-images a { border-color: #405169; background: #101e31; }
   .admin-form-row { grid-template-columns: 1fr; }
   .save-button { justify-content: center; }
   .form-grid { grid-template-columns: 1fr; }
+  .variant-card .variant-row { grid-template-columns: minmax(0,1fr) minmax(0,1fr) 34px; }
+  .variant-card .variant-row input:first-child { grid-column: 1 / -1; }
   .serial-unit-list > label { grid-template-columns: 1fr; }
   .serial-quick-entry { grid-template-columns: 1fr 1fr; }
   .serial-quick-entry label { grid-column: 1 / -1; }

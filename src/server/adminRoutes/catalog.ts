@@ -64,7 +64,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const variants = Array.isArray(input.variants) ? input.variants.map((variant: Record<string, unknown>) => {
         const name = text(variant.name, 120);
         const existing = currentVariants.find((item: Record<string, unknown>) => text(item.name, 120).toLowerCase() === name.toLowerCase());
-        return { name, price: Math.max(0, number(variant.price)), image: text(variant.image, 1000), description: text(variant.description, 500), stock: Math.max(0, number(existing?.stock ?? 0)) };
+        return {
+          name,
+          price: Math.max(0, number(variant.price)),
+          originalPrice: variant.originalPrice === '' || variant.originalPrice == null ? null : Math.max(0, number(variant.originalPrice)),
+          image: text(variant.image, 1000),
+          description: text(variant.description, 500),
+          features: strings(variant.features),
+          stock: Math.max(0, number(existing?.stock ?? 0)),
+        };
       }).filter((variant: { name: string }) => variant.name) : currentVariants;
       const variantKeys = variants.map((variant: Record<string, unknown>) => normalize(variant.name));
       if (new Set(variantKeys).size !== variantKeys.length) throw new ApiError(400, 'Existem opções do produto com o mesmo nome.');
