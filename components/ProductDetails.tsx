@@ -2,16 +2,21 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Product, Review, User, ProductVariant, PointHistory, Order } from '../types';
 import { 
-    ShoppingCart, ArrowLeft, Check, Share2, ShieldCheck, 
-    Truck, AlertTriangle, XCircle, Heart, ArrowRight, 
-    Eye, Info, X, CalendarClock, Copy, Mail, Loader2, CheckCircle, Coins, Timer, Sparkles
+    ShoppingCart, ArrowLeft, Check, Share2, ShieldCheck,
+    Truck, AlertTriangle, Heart, Info, X, Mail, Loader2,
+    CheckCircle, Coins, Timer, Star, ZoomIn, PackageCheck,
+    RotateCcw, Tag, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import ReviewSection from './ReviewSection';
-import PremiumBentoLayout from './PremiumBentoLayout';
 import { STORE_NAME, PUBLIC_URL, SHARE_URL } from '../constants';
-import {  db , modularDb } from '../services/firebaseConfig';
+import { modularDb } from '../services/firebaseConfig';
 import { doc, updateDoc, increment, arrayUnion, collection, addDoc } from 'firebase/firestore';
 import { effectiveProductAvailability } from '../src/domain/productAvailability';
+
+const formatCurrency = (value: number) => new Intl.NumberFormat('pt-PT', {
+    style: 'currency',
+    currency: 'EUR'
+}).format(value);
 
 const CountdownTimer: React.FC<{ targetDate: string }> = ({ targetDate }) => {
     const [timeLeft, setTimeLeft] = useState({ hours: 0, minutes: 0, seconds: 0 });
@@ -77,13 +82,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   const [selectedImage, setSelectedImage] = useState<string>(product.image);
   const [selectedVariantName, setSelectedVariantName] = useState<string | undefined>();
   const [shareFeedback, setShareFeedback] = useState<'idle' | 'copied' | 'shared' | 'points_earned'>('idle');
-  const [isPremiumLayout, setIsPremiumLayout] = useState(product.isPremium || false);
-  
-  // Update state ONLY when product ID changes
-  useEffect(() => {
-    setIsPremiumLayout(product.isPremium || false);
-  }, [product.id]);
-  
+  const [isImageZoomOpen, setIsImageZoomOpen] = useState(false);
+
   const [alertEmail, setAlertEmail] = useState(currentUser?.email || '');
   const [alertStatus, setAlertStatus] = useState<'idle' | 'loading' | 'success'>('idle');
 
@@ -103,7 +103,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
     // Não seleciona nenhuma variante por defeito, forçando o utilizador a escolher.
     setSelectedVariantName(undefined);
     setSelectedImage(product.image);
-    
+    setIsImageZoomOpen(false);
     setAlertStatus('idle');
     setAlertEmail(currentUser?.email || '');
     window.scrollTo(0, 0);
@@ -130,7 +130,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
 
   // Se a promoção acabou, reverte para o preço original (se existir e não for variante específica)
   // Nota: Variantes não têm originalPrice no modelo atual, logo mantêm o preço da DB.
-  let currentPrice = selectedVariant?.price || product.price;
+  let currentPrice = selectedVariant?.price ?? product.price;
   if (promoEnded && !selectedVariant && product.originalPrice) {
       currentPrice = product.originalPrice;
   }
@@ -148,7 +148,18 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   const isFavorite = wishlist.includes(product.id);
   
   // Só mostra promoção se NÃO tiver acabado
-  const showPromo = !promoEnded && product.originalPrice && product.originalPrice > currentPrice;
+  const showPromo = Boolean(!promoEnded && product.originalPrice && product.originalPrice > currentPrice);
+  const currentReviews = (reviews || []).filter(r => r.productId === product.id);
+  const averageRating = currentReviews.length
+    ? currentReviews.reduce((total, review) => total + review.rating, 0) / currentReviews.length
+    : 0;
+  const discountPercentage = showPromo && product.originalPrice
+    ? Math.round((1 - currentPrice / product.originalPrice) * 100)
+    : 0;
+  const featureList = product.features || [];
+  const specEntries = Object.entries(product.specs || {});
+  const shippingIsFree = currentPrice > 50;
+  const selectedImageIndex = Math.max(0, uniqueImages.indexOf(selectedImage));
 
   const relatedProducts = (allProducts || [])
     .filter(p => p.category === product.category && p.id !== product.id)
@@ -157,6 +168,12 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   const handleVariantChange = (variant: ProductVariant) => {
       setSelectedVariantName(variant.name);
       if (variant.image) setSelectedImage(variant.image);
+  };
+
+  const showAdjacentImage = (direction: -1 | 1) => {
+      if (uniqueImages.length < 2) return;
+      const nextIndex = (selectedImageIndex + direction + uniqueImages.length) % uniqueImages.length;
+      setSelectedImage(uniqueImages[nextIndex]);
   };
 
   const handleAddToCart = () => {
@@ -259,39 +276,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
       }
   };
 
-
-  if (isPremiumLayout) {
-    return (
-      <div className="relative">
-        <button 
-          onClick={() => setIsPremiumLayout(false)}
-          className="fixed top-24 left-4 z-50 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-4 py-2 rounded-full shadow-lg font-bold text-sm flex items-center gap-2 border border-gray-200 dark:border-gray-700 hover:scale-105 transition-transform"
-        >
-          <ArrowLeft size={16} /> Voltar ao Layout Normal
-        </button>
-        <PremiumBentoLayout 
-          product={product} 
-          onBuyNow={() => {
-            console.log("ProductDetails: onBuyNow triggered");
-            setIsPremiumLayout(false);
-            setTimeout(() => {
-              const variantElement = document.getElementById('variant-selector');
-              const buyElement = document.getElementById('buy-actions');
-              const target = variantElement || buyElement;
-              if (target) {
-                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }
-            }, 500); 
-          }} 
-          currentPrice={currentPrice} 
-          isUnavailable={isUnavailable} 
-        />
-      </div>
-    );
-  }
-
   // --- JSON-LD STRUCTURED DATA FOR GOOGLE SEARCH ---
-  const currentReviews = (reviews || []).filter(r => r.productId === product.id);
   const jsonLd = {
     "@context": "https://schema.org/",
     "@type": "Product",
@@ -336,260 +321,378 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
     }
   };
 
+  const buyButtonLabel = isUnavailable
+    ? (isComingSoon ? 'Brevemente disponível' : 'Indisponível')
+    : (hasVariants && !isVariantSelected)
+      ? 'Escolha uma opção'
+      : 'Adicionar ao carrinho';
+
+  const buyButtonDisabled = isUnavailable || (hasVariants && !isVariantSelected) || isProcessing;
+
   return (
-    <div className="container mx-auto px-4 py-8 animate-fade-in pb-32 md:pb-8 transition-colors duration-300">
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-white dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 animate-fade-in transition-colors duration-300 pb-28 md:pb-10">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <div className="flex items-center justify-between mb-8">
-        <a 
-          href="#/" 
-          onClick={(e) => { e.preventDefault(); window.location.hash = '/'; }}
-          className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-primary dark:hover:text-white font-medium transition-colors"
-        >
-          <ArrowLeft size={20} /> Voltar à Loja
-        </a>
-        
-        {/* Botão de Simulação Premium (Apenas Admin) */}
-        {currentUser?.email && (["filipe_coval_90@hotmail.com", "mcpoleca@gmail.com"].includes(currentUser.email)) && (
-            <button 
-              onClick={() => setIsPremiumLayout(true)}
-              className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md hover:shadow-lg hover:scale-105 transition-all"
-            >
-              <Sparkles size={16} /> Simular Layout Premium
-            </button>
+
+      <div className="container mx-auto max-w-7xl px-4 py-5 md:py-8">
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <a
+            href="#/"
+            onClick={(event) => { event.preventDefault(); window.location.hash = '/'; }}
+            className="inline-flex items-center gap-2 rounded-full px-1 py-2 text-sm font-semibold text-slate-500 transition-colors hover:text-orange-600 dark:text-slate-400 dark:hover:text-orange-400"
+          >
+            <ArrowLeft size={18} /> Voltar à loja
+          </a>
+          <span className="hidden items-center gap-2 text-xs font-semibold text-slate-400 sm:flex dark:text-slate-500">
+            <ShieldCheck size={16} /> Compra protegida
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1.08fr)_minmax(380px,.92fr)] lg:gap-12">
+          <div className="min-w-0 lg:sticky lg:top-28 lg:self-start">
+            <div className="relative aspect-square overflow-hidden rounded-[2rem] border border-slate-200/80 bg-white shadow-[0_22px_60px_-38px_rgba(15,23,42,0.45)] dark:border-slate-700 dark:bg-slate-900">
+              <button
+                type="button"
+                onClick={() => setIsImageZoomOpen(true)}
+                className="group absolute inset-0 z-10 cursor-zoom-in"
+                aria-label="Ampliar fotografia do produto"
+              >
+                <img
+                  src={selectedImage}
+                  alt={product.name}
+                  className={`h-full w-full object-contain p-6 transition duration-500 group-hover:scale-[1.035] sm:p-10 ${isUnavailable ? 'grayscale-[35%] opacity-70' : ''}`}
+                />
+              </button>
+
+              <div className="pointer-events-none absolute left-4 top-4 z-20 flex max-w-[70%] flex-wrap gap-2 sm:left-6 sm:top-6">
+                {showPromo && (
+                  <span className="rounded-full bg-red-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-lg">-{discountPercentage}%</span>
+                )}
+                {(product.badges || []).map(badge => (
+                  <span key={badge} className="rounded-full bg-slate-950/90 px-3 py-1.5 text-xs font-extrabold uppercase tracking-wide text-white shadow-lg backdrop-blur dark:bg-white/90 dark:text-slate-950">
+                    {badge}
+                  </span>
+                ))}
+                {product.isFreebie && (
+                  <span className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-lg">ELEGÍVEL COMO OFERTA</span>
+                )}
+              </div>
+
+              <div className="absolute right-4 top-4 z-30 flex flex-col gap-2 sm:right-6 sm:top-6">
+                <button
+                  type="button"
+                  onClick={() => onToggleWishlist(product.id)}
+                  className="rounded-full border border-white/70 bg-white/90 p-3 text-slate-500 shadow-lg backdrop-blur transition hover:scale-105 hover:text-red-500 dark:border-slate-700 dark:bg-slate-900/90"
+                  aria-label={isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+                >
+                  <Heart size={22} className={isFavorite ? 'fill-red-500 text-red-500' : ''} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsImageZoomOpen(true)}
+                  className="rounded-full border border-white/70 bg-white/90 p-3 text-slate-500 shadow-lg backdrop-blur transition hover:scale-105 hover:text-orange-600 dark:border-slate-700 dark:bg-slate-900/90"
+                  aria-label="Ampliar fotografia"
+                >
+                  <ZoomIn size={22} />
+                </button>
+              </div>
+
+              {uniqueImages.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => showAdjacentImage(-1)}
+                    className="absolute left-4 top-1/2 z-30 -translate-y-1/2 rounded-full bg-white/90 p-2.5 text-slate-700 shadow-lg backdrop-blur transition hover:scale-105 dark:bg-slate-900/90 dark:text-white"
+                    aria-label="Fotografia anterior"
+                  >
+                    <ChevronLeft size={22} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => showAdjacentImage(1)}
+                    className="absolute right-4 top-1/2 z-30 -translate-y-1/2 rounded-full bg-white/90 p-2.5 text-slate-700 shadow-lg backdrop-blur transition hover:scale-105 dark:bg-slate-900/90 dark:text-white"
+                    aria-label="Fotografia seguinte"
+                  >
+                    <ChevronRight size={22} />
+                  </button>
+                </>
+              )}
+
+              {isOutOfStock && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-7 z-20 flex justify-center">
+                  <span className="rounded-full bg-red-600 px-6 py-2.5 text-sm font-extrabold tracking-widest text-white shadow-xl">ESGOTADO</span>
+                </div>
+              )}
+              {isComingSoon && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-7 z-20 flex justify-center">
+                  <span className="rounded-full bg-violet-600 px-6 py-2.5 text-sm font-extrabold tracking-widest text-white shadow-xl">EM BREVE</span>
+                </div>
+              )}
+              {uniqueImages.length > 1 && (
+                <span className="absolute bottom-5 right-5 z-20 rounded-full bg-slate-950/70 px-3 py-1 text-xs font-bold text-white backdrop-blur">
+                  {selectedImageIndex + 1} / {uniqueImages.length}
+                </span>
+              )}
+            </div>
+
+            {uniqueImages.length > 1 && (
+              <div className="mt-4 flex gap-3 overflow-x-auto px-1 pb-2 scrollbar-hide">
+                {uniqueImages.map((image, index) => (
+                  <button
+                    type="button"
+                    key={`${image}-${index}`}
+                    onClick={() => setSelectedImage(image)}
+                    className={`h-20 w-20 flex-shrink-0 overflow-hidden rounded-2xl border-2 bg-white p-1.5 transition-all dark:bg-slate-900 sm:h-24 sm:w-24 ${selectedImage === image ? 'border-orange-500 shadow-md ring-4 ring-orange-500/10' : 'border-slate-200 hover:border-slate-400 dark:border-slate-700'}`}
+                    aria-label={`Ver fotografia ${index + 1}`}
+                  >
+                    <img src={image} alt={`${product.name}, fotografia ${index + 1}`} className="h-full w-full object-contain" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            <div className="rounded-[2rem] border border-slate-200/80 bg-white p-5 shadow-[0_22px_60px_-42px_rgba(15,23,42,0.5)] dark:border-slate-700 dark:bg-slate-900 sm:p-7">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-600 dark:text-orange-400">{product.category}</p>
+                  <h1 className="mt-2 text-3xl font-black leading-tight tracking-tight text-slate-950 dark:text-white sm:text-4xl">{product.name}</h1>
+                  <button type="button" onClick={() => document.getElementById('avaliacoes')?.scrollIntoView({ behavior: 'smooth', block: 'start' })} className="mt-3 inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-orange-600 dark:text-slate-400">
+                    <span className="flex text-amber-400">
+                      {[1, 2, 3, 4, 5].map(star => (
+                        <Star key={star} size={17} className={star <= Math.round(averageRating) ? 'fill-current' : 'text-slate-300 dark:text-slate-600'} />
+                      ))}
+                    </span>
+                    <span className="font-semibold">{currentReviews.length ? `${averageRating.toFixed(1)} · ${currentReviews.length} ${currentReviews.length === 1 ? 'avaliação' : 'avaliações'}` : 'Ainda sem avaliações'}</span>
+                  </button>
+                </div>
+
+                <div className="flex flex-col items-center">
+                  <button
+                    type="button"
+                    onClick={handleShare}
+                    className={`relative flex h-11 w-11 items-center justify-center rounded-full transition-all ${shareFeedback === 'idle' ? 'bg-slate-100 text-slate-500 hover:bg-orange-50 hover:text-orange-600 dark:bg-slate-800' : shareFeedback === 'points_earned' ? 'animate-bounce bg-amber-100 text-amber-600' : shareFeedback === 'copied' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}
+                    title={shareFeedback === 'copied' ? 'Link copiado' : 'Partilhar produto'}
+                    aria-label="Partilhar produto"
+                  >
+                    {shareFeedback === 'idle' ? <Share2 size={21} /> : shareFeedback === 'points_earned' ? <Coins size={21} /> : <Check size={21} />}
+                    {currentUser && (!currentUser.lastShareDate || !currentUser.lastShareDate.startsWith(new Date().toISOString().split('T')[0])) && shareFeedback === 'idle' && (
+                      <span className="absolute -right-1 -top-1 rounded-full bg-amber-500 px-1 text-[9px] font-bold text-white">+5</span>
+                    )}
+                  </button>
+                  {shareFeedback === 'points_earned' && <span className="mt-1 text-[10px] font-bold text-amber-600">+5 pontos</span>}
+                </div>
+              </div>
+
+              {product.promoEndsAt && !promoEnded && <CountdownTimer targetDate={product.promoEndsAt} />}
+
+              <div className="mt-6 rounded-2xl bg-slate-50 p-4 dark:bg-slate-800/80">
+                <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                  <span className={`text-4xl font-black tracking-tight ${showPromo ? 'text-red-600' : 'text-slate-950 dark:text-white'}`}>{formatCurrency(currentPrice)}</span>
+                  {showPromo && product.originalPrice && (
+                    <span className="mb-1 text-lg font-semibold text-slate-400 line-through">{formatCurrency(product.originalPrice)}</span>
+                  )}
+                  {showPromo && <span className="mb-1 rounded-full bg-red-100 px-2.5 py-1 text-xs font-extrabold text-red-700 dark:bg-red-950 dark:text-red-300">Poupe {formatCurrency(product.originalPrice! - currentPrice)}</span>}
+                </div>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">IVA incluído. Custos de envio calculados antes do pagamento.</p>
+              </div>
+
+              {hasVariants && product.variants && (
+                <div id="variant-selector" className="mt-7 scroll-mt-24">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <label className="text-sm font-extrabold text-slate-800 dark:text-slate-200">{product.variantLabel || 'Escolha uma opção'}</label>
+                    {!isVariantSelected && <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">Seleção obrigatória</span>}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {product.variants.map(variant => {
+                      const variantStock = getStock(product.id, variant.name);
+                      const isSoldOut = variantStock <= 0 && variantStock !== 999;
+                      const isSelected = selectedVariantName === variant.name;
+                      return (
+                        <button
+                          type="button"
+                          key={variant.name}
+                          onClick={() => !isSoldOut && handleVariantChange(variant)}
+                          disabled={isSoldOut}
+                          className={`flex min-h-16 items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${isSelected ? 'border-orange-500 bg-orange-50 text-orange-950 ring-4 ring-orange-500/10 dark:bg-orange-950/30 dark:text-orange-100' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'} ${isSoldOut ? 'cursor-not-allowed opacity-45' : ''}`}
+                        >
+                          <span>
+                            <span className="block text-sm font-bold">{variant.name}</span>
+                            <span className={`mt-0.5 block text-[11px] font-semibold ${isSoldOut ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>{isSoldOut ? 'Esgotado' : variantStock === 999 ? 'Disponível' : `${variantStock} em stock`}</span>
+                          </span>
+                          <span className="text-sm font-extrabold">{formatCurrency(variant.price)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-7">
+                {isUnavailable ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900/60 dark:bg-amber-950/25">
+                    {alertStatus === 'success' ? (
+                      <div className="text-center">
+                        <CheckCircle size={30} className="mx-auto mb-2 text-emerald-500" />
+                        <h4 className="text-lg font-bold text-emerald-800 dark:text-emerald-300">Inscrição confirmada</h4>
+                        <p className="text-sm text-emerald-700 dark:text-emerald-400">Avisaremos <span className="font-semibold">{alertEmail}</span> assim que estiver disponível.</p>
+                      </div>
+                    ) : (
+                      <>
+                        <h4 className="flex items-center gap-2 text-lg font-bold text-amber-950 dark:text-amber-200"><Mail size={20} /> {isComingSoon ? 'Seja o primeiro a saber' : 'Avise-me quando chegar'}</h4>
+                        <p className="mb-4 mt-1 text-sm text-amber-800 dark:text-amber-300">Receba um aviso por email assim que este produto puder ser comprado.</p>
+                        <form onSubmit={handleStockAlertSubmit} className="flex flex-col gap-2 sm:flex-row">
+                          <input
+                            type="email"
+                            required
+                            value={alertEmail}
+                            onChange={event => setAlertEmail(event.target.value)}
+                            placeholder="O seu email"
+                            className="min-w-0 flex-1 rounded-xl border border-amber-300 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-amber-500 dark:border-amber-800 dark:bg-slate-900 dark:text-white"
+                          />
+                          <button type="submit" disabled={alertStatus === 'loading'} className="flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-5 py-3 font-bold text-white transition hover:bg-amber-700 disabled:opacity-60">
+                            {alertStatus === 'loading' ? <Loader2 className="animate-spin" size={17} /> : 'Notificar-me'}
+                          </button>
+                        </form>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><Check size={18} /> Em stock</span>
+                    {isLowStock && <span className="inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-3 py-2 text-sm font-bold text-orange-700 dark:bg-orange-950/40 dark:text-orange-300"><AlertTriangle size={16} /> Restam apenas {currentStock}</span>}
+                    {product.maxQuantityPerOrder && <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400"><Info size={14} /> Máximo de {product.maxQuantityPerOrder} por encomenda</span>}
+                  </div>
+                )}
+              </div>
+
+              <div id="buy-actions" className="mt-6 scroll-mt-24">
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  disabled={buyButtonDisabled}
+                  className={`flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-lg font-extrabold shadow-lg transition-all active:scale-[0.99] ${buyButtonDisabled ? 'cursor-not-allowed bg-slate-200 text-slate-400 dark:bg-slate-700' : 'bg-orange-500 text-white shadow-orange-500/20 hover:-translate-y-0.5 hover:bg-orange-600 hover:shadow-xl'}`}
+                >
+                  {isProcessing ? <><Loader2 size={23} className="animate-spin" /> A processar...</> : <><ShoppingCart size={23} /> {buyButtonLabel}</>}
+                </button>
+              </div>
+
+              <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700"><Truck size={21} className="shrink-0 text-orange-500" /><div><p className="text-xs font-extrabold text-slate-800 dark:text-slate-200">{shippingIsFree ? 'Envio grátis' : 'Envio rápido'}</p><p className="text-[11px] text-slate-500">{shippingIsFree ? 'Nesta compra' : 'Grátis acima de 50 €'}</p></div></div>
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700"><PackageCheck size={21} className="shrink-0 text-emerald-500" /><div><p className="text-xs font-extrabold text-slate-800 dark:text-slate-200">Entrega 1–3 dias</p><p className="text-[11px] text-slate-500">Stock em Portugal</p></div></div>
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-3 dark:border-slate-700"><ShieldCheck size={21} className="shrink-0 text-blue-500" /><div><p className="text-xs font-extrabold text-slate-800 dark:text-slate-200">3 anos garantia</p><p className="text-[11px] text-slate-500">Compra protegida</p></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {(product.description || featureList.length > 0 || specEntries.length > 0) && (
+          <section className="mt-12 grid gap-6 lg:grid-cols-[1.05fr_.95fr]" aria-labelledby="product-information-title">
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900 sm:p-8">
+              <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-600 dark:text-orange-400">Conheça melhor</p>
+              <h2 id="product-information-title" className="mt-2 text-2xl font-black text-slate-950 dark:text-white">Sobre este produto</h2>
+              {product.description && <p className="mt-4 whitespace-pre-line text-base leading-7 text-slate-600 dark:text-slate-300">{product.description}</p>}
+              {featureList.length > 0 && (
+                <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+                  {featureList.map((feature, index) => (
+                    <li key={`${feature}-${index}`} className="flex items-start gap-3 rounded-xl bg-slate-50 p-3 text-sm font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-100 text-orange-600 dark:bg-orange-950 dark:text-orange-300"><Check size={13} strokeWidth={3} /></span>
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-[2rem] border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900 sm:p-8">
+              <div className="flex items-center gap-3">
+                <span className="rounded-xl bg-blue-50 p-2.5 text-blue-600 dark:bg-blue-950/50 dark:text-blue-300"><Tag size={21} /></span>
+                <h2 className="text-2xl font-black text-slate-950 dark:text-white">Detalhes</h2>
+              </div>
+              {specEntries.length > 0 ? (
+                <dl className="mt-5 divide-y divide-slate-100 dark:divide-slate-800">
+                  {specEntries.map(([label, value]) => (
+                    <div key={label} className="grid grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)] gap-4 py-3 text-sm">
+                      <dt className="font-semibold text-slate-500 dark:text-slate-400">{label}</dt>
+                      <dd className="text-right font-bold text-slate-900 dark:text-slate-100">{typeof value === 'boolean' ? (value ? 'Sim' : 'Não') : value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <div className="mt-5 space-y-3 text-sm">
+                  <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3 dark:bg-slate-800"><span className="text-slate-500">Categoria</span><span className="font-bold text-slate-900 dark:text-white">{product.category}</span></div>
+                  {product.weight ? <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3 dark:bg-slate-800"><span className="text-slate-500">Peso</span><span className="font-bold text-slate-900 dark:text-white">{product.weight} kg</span></div> : null}
+                  <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3 dark:bg-slate-800"><span className="text-slate-500">Estado</span><span className="font-bold text-slate-900 dark:text-white">Novo</span></div>
+                </div>
+              )}
+              <div className="mt-5 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm dark:border-emerald-900 dark:bg-emerald-950/30">
+                <RotateCcw size={20} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <p className="text-emerald-900 dark:text-emerald-200"><span className="font-bold">Compra sem preocupação.</span> Apoio pós-venda e devoluções de acordo com as condições da loja.</p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        <section id="avaliacoes" className="scroll-mt-28">
+          <ReviewSection productId={product.id} reviews={reviews} onAddReview={onAddReview} currentUser={currentUser} hasPurchased={hasPurchased} />
+        </section>
+
+        {relatedProducts.length > 0 && (
+          <section className="mt-16 border-t border-slate-200 pt-12 dark:border-slate-800" aria-labelledby="related-products-title">
+            <div className="mb-7 flex items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-600 dark:text-orange-400">Continue a descobrir</p>
+                <h2 id="related-products-title" className="mt-2 text-2xl font-black text-slate-950 dark:text-white sm:text-3xl">Também pode gostar</h2>
+              </div>
+              <a href="#/" onClick={event => { event.preventDefault(); window.location.hash = '/'; setTimeout(() => document.getElementById('products')?.scrollIntoView({ behavior: 'smooth' }), 100); }} className="hidden text-sm font-bold text-orange-600 hover:text-orange-700 sm:block">Ver todos</a>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-4">
+              {relatedProducts.map(related => {
+                const relatedStock = getStock(related.id);
+                const relatedAvailability = effectiveProductAvailability(related, relatedStock);
+                return (
+                  <a href={`#product/${related.id}`} key={related.id} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:-translate-y-1 hover:border-orange-200 hover:shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:hover:border-orange-900">
+                    <div className="relative aspect-square overflow-hidden bg-slate-50 dark:bg-slate-800">
+                      <img src={related.image} alt={related.name} className="h-full w-full object-contain p-4 transition-transform duration-500 group-hover:scale-105" />
+                      <span className={`absolute bottom-3 left-3 rounded-full px-2.5 py-1 text-[10px] font-extrabold ${relatedAvailability === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-700' : relatedAvailability === 'COMING_SOON' ? 'bg-violet-100 text-violet-700' : 'bg-red-100 text-red-700'}`}>{relatedAvailability === 'AVAILABLE' ? 'EM STOCK' : relatedAvailability === 'COMING_SOON' ? 'EM BREVE' : 'ESGOTADO'}</span>
+                    </div>
+                    <div className="p-4">
+                      <p className="text-[10px] font-extrabold uppercase tracking-wider text-orange-600 dark:text-orange-400">{related.category}</p>
+                      <h3 className="mt-1 line-clamp-2 min-h-10 text-sm font-bold leading-5 text-slate-900 transition-colors group-hover:text-orange-600 dark:text-white">{related.name}</h3>
+                      <p className="mt-3 text-lg font-black text-slate-950 dark:text-white">{formatCurrency(related.price)}</p>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          </section>
         )}
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-        <div className="space-y-4">
-          <div className="aspect-square bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700 relative group transition-colors">
-            <img 
-                src={selectedImage} 
-                alt={product.name} 
-                className={`w-full h-full object-contain p-4 transition-all duration-300 ${isUnavailable ? 'grayscale opacity-50' : ''}`} 
-            />
-            {isOutOfStock && <div className="absolute inset-0 flex items-center justify-center"><span className="bg-red-600 text-white px-6 py-3 rounded-xl font-bold text-xl shadow-lg transform -rotate-12 border-4 border-white dark:border-gray-800">ESGOTADO</span></div>}
-            {isComingSoon && <div className="absolute inset-0 flex items-center justify-center bg-purple-900/10"><span className="bg-purple-600 text-white px-6 py-3 rounded-xl font-bold text-xl shadow-lg transform rotate-3 border-4 border-white dark:border-gray-800">EM BREVE</span></div>}
-            <button onClick={() => onToggleWishlist(product.id)} className="absolute top-4 right-4 p-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur rounded-full shadow-sm hover:scale-110 transition-transform text-gray-400 hover:text-red-500"><Heart size={24} className={isFavorite ? "fill-red-500 text-red-500" : ""} /></button>
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-12px_40px_-22px_rgba(15,23,42,0.45)] backdrop-blur-xl dark:border-slate-700 dark:bg-slate-950/95 md:hidden">
+        <div className="mx-auto flex max-w-7xl items-center gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] font-semibold text-slate-500 dark:text-slate-400">{selectedVariantName || product.name}</p>
+            <p className="text-xl font-black text-slate-950 dark:text-white">{formatCurrency(currentPrice)}</p>
           </div>
-          <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-             {uniqueImages.map((img, idx) => (
-                <button key={idx} onClick={() => setSelectedImage(img)} className={`w-20 h-20 rounded-xl border-2 overflow-hidden flex-shrink-0 bg-white dark:bg-gray-800 transition-all duration-200 ${selectedImage === img ? 'border-primary ring-2 ring-primary/20 scale-105' : 'border-gray-100 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-500'}`}><img src={img} alt={`Thumbnail ${idx}`} className="w-full h-full object-contain p-1" /></button>
-             ))}
-          </div>
-        </div>
-
-        <div className="flex flex-col">
-           <div className="flex items-start justify-between">
-                <div>
-                    <span className="text-sm font-bold text-primary tracking-wider uppercase">{product.category}</span>
-                    <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mt-2 mb-4 leading-tight">{product.name}</h1>
-                </div>
-                <div className="flex flex-col items-center">
-                    <button 
-                        onClick={handleShare} 
-                        className={`p-3 rounded-full transition-all flex items-center justify-center shadow-sm relative
-                            ${shareFeedback === 'idle' ? 'bg-gray-50 dark:bg-gray-800 text-gray-400 hover:text-primary' : 
-                            shareFeedback === 'points_earned' ? 'bg-yellow-100 text-yellow-600 animate-bounce' :
-                            shareFeedback === 'copied' ? 'bg-green-100 text-green-600' : 
-                            'bg-blue-100 text-blue-600'}
-                        `}
-                        title={shareFeedback === 'copied' ? 'Link Copiado' : 'Partilhar e Ganhar'}
-                    >
-                        {shareFeedback === 'idle' && <Share2 size={24} />}
-                        {shareFeedback === 'copied' && <Check size={24} />}
-                        {shareFeedback === 'shared' && <Check size={24} />}
-                        {shareFeedback === 'points_earned' && <Coins size={24} />}
-                        
-                        {/* Indicador de Pontos */}
-                        {currentUser && (!currentUser.lastShareDate || !currentUser.lastShareDate.startsWith(new Date().toISOString().split('T')[0])) && shareFeedback === 'idle' && (
-                            <span className="absolute -top-1 -right-1 bg-yellow-500 text-white text-[9px] font-bold px-1 rounded-full animate-pulse">+5</span>
-                        )}
-                    </button>
-                    {shareFeedback === 'points_earned' && <span className="text-[10px] font-bold text-yellow-600 mt-1">+5 Pontos!</span>}
-                </div>
-           </div>
-           
-           {product.promoEndsAt && !promoEnded && <CountdownTimer targetDate={product.promoEndsAt} />}
-
-           <div className="flex items-end gap-3 mb-6">
-               <span className={`text-4xl font-bold ${showPromo ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(currentPrice)}</span>
-               {showPromo && (
-                   <span className="text-xl text-gray-400 line-through mb-1.5">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.originalPrice!)}</span>
-               )}
-               {isOutOfStock && <span className="text-red-500 font-bold mb-2">Indisponível</span>}
-               {isComingSoon && <span className="text-purple-600 dark:text-purple-400 font-bold mb-2 uppercase tracking-wide">Em breve</span>}
-           </div>
-
-           {hasVariants && product.variants && (
-               <div id="variant-selector" className="mb-8 scroll-mt-24">
-                   <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3">{product.variantLabel || 'Escolha uma opção:'}</label>
-                   <div className="flex flex-wrap gap-3">
-                       {product.variants.map((v) => {
-                           const variantStock = getStock(product.id, v.name);
-                           const isSoldOut = variantStock <= 0 && variantStock !== 999;
-                           return (
-                               <button 
-                                   key={v.name} 
-                                   onClick={() => !isSoldOut && handleVariantChange(v)}
-                                   disabled={isSoldOut}
-                                   className={`px-4 py-3 rounded-lg border-2 text-sm font-bold transition-all relative
-                                       ${selectedVariantName === v.name 
-                                           ? 'border-primary bg-blue-50 dark:bg-blue-900/30 text-primary dark:text-blue-300 ring-2 ring-primary/20' 
-                                           : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'}
-                                       ${isSoldOut 
-                                           ? 'bg-gray-100 dark:bg-gray-900 !border-gray-200 dark:!border-gray-800 !text-gray-400 cursor-not-allowed line-through' 
-                                           : 'hover:border-gray-400 dark:hover:border-gray-500'}
-                                   `}
-                               >
-                                   {v.name}
-                               </button>
-                           );
-                       })}
-                   </div>
-               </div>
-           )}
-
-           <div className="mb-8">
-               {isUnavailable ? (
-                    <div className="bg-yellow-50 dark:bg-yellow-900/20 p-6 rounded-2xl border border-yellow-200 dark:border-yellow-900/50 animate-fade-in">
-                        {alertStatus === 'success' ? (
-                            <div className="text-center">
-                                <CheckCircle size={32} className="text-green-500 mx-auto mb-2" />
-                                <h4 className="font-bold text-green-800 dark:text-green-300 text-lg">Inscrição confirmada!</h4>
-                                <p className="text-sm text-green-700 dark:text-green-400">Será notificado em <span className="font-semibold">{alertEmail}</span> assim que houver stock.</p>
-                            </div>
-                        ) : (
-                            <>
-                                <h4 className="font-bold text-yellow-900 dark:text-yellow-300 text-lg mb-2 flex items-center gap-2">
-                                    <Mail size={20}/> 
-                                    {isComingSoon ? 'Seja o primeiro a saber!' : 'Avise-me quando chegar!'}
-                                </h4>
-                                <p className="text-sm text-yellow-800 dark:text-yellow-400 mb-4">
-                                    {isComingSoon ? 'Deixe o seu email para ser notificado assim que este produto for lançado.' : 'Deixe o seu email para ser notificado assim que este produto estiver disponível.'}
-                                </p>
-                                <form onSubmit={handleStockAlertSubmit} className="flex flex-col sm:flex-row gap-2">
-                                    <input 
-                                        type="email" 
-                                        required 
-                                        value={alertEmail}
-                                        onChange={(e) => setAlertEmail(e.target.value)}
-                                        placeholder="O seu melhor email" 
-                                        className="flex-1 px-4 py-2 rounded-lg border border-yellow-300 dark:border-yellow-700 bg-white dark:bg-gray-800 dark:text-white focus:ring-2 focus:ring-yellow-500 outline-none"
-                                    />
-                                    <button 
-                                        type="submit"
-                                        disabled={alertStatus === 'loading'}
-                                        className="bg-yellow-600 hover:bg-yellow-700 text-white px-5 py-2 rounded-lg font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-70"
-                                    >
-                                        {alertStatus === 'loading' ? <Loader2 className="animate-spin" size={16}/> : 'Notificar'}
-                                    </button>
-                                </form>
-                            </>
-                        )}
-                    </div>
-               ) : (
-                   <div className="flex flex-col gap-2">
-                       <div className="flex items-center gap-2 text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-4 py-3 rounded-lg border border-green-100 dark:border-green-900/50 w-fit">
-                           <Check size={20} /><span className="font-bold">Em Stock</span>
-                           {isLowStock && <span className="ml-2 text-orange-600 dark:text-orange-400 text-sm font-normal flex items-center gap-1"><AlertTriangle size={14} /> Restam apenas {currentStock}</span>}
-                       </div>
-                       {product.maxQuantityPerOrder && (
-                           <p className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1">
-                               <Info size={14} />
-                               Limite de {product.maxQuantityPerOrder} unidade(s) por encomenda.
-                           </p>
-                       )}
-                   </div>
-               )}
-           </div>
-
-           <div id="buy-actions" className="flex gap-4 mb-8 scroll-mt-24">
-               <button 
-                onClick={handleAddToCart} 
-                disabled={isUnavailable || (hasVariants && !isVariantSelected) || isProcessing} 
-                className={`flex-1 py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all transform active:scale-95 
-                    ${isUnavailable || (hasVariants && !isVariantSelected) || isProcessing
-                        ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed' 
-                        : 'bg-primary hover:bg-blue-600 text-white'
-                    }`}
-               >
-                   {isProcessing ? (
-                       <>
-                           <Loader2 size={24} className="animate-spin" />
-                           A processar...
-                       </>
-                   ) : (
-                       <>
-                           <ShoppingCart size={24} /> 
-                           {isUnavailable 
-                               ? (isComingSoon ? 'Brevemente Disponível' : 'Indisponível')
-                               : (hasVariants && !isVariantSelected) 
-                                   ? 'Selecione uma opção'
-                                   : 'Comprar Agora'}
-                       </>
-                   )}
-               </button>
-           </div>
-           
-           <div className="space-y-6 text-gray-600 dark:text-gray-300 leading-relaxed">
-               <p className="text-lg">{product.description}</p>
-               <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-6 border border-gray-100 dark:border-gray-700">
-                   <h3 className="font-bold text-gray-900 dark:text-white mb-4">Destaques</h3>
-                   <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3">{product.features.map((feat, idx) => (<li key={idx} className="flex items-center gap-2 text-sm"><div className="w-1.5 h-1.5 bg-primary rounded-full"></div>{feat}</li>))}</ul>
-               </div>
-               <div className="flex flex-col sm:flex-row gap-6 pt-4 border-t border-gray-100 dark:border-gray-700 text-sm font-medium">
-                   <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400"><Truck size={20} className="text-primary" /> Entrega 1-3 dias</div>
-                   <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400"><ShieldCheck size={20} className="text-green-600 dark:text-green-400" /> Garantia de 3 Anos</div>
-               </div>
-           </div>
+          <button type="button" onClick={handleAddToCart} disabled={buyButtonDisabled} className={`flex min-w-[11rem] items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-extrabold ${buyButtonDisabled ? 'bg-slate-200 text-slate-400 dark:bg-slate-700' : 'bg-orange-500 text-white'}`}>
+            {isProcessing ? <Loader2 size={19} className="animate-spin" /> : <ShoppingCart size={19} />}
+            {buyButtonLabel}
+          </button>
         </div>
       </div>
 
-      <ReviewSection productId={product.id} reviews={reviews} onAddReview={onAddReview} currentUser={currentUser} hasPurchased={hasPurchased} />
-
-      {product.category === 'TV & Streaming' && (
-          <div className="mt-20 border-t border-gray-100 dark:border-gray-700 pt-16">
-              <div className="text-center mb-10">
-                  <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white">Qual a Box ideal para si?</h2>
-                  <p className="text-gray-500 dark:text-gray-400 mt-2">Compare as gerações da Xiaomi com a potência da H96 Max.</p>
-              </div>
-              <div className="overflow-x-auto rounded-2xl border border-gray-200 dark:border-gray-700 shadow-xl bg-white dark:bg-gray-800">
-                  <table className="w-full text-left border-collapse">
-                      <thead>
-                          <tr className="bg-gray-50 dark:bg-gray-900">
-                              <th className="p-4 md:p-6 text-xs font-bold text-gray-500 dark:text-gray-400 uppercase border-b border-gray-200 dark:border-gray-700">Specs</th>
-                              <th className="p-4 md:p-6 border-b border-gray-200 dark:border-gray-700 text-center"><span className="block font-bold text-gray-900 dark:text-white text-sm">Xiaomi S (3ª Gen)</span><span className="text-[10px] text-primary font-bold">A MAIS RECENTE</span></th>
-                              <th className="p-4 md:p-6 border-b border-gray-200 dark:border-gray-700 text-center"><span className="block font-bold text-gray-900 dark:text-white text-sm">Xiaomi S (2ª Gen)</span><span className="text-[10px] text-gray-400 dark:text-gray-500 font-bold">EQUILIBRADA</span></th>
-                              <th className="p-4 md:p-6 border-b border-gray-200 dark:border-gray-700 text-center"><span className="block font-bold text-gray-900 dark:text-white text-sm">H96 Max M2</span><span className="text-[10px] text-orange-500 font-bold">POTÊNCIA/APK</span></th>
-                          </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100 dark:divide-gray-700 text-xs md:text-sm">
-                          <tr><td className="p-4 md:p-6 font-bold text-gray-700 dark:text-gray-300 bg-gray-50/30 dark:bg-gray-900/30">Ideal Para</td><td className="p-4 md:p-6 text-center text-blue-700 dark:text-blue-300">Netflix & Disney+ 8K</td><td className="p-4 md:p-6 text-center dark:text-gray-300">Netflix & Disney+ 4K</td><td className="p-4 md:p-6 text-center text-orange-700 dark:text-orange-300">IPTV & Apps Externos</td></tr>
-                          <tr><td className="p-4 md:p-6 font-bold text-gray-700 dark:text-gray-300 bg-gray-50/30 dark:bg-gray-900/30">RAM / ROM</td><td className="p-4 md:p-6 text-center dark:text-gray-300">2GB / 32GB (Novo)</td><td className="p-4 md:p-6 text-center dark:text-gray-300">2GB / 8GB</td><td className="p-4 md:p-6 text-center font-bold dark:text-gray-200">4GB / 64GB</td></tr>
-                          <tr><td className="p-4 md:p-6 font-bold text-gray-700 dark:text-gray-300 bg-gray-50/30 dark:bg-gray-900/30">Netflix Oficial</td><td className="p-4 md:p-6 text-center text-green-600 dark:text-green-400 font-bold">Sim</td><td className="p-4 md:p-6 text-center text-green-600 dark:text-green-400 font-bold">Sim</td><td className="p-4 md:p-6 text-center text-red-400 font-bold">Não</td></tr>
-                          <tr><td className="p-4 md:p-6 font-bold text-gray-700 dark:text-gray-300 bg-indigo-50/30 dark:bg-indigo-900/10">Escolha se...</td><td className="p-4 md:p-6 text-center italic dark:text-gray-400">Quer o melhor processador.</td><td className="p-4 md:p-6 text-center italic dark:text-gray-400">Quer o melhor preço oficial.</td><td className="p-4 md:p-6 text-center italic dark:text-gray-400">Instala apps externas/IPTV.</td></tr>
-                      </tbody>
-                  </table>
-              </div>
-          </div>
-      )}
-
-      {relatedProducts.length > 0 && (
-          <div className="mt-20 border-t border-gray-100 dark:border-gray-700 pt-12">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-8">Outras opções para si</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                  {relatedProducts.map(rel => (
-                      <a href={`#product/${rel.id}`} key={rel.id} className="group bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden hover:shadow-lg transition-all cursor-pointer">
-                          <div className="aspect-square bg-gray-100 dark:bg-gray-700 relative overflow-hidden">
-                              <img src={rel.image} alt={rel.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                          </div>
-                          <div className="p-4">
-                              <h3 className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 group-hover:text-primary transition-colors">{rel.name}</h3>
-                              <p className="text-primary font-bold mt-2">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(rel.price)}</p>
-                          </div>
-                      </a>
-                  ))}
-              </div>
-          </div>
+      {isImageZoomOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/95 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Fotografia ampliada do produto" onClick={() => setIsImageZoomOpen(false)}>
+          <button type="button" onClick={() => setIsImageZoomOpen(false)} className="absolute right-4 top-4 rounded-full bg-white/10 p-3 text-white transition hover:bg-white/20 sm:right-7 sm:top-7" aria-label="Fechar fotografia ampliada"><X size={26} /></button>
+          {uniqueImages.length > 1 && (
+            <>
+              <button type="button" onClick={event => { event.stopPropagation(); showAdjacentImage(-1); }} className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-3 text-white transition hover:bg-white/20 sm:left-7" aria-label="Fotografia anterior"><ChevronLeft size={28} /></button>
+              <button type="button" onClick={event => { event.stopPropagation(); showAdjacentImage(1); }} className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-3 text-white transition hover:bg-white/20 sm:right-7" aria-label="Fotografia seguinte"><ChevronRight size={28} /></button>
+            </>
+          )}
+          <img src={selectedImage} alt={product.name} className="max-h-[88vh] max-w-[90vw] object-contain" onClick={event => event.stopPropagation()} />
+        </div>
       )}
     </div>
   );
