@@ -77,6 +77,42 @@ const legacyOrderNotYetDeducted = planStoredOrderFulfillment({
 });
 assert.equal(legacyOrderNotYetDeducted.updatedLots[0].quantitySold, 1, 'uma encomenda antiga sem abatimento deve consumir stock normalmente');
 
+const incorrectlyFlaggedLegacyOrder = planStoredOrderFulfillment({
+  orderId: 'AS-772844',
+  orderItems: [{ productId: 2, quantity: 1 }],
+  lots: [{
+    id: 'Eumw9cqGBw0BIJnZ90dL',
+    publicProductId: 2,
+    quantityBought: 5,
+    quantitySold: 5,
+    units: [
+      { id: 'INT-OLD-1', status: 'SOLD', soldToOrder: 'AS-OLD-1' },
+      { id: 'INT-OLD-2', status: 'SOLD', soldToOrder: 'AS-OLD-2' },
+      { id: 'INT-4C52E5CF', status: 'AVAILABLE' },
+      { id: 'INT-74278CEB', status: 'AVAILABLE' },
+    ],
+  }],
+  serialNumbers: ['INT-4C52E5CF'],
+  stockDeducted: false,
+  fulfilledAt: '2026-11-02T16:50:00Z',
+});
+assert.equal(incorrectlyFlaggedLegacyOrder.updatedLots[0].quantitySold, 5, 'uma flag antiga incorreta não pode provocar uma segunda baixa');
+assert.equal(incorrectlyFlaggedLegacyOrder.updatedLots[0].units?.find((unit) => unit.id === 'INT-4C52E5CF')?.soldToOrder, 'AS-772844');
+
+assert.throws(
+  () => planStoredOrderFulfillment({
+    orderId: 'AS-MANUAL-RECONCILIATION',
+    orderItems: [{ productId: 2, quantity: 1 }],
+    lots: [{ id: 'L-EMPTY', publicProductId: 2, quantityBought: 1, quantitySold: 1, units: [{ id: 'INT-OLD', status: 'SOLD', soldToOrder: 'AS-OLD' }, { id: 'INT-EXTRA', status: 'AVAILABLE' }] }],
+    serialNumbers: ['INT-EXTRA'],
+    stockDeducted: false,
+    stockReconciliationRequired: true,
+    fulfilledAt: '2026-11-02T16:51:00Z',
+  }),
+  (error) => error instanceof FulfillmentError && error.message.includes('quantidade física suficiente'),
+  'uma encomenda explicitamente marcada para acerto manual deve continuar bloqueada',
+);
+
 const genericLot = {
   id: 'L-GENERIC',
   publicProductId: 4,

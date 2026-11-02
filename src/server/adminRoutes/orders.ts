@@ -429,6 +429,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
             serialNumbers,
             ...(selections.length ? { serialItemIndexes: selections.map((selection) => selection.itemIndex) } : {}),
             ...(typeof order.stockDeducted === 'boolean' ? { stockDeducted: order.stockDeducted } : {}),
+            ...(order.stockReconciliationRequired === true ? { stockReconciliationRequired: true } : {}),
             customerName: text(order.shippingInfo?.name, 140),
             customerEmail: text(order.shippingInfo?.email, 180).toLowerCase(),
             fulfilledAt: now,

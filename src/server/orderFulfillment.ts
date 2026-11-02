@@ -243,8 +243,9 @@ export function planOrderFulfillment(input: PlanOrderFulfillmentInput) {
     // Alguns lotes antigos já têm o contador abatido acima da compra registada.
     // Atribuir um S/N a uma dessas vendas é seguro quando não aumenta essa
     // divergência; continuamos a bloquear qualquer novo abatimento impossível.
-    if (quantitySold < soldUnitCount || createsNewOverflow) {
-      throw new FulfillmentError(`O lote ${lot.id} não tem quantidade física suficiente para estas unidades.`);
+    const identityOnlyForDeductedSale = input.stockAlreadyDeducted && delta <= 0;
+    if (!identityOnlyForDeductedSale && (quantitySold < soldUnitCount || createsNewOverflow)) {
+      throw new FulfillmentError(`O lote ${lot.id} não tem quantidade física suficiente para estas unidades. [comprado ${quantityBought}; abatido ${originalQuantitySold}; S/N vendidos ${soldUnitCount}; ajuste ${delta}]`);
     }
     return { ...lot, units, quantitySold, status: quantitySold >= Number(lot.quantityBought ?? 0) ? 'SOLD' : quantitySold > 0 ? 'PARTIAL' : 'AVAILABLE' };
   });
@@ -261,13 +262,21 @@ export function planOrderFulfillment(input: PlanOrderFulfillmentInput) {
   };
 }
 
-export function planStoredOrderFulfillment(input: Omit<PlanOrderFulfillmentInput, 'stockAlreadyDeducted'> & { stockDeducted?: boolean }) {
-  if (typeof input.stockDeducted === 'boolean') {
-    const { stockDeducted, ...planInput } = input;
-    return planOrderFulfillment({ ...planInput, stockAlreadyDeducted: stockDeducted });
+export function planStoredOrderFulfillment(input: Omit<PlanOrderFulfillmentInput, 'stockAlreadyDeducted'> & { stockDeducted?: boolean; stockReconciliationRequired?: boolean }) {
+  const { stockDeducted, stockReconciliationRequired, ...planInput } = input;
+  if (stockDeducted === true) return planOrderFulfillment({ ...planInput, stockAlreadyDeducted: true });
+  if (stockDeducted === false) {
+    try {
+      return planOrderFulfillment({ ...planInput, stockAlreadyDeducted: false });
+    } catch (error) {
+      const canUseRecordedDeduction = stockReconciliationRequired !== true
+        && error instanceof FulfillmentError
+        && error.message.includes('quantidade física suficiente');
+      if (!canUseRecordedDeduction) throw error;
+      return planOrderFulfillment({ ...planInput, stockAlreadyDeducted: true });
+    }
   }
 
-  const { stockDeducted: _missingLegacyFlag, ...planInput } = input;
   try {
     // Encomendas antigas não guardavam a flag, embora o checkout já tivesse
     // abatido o stock. Tentar primeiro a reconciliação evita uma segunda baixa.
