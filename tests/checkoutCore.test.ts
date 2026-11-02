@@ -32,6 +32,26 @@ assert.throws(
   'reservas de outros clientes têm de reduzir o stock que pode ser vendido',
 );
 
+const serialAwareLots = [{
+  id: 'STALE-SOLD-COUNTER',
+  publicProductId: 11,
+  variant: '',
+  quantityBought: 3,
+  quantitySold: 0,
+  receiptStatus: 'RECEIVED',
+  units: [
+    { id: 'AVAILABLE-1', status: 'AVAILABLE' },
+    { id: 'SOLD-1', status: 'SOLD', soldToOrder: 'AS-1' },
+    { id: 'SOLD-2', status: 'SOLD', soldToOrder: 'AS-2' },
+  ],
+}];
+assert.equal(allocateSale(serialAwareLots, 11, '', 1, 0)[0].sold, 1);
+assert.throws(
+  () => allocateSale(serialAwareLots, 11, '', 2, 0),
+  /stock suficiente/i,
+  'o checkout não pode voltar a vender S/N que já estão marcados como vendidos',
+);
+
 const future = Date.now() + 60_000;
 const past = Date.now() - 60_000;
 const reservations = [

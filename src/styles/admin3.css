@@ -902,6 +902,13 @@ img { display: block; max-width: 100%; }
 .stock-detail-kpis span { padding: 13px 8px; display: grid; gap: 4px; border: 1px solid var(--line); border-radius: 12px; background: white; text-align: center; }
 .stock-detail-kpis small { color: var(--muted); font-size: 10px; text-transform: uppercase; }
 .stock-detail-kpis strong { font-size: 20px; }
+.lot-filters { margin: -2px 0 13px; display: flex; flex-wrap: wrap; gap: 7px; }
+.lot-filters button { min-height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #dbe3ed; border-radius: 999px; background: #f8fafc; color: #526176; font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+.lot-filters button span { min-width: 20px; height: 20px; padding: 0 5px; display: inline-grid; place-items: center; border-radius: 999px; background: #e8eef6; color: #334155; font-size: 9px; }
+.lot-filters button:hover { border-color: #fdba74; color: #c2410c; }
+.lot-filters button.active { border-color: #fb923c; background: #fff7ed; color: #c2410c; box-shadow: 0 0 0 2px rgba(251,146,60,.12); }
+.lot-filters button.active span { background: #ffedd5; color: #9a3412; }
+.lot-filter-empty { margin: 0; padding: 24px 12px; border: 1px dashed #cbd5e1; border-radius: 12px; color: #64748b; text-align: center; font-size: 11px; }
 .lot-list { display: grid; gap: 11px; }
 .lot-list article { padding: 14px; border: 1px solid #e8ecf1; border-radius: 12px; }
 .lot-list article header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
@@ -1907,6 +1914,12 @@ html.dark .support-message p { color: #d7dfeb; }
 html.dark .support-thread-card > header b { background: rgba(154,52,18,.28); color: #fdba74; }
 html.dark .lot-list article,
 html.dark .fulfillment-items article { border-color: #2b3b52; background: #0c1829; }
+html.dark .lot-filters button { border-color: #33445b; background: #0c1829; color: #b8c4d5; }
+html.dark .lot-filters button span { background: #17263a; color: #d7dfeb; }
+html.dark .lot-filters button:hover,
+html.dark .lot-filters button.active { border-color: #c2410c; background: rgba(124,45,18,.22); color: #fdba74; }
+html.dark .lot-filters button.active span { background: rgba(154,52,18,.38); color: #fed7aa; }
+html.dark .lot-filter-empty { border-color: #405169; color: #9aa8bd; }
 html.dark .lot-list article.lot-in-transit { border-color: #1e40af; background: rgba(30,64,175,.12); }
 html.dark .safe-action-note { border-color: #405169; color: #9aa8bd; }
 html.dark .fulfillment-progress { background: #26364b; }

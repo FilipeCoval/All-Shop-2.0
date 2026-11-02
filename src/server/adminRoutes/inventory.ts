@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { FieldValue } from 'firebase-admin/firestore';
 import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
 import { cashbackReceiptUpdate, CashbackReceiptValidationError, prepareCashbackForLotSave, prepareCashbackReceipt } from '../cashbackReceipt.js';
-import { normalizeInventoryReceiptStatus } from '../../domain/inventoryReceipt.js';
+import { inventoryLotSoldQuantity, normalizeInventoryReceiptStatus } from '../../domain/inventoryReceipt.js';
 import { getAdminDb } from '../firebaseAdmin.js';
 import { inventoryUnitCodeDocumentId } from '../inventoryIdentity.js';
 import { projectPublicStock, type LotData, type ReservationData } from '../stockProjection.js';
@@ -145,6 +145,25 @@ export default async function handler(request: VercelRequest, response: VercelRe
         .map((document) => ({ id: document.id, ...document.data() }));
       let classifiedLotCount = 0;
       let classifiedVariant = '';
+      let reconciledLotCount = 0;
+      if (action === 'sync_product') {
+        lots = lots.map((lot) => {
+          const recordedSold = Math.max(0, number(lot.quantitySold));
+          const effectiveSold = inventoryLotSoldQuantity(lot);
+          const quantityBought = Math.max(0, number(lot.quantityBought));
+          const document = lot.id ? productLotDocuments.get(lot.id) : undefined;
+          if (document && effectiveSold > recordedSold && effectiveSold <= quantityBought) {
+            reconciledLotCount += 1;
+            transaction.update(document.ref, {
+              quantitySold: effectiveSold,
+              updatedAt: FieldValue.serverTimestamp(),
+              updatedBy: admin.uid,
+            });
+            return { ...lot, quantitySold: effectiveSold };
+          }
+          return lot;
+        });
+      }
       if (action === 'classify_legacy_lots') {
         const requestedVariant = text(request.body?.variant, 120);
         const productVariants = Array.isArray(productSnapshot.data()?.variants) ? productSnapshot.data()!.variants : [];
@@ -286,8 +305,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
             throw new ApiError(409, `O código ${code} já está registado noutro lote.`);
           }
         }
-        const soldUnitCount = units.filter((unit) => unit.status === 'SOLD').length;
-        if (quantitySold < soldUnitCount) throw new ApiError(409, 'A quantidade vendida não pode ser inferior ao número de unidades já vendidas.');
+        const effectiveQuantitySold = inventoryLotSoldQuantity({ quantitySold, units });
         let cashback;
         try {
           cashback = prepareCashbackForLotSave(input);
@@ -307,7 +325,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
           expectedArrivalDate: receiptStatus === 'IN_TRANSIT' ? text(input.expectedArrivalDate, 30) : '',
           ...(receiptStatus === 'RECEIVED' && (!currentLotSnapshot?.exists || existingReceiptStatus === 'IN_TRANSIT') ? { receivedAt: FieldValue.serverTimestamp() } : {}),
           quantityBought,
-          quantitySold,
+          quantitySold: effectiveQuantitySold,
           purchasePrice: Math.max(0, number(input.purchasePrice)),
           salePrice: Math.max(0, number(input.salePrice)),
           ...cashback,
@@ -368,9 +386,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
         publicProductId,
         lotId: lotRef?.id ?? null,
         ...(action === 'classify_legacy_lots' ? { variant: classifiedVariant, updatedLots: classifiedLotCount } : {}),
+        ...(action === 'sync_product' ? { reconciledLots: reconciledLotCount } : {}),
         createdAt: FieldValue.serverTimestamp(),
       });
-      return { lotId: lotRef?.id, projection, ...(action === 'classify_legacy_lots' ? { variant: classifiedVariant, updatedLots: classifiedLotCount } : {}) };
+      return {
+        lotId: lotRef?.id,
+        projection,
+        ...(action === 'classify_legacy_lots' ? { variant: classifiedVariant, updatedLots: classifiedLotCount } : {}),
+        ...(action === 'sync_product' ? { reconciledLots: reconciledLotCount } : {}),
+      };
     });
 
     return response.status(200).json({ success: true, ...result });

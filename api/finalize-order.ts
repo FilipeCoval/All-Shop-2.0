@@ -267,7 +267,7 @@ export default async function handler(req: Request, res: Response) {
         for (const batch of context.inventorySnapshot.docs) {
           const soldNow = plan.saleByBatch.get(batch.id) || 0;
           if (soldNow > 0) {
-            transaction.update(batch.ref, { quantitySold: Number(batch.data().quantitySold || 0) + soldNow });
+            transaction.update(batch.ref, { quantitySold: getBatchPhysical(batch.data()).sold + soldNow });
           }
         }
         for (const reservationId of [...new Set(plan.reservationIdsToDelete)]) {

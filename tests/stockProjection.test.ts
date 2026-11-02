@@ -41,6 +41,29 @@ const incomingProjection = projectPublicStock(
 );
 assert.equal(incomingProjection.stock, 2, 'um lote a caminho nunca pode entrar no stock público');
 
+const soldSerialProjection = projectPublicStock(
+  23,
+  { stock: 3 },
+  [{
+    id: 'STALE-SOLD-COUNTER',
+    publicProductId: 23,
+    quantityBought: 3,
+    quantitySold: 0,
+    receiptStatus: 'RECEIVED',
+    units: [
+      { id: 'AVAILABLE-1', status: 'AVAILABLE' },
+      { id: 'SOLD-1', status: 'SOLD', soldToOrder: 'AS-1' },
+      { id: 'SOLD-2', status: 'SOLD', soldToOrder: 'AS-2' },
+    ],
+  }],
+  [],
+);
+assert.equal(
+  soldSerialProjection.stock,
+  1,
+  'S/N já vendidos têm de ser descontados mesmo quando o contador antigo quantitySold ficou desatualizado',
+);
+
 const versionedProjection = projectPublicStock(
   2,
   {

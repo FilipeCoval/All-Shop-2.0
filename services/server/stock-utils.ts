@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { DocumentData, QueryDocumentSnapshot, Transaction } from 'firebase-admin/firestore';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
-import { inventoryLotPhysicalQuantity } from '../../src/domain/inventoryReceipt.js';
+import { inventoryLotPhysicalQuantity, inventoryLotSoldQuantity } from '../../src/domain/inventoryReceipt.js';
 
 export const RESERVATION_TTL_MS = 15 * 60 * 1000;
 
@@ -37,7 +37,7 @@ export const timestampToMillis = (value: unknown): number => {
 
 export const getBatchPhysical = (data: DocumentData): { bought: number; sold: number; available: number } => {
   const bought = Math.max(0, Number(data.quantityBought || 0));
-  const sold = Math.max(0, Number(data.quantitySold || 0));
+  const sold = inventoryLotSoldQuantity(data);
   return { bought, sold, available: inventoryLotPhysicalQuantity(data) };
 };
 

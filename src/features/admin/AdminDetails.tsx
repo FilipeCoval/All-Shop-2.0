@@ -4,7 +4,7 @@ import type { AdminOrder, InventoryLot, OrderStatus, StockGroup } from './adminT
 import type { Product } from '../../types/domain';
 import { adminMutationsAvailable, classifyLegacyInventoryLots, confirmInventoryLotReceived, reviewOrderRequest, setOrderStatus, syncProductStock, updateOrderTracking } from './adminMutations';
 import { OrderFulfillmentPanel } from './OrderFulfillmentPanel';
-import { inventoryLotIncomingQuantity, inventoryLotPhysicalQuantity, isInventoryLotInTransit } from '../../domain/inventoryReceipt';
+import { inventoryLotIncomingQuantity, inventoryLotPhysicalQuantity, inventoryLotSoldQuantity, isInventoryLotInTransit } from '../../domain/inventoryReceipt';
 
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const date = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'medium', timeStyle: 'short' });
@@ -76,22 +76,41 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
   </div>;
 }
 
+type StockLotFilter = 'all' | 'available' | 'incoming' | 'sold' | 'empty';
+
 function StockDetail({ group, product, onChanged, onEditLot }: { group: StockGroup; product?: Product; onChanged: () => Promise<void>; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
   const [syncing, setSyncing] = useState(false);
   const [classifying, setClassifying] = useState(false);
   const [legacyVariant, setLegacyVariant] = useState('');
   const [receivingLotId, setReceivingLotId] = useState<string | null>(null);
+  const [lotFilter, setLotFilter] = useState<StockLotFilter>('all');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const publicProductId = Number(group.productId);
   const storeNeedsSync = Number.isInteger(publicProductId) && publicProductId > 0 && group.published !== group.available;
   const legacyLots = group.lotItems.filter((lot) => !String(lot.variant ?? '').trim());
   const catalogVariants = product?.variants ?? [];
+  const lotMatchesFilter = (lot: InventoryLot, filter: StockLotFilter) => {
+    if (filter === 'available') return !isInventoryLotInTransit(lot) && inventoryLotPhysicalQuantity(lot) > 0;
+    if (filter === 'incoming') return isInventoryLotInTransit(lot) && inventoryLotIncomingQuantity(lot) > 0;
+    if (filter === 'sold') return inventoryLotSoldQuantity(lot) > 0;
+    if (filter === 'empty') return !isInventoryLotInTransit(lot) && inventoryLotPhysicalQuantity(lot) === 0;
+    return true;
+  };
+  const filteredLotItems = group.lotItems.filter((lot) => lotMatchesFilter(lot, lotFilter));
+  const lotFilters: Array<{ value: StockLotFilter; label: string }> = [
+    { value: 'all', label: 'Todos' },
+    { value: 'available', label: 'Disponíveis' },
+    { value: 'incoming', label: 'A caminho' },
+    { value: 'sold', label: 'Com vendas' },
+    { value: 'empty', label: 'Sem stock' },
+  ];
 
   useEffect(() => {
     setMessage(null);
     setError(null);
     setLegacyVariant('');
+    setLotFilter('all');
   }, [group.productId]);
 
   const syncStore = async () => {
@@ -154,9 +173,12 @@ function StockDetail({ group, product, onChanged, onEditLot }: { group: StockGro
     </section>}
     {message && <p className="form-success" role="status">{message}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
-    <DetailSection title={`Lotes (${group.lots})`}><div className="lot-list">{group.lotItems.map((lot) => {
+    <DetailSection title={lotFilter === 'all' ? `Lotes (${group.lots})` : `Lotes (${filteredLotItems.length} de ${group.lots})`}>
+      <div className="lot-filters" aria-label="Filtrar lotes por estado">{lotFilters.map((filter) => <button key={filter.value} type="button" className={lotFilter === filter.value ? 'active' : ''} aria-pressed={lotFilter === filter.value} onClick={() => setLotFilter(filter.value)}>{filter.label}<span>{group.lotItems.filter((lot) => lotMatchesFilter(lot, filter.value)).length}</span></button>)}</div>
+      {filteredLotItems.length === 0 && <p className="lot-filter-empty">Não existem lotes neste estado.</p>}
+      <div className="lot-list">{filteredLotItems.map((lot) => {
       const inTransit = isInventoryLotInTransit(lot);
-      return <article key={lot.id} className={inTransit ? 'lot-in-transit' : ''}><header><span><strong>{lot.variant || 'Sem variante'}</strong><small>{lot.supplierName || 'Fornecedor não indicado'}</small></span><div className="lot-heading-actions"><b className={inTransit ? 'incoming' : ''}>{inTransit ? `${inventoryLotIncomingQuantity(lot)} a caminho` : `${inventoryLotPhysicalQuantity(lot)} disponíveis fisicamente`}</b>{inTransit && <button className="receive-lot-button compact" onClick={() => void receiveLot(lot)} disabled={!adminMutationsAvailable || receivingLotId !== null}><CheckCircle2 /> {receivingLotId === lot.id ? 'A confirmar…' : 'Confirmar receção'}</button>}<button className="table-action" onClick={() => onEditLot(lot)}>Editar</button></div></header><div><span><CalendarDays />Compra: {lot.purchaseDate ? formatDate(lot.purchaseDate) : 'sem data'}</span>{inTransit && <span><Truck />Previsão: {lot.expectedArrivalDate ? formatDate(lot.expectedArrivalDate) : 'não indicada'}</span>}<span>Comprado: {lot.quantityBought}</span><span>Vendido: {lot.quantitySold}</span><span>Unidades: {lot.units?.length ?? 0}</span></div><small className="lot-id">Lote {lot.id}</small></article>;
+      return <article key={lot.id} className={inTransit ? 'lot-in-transit' : ''}><header><span><strong>{lot.variant || 'Sem variante'}</strong><small>{lot.supplierName || 'Fornecedor não indicado'}</small></span><div className="lot-heading-actions"><b className={inTransit ? 'incoming' : ''}>{inTransit ? `${inventoryLotIncomingQuantity(lot)} a caminho` : `${inventoryLotPhysicalQuantity(lot)} disponíveis fisicamente`}</b>{inTransit && <button className="receive-lot-button compact" onClick={() => void receiveLot(lot)} disabled={!adminMutationsAvailable || receivingLotId !== null}><CheckCircle2 /> {receivingLotId === lot.id ? 'A confirmar…' : 'Confirmar receção'}</button>}<button className="table-action" onClick={() => onEditLot(lot)}>Editar</button></div></header><div><span><CalendarDays />Compra: {lot.purchaseDate ? formatDate(lot.purchaseDate) : 'sem data'}</span>{inTransit && <span><Truck />Previsão: {lot.expectedArrivalDate ? formatDate(lot.expectedArrivalDate) : 'não indicada'}</span>}<span>Comprado: {lot.quantityBought}</span><span>Vendido: {inventoryLotSoldQuantity(lot)}</span><span>Unidades: {lot.units?.length ?? 0}</span></div><small className="lot-id">Lote {lot.id}</small></article>;
     })}</div></DetailSection>
     <div className="safe-action-note">Criar, editar e apagar lotes será feito pelo servidor com sincronização automática da loja.</div>
   </div>;
