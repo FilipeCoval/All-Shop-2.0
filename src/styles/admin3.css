@@ -824,15 +824,16 @@ img { display: block; max-width: 100%; }
 .report-chart > header > strong { color: var(--navy); font-size: 18px; }
 .report-chart > div { padding: 20px; display: grid; gap: 14px; }
 .report-sales-chart { grid-row: span 2; }
-.monthly-chart { min-height: 330px; grid-template-columns: repeat(12,minmax(20px,1fr)); align-items: end; gap: 9px !important; }
-.month-column { min-width: 0; height: 100%; display: grid; grid-template-rows: 1fr auto auto; gap: 7px; align-items: end; text-align: center; }
-.month-column > div { width: min(42px,100%); height: 100%; margin-inline: auto; padding: 0 3px; display: flex; align-items: end; gap: 3px; overflow: hidden; border-radius: 8px 8px 4px 4px; background: #f1f5f9; }
-.month-column i { width: 50%; min-height: 2px; display: block; border-radius: 5px 5px 2px 2px; background: linear-gradient(180deg,#fb923c,var(--orange)); box-shadow: 0 8px 20px rgba(249,115,22,.2); transition: height .45s ease; }
-.month-column .profit-bar { background: linear-gradient(180deg,#34d399,#059669); box-shadow: 0 8px 20px rgba(5,150,105,.18); }
-.month-column .profit-bar.loss { background: linear-gradient(180deg,#fb7185,#e11d48); box-shadow: 0 8px 20px rgba(225,29,72,.16); }
-.month-column:hover i { filter: saturate(1.25) brightness(.96); }
-.month-column strong { color: #475569; font-size: 10px; }
-.month-column small { color: #94a3b8; font-size: 9px; }
+.report-timeline-chart { --report-chart-grid: #e2e8f0; --report-chart-text: #475569; --report-chart-muted: #94a3b8; --report-chart-hover: rgba(249,115,22,.06); width: 100%; min-height: 350px; padding: 22px 18px 14px 10px !important; display: block !important; }
+.report-chart-tooltip { min-width: 190px; padding: 13px 14px; display: grid; gap: 7px; border: 1px solid #e2e8f0; border-radius: 12px; background: rgba(255,255,255,.97); box-shadow: 0 16px 40px rgba(15,23,42,.14); backdrop-filter: blur(10px); }
+.report-chart-tooltip > strong { margin-bottom: 2px; color: var(--navy); font-size: 12px; }
+.report-chart-tooltip span { display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: 7px; color: #64748b; font-size: 11px; }
+.report-chart-tooltip span i { width: 8px; height: 8px; border-radius: 3px; }
+.report-chart-tooltip span .revenue-dot { background: #f97316; }
+.report-chart-tooltip span .profit-dot { background: #059669; }
+.report-chart-tooltip span .loss-dot { background: #e11d48; }
+.report-chart-tooltip span b { color: var(--navy); }
+.report-chart-tooltip small { padding-top: 6px; border-top: 1px solid #eef2f7; color: #94a3b8; }
 .chart-legend { display: flex; align-items: center; gap: 14px; color: #64748b; font-size: 10px; font-weight: 800; }
 .chart-legend span { display: flex; align-items: center; gap: 5px; }
 .chart-legend i { width: 9px; height: 9px; border-radius: 3px; background: var(--orange); }
@@ -1511,10 +1512,7 @@ html.dark .review-images a { border-color: #405169; background: #101e31; }
   .report-filters { width: 100%; }
   .report-filters label { flex: 1; }
   .report-filters select { width: 100%; min-width: 0; }
-  .monthly-chart { min-height: 245px; gap: 5px !important; }
-  .month-column > div { width: min(19px,100%); }
-  .month-column strong { font-size: 8px; }
-  .month-column small { display: none; }
+  .report-timeline-chart { min-height: 290px; padding-inline: 4px 8px !important; }
   .backup-grid { grid-template-columns: 1fr; }
   .backup-main { grid-template-columns: 46px 1fr; }
   .backup-main .save-button { grid-column: 1 / -1; }
@@ -1877,9 +1875,13 @@ html.dark .report-filters label { border-color: #34465e; background: #0b1627; co
 html.dark .report-filters select { color: #f1f5f9; }
 html.dark .report-profit { border-color: #14532d; background: linear-gradient(145deg,#111c2e,rgba(6,78,59,.23)); }
 html.dark .report-profit.negative { border-color: #881337; background: linear-gradient(145deg,#111c2e,rgba(136,19,55,.2)); }
-html.dark .month-column > div,
+html.dark .report-timeline-chart { --report-chart-grid: #26364c; --report-chart-text: #cbd5e1; --report-chart-muted: #7f8ea5; --report-chart-hover: rgba(251,146,60,.08); }
+html.dark .report-chart-tooltip { border-color: #34465e; background: rgba(11,22,39,.97); box-shadow: 0 16px 40px rgba(0,0,0,.32); }
+html.dark .report-chart-tooltip > strong,
+html.dark .report-chart-tooltip span b { color: #f8fafc; }
+html.dark .report-chart-tooltip span { color: #b8c4d5; }
+html.dark .report-chart-tooltip small { border-color: #29384d; color: #7f8ea5; }
 html.dark .bar-row > div { background: #1a2940; }
-html.dark .month-column strong,
 html.dark .bar-row,
 html.dark .top-product-row b,
 html.dark .chart-legend { color: #b8c4d5; }

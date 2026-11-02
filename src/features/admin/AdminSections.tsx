@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, BarChart3, CalendarDays, CheckCircle2, CircleDollarSign, Clock3, PackagePlus, PackageSearch, Pencil, Plus, ShoppingBag, Sparkles, TrendingUp, UsersRound } from 'lucide-react';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import type { Product } from '../../types/domain';
 import type { AdminCoupon, AdminOrder, AdminUser, ImportShipment, ProductRequest, StockGroup, StoreCategory, SupportTicket } from './adminTypes';
 import { unitMatchesCode } from './unitIdentity';
 import { normalizeProductAvailabilityMode } from '../../domain/productAvailability';
 import { catalogContentIssues } from '../../domain/catalogContentHealth';
+import { buildReportTimeline, type ReportTimelinePoint } from './reportTimeline';
 
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const shortDate = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'short' });
@@ -15,6 +17,20 @@ const safeDate = (value?: string) => {
 };
 const statusClass = (status = '') => `status status-${status.toLocaleLowerCase('pt').replace(/\s/g, '-')}`;
 const availabilityLabel = (product: Product) => ({ AUTO: 'Automático', AVAILABLE: 'Disponível', COMING_SOON: 'Em breve', OUT_OF_STOCK: 'Esgotado' }[normalizeProductAvailabilityMode(product)]);
+
+function ReportTimelineTooltip({ active, payload }: {
+  active?: boolean;
+  payload?: Array<{ payload?: ReportTimelinePoint }>;
+}) {
+  const point = payload?.[0]?.payload;
+  if (!active || !point) return null;
+  return <div className="report-chart-tooltip">
+    <strong>{point.label}</strong>
+    <span><i className="revenue-dot" /> Receita <b>{euro.format(point.revenue)}</b></span>
+    <span><i className={point.profit < 0 ? 'loss-dot' : 'profit-dot'} /> Lucro <b>{euro.format(point.profit)}</b></span>
+    <small>{point.orders} encomenda{point.orders === 1 ? '' : 's'} entregue{point.orders === 1 ? '' : 's'}</small>
+  </div>;
+}
 
 export function ProductsSection({ products, groups, search, reviewingContent, onReviewContent, onCreateProduct, onEditProduct, onCreateLot, onOpenStock }: {
   products: Product[];
@@ -203,19 +219,13 @@ export function ReportsSection({ orders, groups, users, categories }: { orders: 
     const states = [...new Set(filtered.map((order) => order.status))]
       .map((status) => ({ status, count: filtered.filter((order) => order.status === status).length }))
       .sort((a, b) => b.count - a.count);
-    const monthly = months.map((label, index) => {
-      const matching = filtered.filter((order) => {
-        const date = order.date ? new Date(order.date) : null;
-        return date && Number.isFinite(date.getTime()) && date.getMonth() === index;
-      });
-      const monthFinancials = matching.filter((order) => order.status === 'Entregue').map(getFinancials);
-      return {
-        label,
-        orders: matching.length,
-        revenue: monthFinancials.reduce((sum, item) => sum + item.revenue, 0),
-        profit: monthFinancials.reduce((sum, item) => sum + item.profit, 0),
-      };
+    const timelineRows = delivered.flatMap((order) => {
+      const date = order.date ? new Date(order.date) : null;
+      if (!date || !Number.isFinite(date.getTime())) return [];
+      const financial = getFinancials(order);
+      return [{ date, revenue: financial.revenue, profit: financial.profit }];
     });
+    const timeline = buildReportTimeline(timelineRows, year, month, months);
     const products = new Map<string, { name: string; quantity: number; revenue: number }>();
     filtered.filter((order) => order.status !== 'Cancelado').forEach((order) => (order.items ?? []).forEach((item) => {
       const name = item.name?.trim() || `Produto ${item.productId ?? ''}`.trim();
@@ -235,22 +245,21 @@ export function ReportsSection({ orders, groups, users, categories }: { orders: 
       margin: revenue ? (profit / revenue) * 100 : 0,
       average: delivered.length ? revenue / delivered.length : 0,
       states,
-      monthly,
+      timeline,
       topProducts: [...products.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 5),
     };
   }, [groups, month, orders, year]);
 
-  const maxMonthlyRevenue = Math.max(1, ...report.monthly.map((item) => item.revenue));
   const maxState = Math.max(1, ...report.states.map((item) => item.count));
   const periodLabel = year === 'all' ? 'Todo o histórico' : month === 'all' ? `Ano ${year}` : `${months[month]} ${year}`;
-  const chartData = month === 'all' ? report.monthly : report.monthly.filter((_, index) => index === month);
+  const timelineGranularity = year === 'all' ? 'por ano' : month === 'all' ? 'por mês' : 'por dia';
 
   return <div className="reports-workspace">
     <section className="report-toolbar">
       <div><span><BarChart3 /></span><div><h2>Relatórios da loja</h2><p>Vendas e desempenho · {periodLabel}</p></div></div>
       <div className="report-filters">
-        <label><CalendarDays /><span>Ano</span><select value={year} onChange={(event) => { const value = event.target.value; setYear(value === 'all' ? 'all' : Number(value)); if (value === 'all') setMonth('all'); }}><option value="all">Todos</option>{years.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-        <label><span>Mês</span><select value={month} disabled={year === 'all'} onChange={(event) => setMonth(event.target.value === 'all' ? 'all' : Number(event.target.value))}><option value="all">Ano completo</option>{months.map((item, index) => <option key={item} value={index}>{item}</option>)}</select></label>
+        <label><CalendarDays /><span>Ano</span><select aria-label="Ano do relatório" value={year} onChange={(event) => { const value = event.target.value; setYear(value === 'all' ? 'all' : Number(value)); if (value === 'all') setMonth('all'); }}><option value="all">Histórico</option>{years.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+        <label><span>Vista</span><select aria-label="Mês do relatório" value={month} disabled={year === 'all'} onChange={(event) => setMonth(event.target.value === 'all' ? 'all' : Number(event.target.value))}><option value="all">12 meses</option>{months.map((item, index) => <option key={item} value={index}>{item}</option>)}</select></label>
       </div>
     </section>
 
@@ -263,8 +272,19 @@ export function ReportsSection({ orders, groups, users, categories }: { orders: 
     </div>
 
     <div className="report-dashboard-grid">
-      <article className="admin-panel report-chart report-sales-chart"><header><div><h2>Receita e lucro</h2><p>Evolução das encomendas entregues</p></div><div className="chart-legend"><span><i /> Receita</span><span><i /> Lucro</span></div></header>
-        <div className="monthly-chart">{chartData.map((item) => <div className="month-column" key={item.label} title={`${item.label}: receita ${euro.format(item.revenue)} · lucro ${euro.format(item.profit)} · ${item.orders} encomendas`}><div><i className="revenue-bar" style={{ height: `${Math.max(item.revenue ? 8 : 2, (item.revenue / maxMonthlyRevenue) * 100)}%` }} /><i className={`profit-bar ${item.profit < 0 ? 'loss' : ''}`} style={{ height: `${Math.max(item.profit ? 8 : 2, (Math.abs(item.profit) / maxMonthlyRevenue) * 100)}%` }} /></div><strong>{item.label}</strong><small>{item.orders}</small></div>)}</div>
+      <article className="admin-panel report-chart report-sales-chart"><header><div><h2>Receita e lucro</h2><p>Evolução das encomendas entregues {timelineGranularity}</p></div><div className="chart-legend"><span><i /> Receita</span><span><i /> Lucro</span></div></header>
+        <div className="report-timeline-chart" role="img" aria-label={`Gráfico de receita e lucro de ${periodLabel}`}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={report.timeline} margin={{ top: 12, right: 8, left: 2, bottom: 2 }} barGap={3}>
+              <CartesianGrid strokeDasharray="4 5" vertical={false} stroke="var(--report-chart-grid)" />
+              <XAxis dataKey="axisLabel" axisLine={false} tickLine={false} tick={{ fill: 'var(--report-chart-text)', fontSize: 11, fontWeight: 700 }} interval={0} minTickGap={2} />
+              <YAxis axisLine={false} tickLine={false} width={58} tick={{ fill: 'var(--report-chart-muted)', fontSize: 10 }} tickFormatter={(value) => `${Number(value).toLocaleString('pt-PT')} €`} />
+              <Tooltip cursor={{ fill: 'var(--report-chart-hover)' }} content={<ReportTimelineTooltip />} />
+              <Bar dataKey="revenue" name="Receita" fill="#f97316" radius={[6, 6, 2, 2]} maxBarSize={34} />
+              <Bar dataKey="profit" name="Lucro" fill="#059669" radius={[6, 6, 2, 2]} maxBarSize={34} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </article>
       <article className="admin-panel report-chart"><header><div><h2>Encomendas por estado</h2><p>Distribuição no período escolhido</p></div></header><div className="report-state-list">{report.states.length ? report.states.map((item) => <div className="bar-row" key={item.status}><span>{item.status}</span><div><i style={{ width: `${(item.count / maxState) * 100}%` }} /></div><strong>{item.count}</strong></div>) : <p className="report-empty">Sem encomendas neste período.</p>}</div></article>
       <article className="admin-panel report-chart report-top-products"><header><div><h2>Produtos mais vendidos</h2><p>Exclui encomendas canceladas</p></div></header><div>{report.topProducts.length ? report.topProducts.map((item, index) => <div className="top-product-row" key={item.name}><span>{index + 1}</span><div><strong>{item.name}</strong><small>{euro.format(item.revenue)} em vendas</small></div><b>{item.quantity} un.</b></div>) : <p className="report-empty">Ainda não há produtos vendidos neste período.</p>}</div></article>
