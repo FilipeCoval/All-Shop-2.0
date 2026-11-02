@@ -8,6 +8,7 @@ import {
   matchingFulfillmentLots,
   planOrderFulfillment,
 } from '../src/server/orderFulfillment.js';
+import { isGeneratedInternalUnit } from '../src/domain/fulfillmentCapacity.js';
 
 assert.equal(isOrderFulfillmentComplete({ status: 'Enviado' }), true);
 assert.equal(isOrderFulfillmentComplete({ status: 'Entregue' }), true);
@@ -134,6 +135,8 @@ const fullLotsWithUnassignedSales = [
   },
 ];
 assert.equal(fulfillmentAvailableUnitCapacity(fullLotsWithUnassignedSales[1]), 1, 'identificadores excedentes não podem aparecer como stock físico');
+assert.equal(isGeneratedInternalUnit({ id: 'INT-4C52E5CF', internalLabel: 'INT-4C52E5CF', status: 'AVAILABLE' }), true);
+assert.equal(isGeneratedInternalUnit({ id: 'unit-1', serialNumber: '63598/70000221', internalLabel: 'INT-4C52E5CF', status: 'AVAILABLE' }), false, 'um S/N real não deve ser escondido por ter também etiqueta interna');
 const lastUnitFulfillment = planOrderFulfillment({
   orderId: 'AS-772844',
   orderItems: [{ productId: 2, quantity: 1 }],

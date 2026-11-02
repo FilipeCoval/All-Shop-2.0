@@ -3,10 +3,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AdminOrder, AdminOrderItem, InventoryLot } from './adminTypes';
 import { adminMutationsAvailable, fulfillOrder } from './adminMutations';
 import { displayUnitCode, normalizeUnitCode, stableUnitId, unitMatchesCode } from './unitIdentity';
-import { fulfillmentAvailableUnitCapacity } from '../../domain/fulfillmentCapacity';
+import { fulfillmentAvailableUnitCapacity, isGeneratedInternalUnit } from '../../domain/fulfillmentCapacity';
 
 type ScannedUnit = { serial: string; itemIndex: number; lotId: string; unitId: string };
-type SelectableUnit = { serial: string; lotId: string; unitId: string; assignedToOrder: boolean };
+type SelectableUnit = { serial: string; lotId: string; unitId: string; assignedToOrder: boolean; generatedInternal: boolean };
 const normalize = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('pt');
 const orderKey = (value: unknown) => String(value ?? '').replace(/^#+/, '').trim();
 const orderItems = (order: AdminOrder): AdminOrderItem[] => order.packages?.length
@@ -75,17 +75,24 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
     window.setTimeout(() => inputRef.current?.focus(), 0);
   };
 
-  const selectableUnitsForItem = (item: AdminOrderItem): SelectableUnit[] => {
+  const selectableUnitsForItem = (item: AdminOrderItem, itemIndex: number): SelectableUnit[] => {
     const selectedUnits = new Set(scanned.map((entry) => `${entry.lotId}:${entry.unitId}`));
-    return matchingLotsForItem(lots, item).flatMap((lot) => {
+    const candidates = matchingLotsForItem(lots, item).flatMap((lot) => {
       return selectableUnitsInLot(lot, order.id).flatMap((unit) => {
         const serial = displayUnitCode(unit);
         const unitId = stableUnitId(unit);
         const assignedToOrder = unit.status === 'SOLD' && orderKey(unit.soldToOrder) === orderKey(order.id);
         if (!serial || !unitId || selectedUnits.has(`${lot.id}:${unitId}`) || (unit.status !== 'AVAILABLE' && !assignedToOrder)) return [];
-        return [{ serial, lotId: lot.id, unitId, assignedToOrder }];
+        return [{ serial, lotId: lot.id, unitId, assignedToOrder, generatedInternal: isGeneratedInternalUnit(unit) }];
       });
     }).sort((left, right) => Number(right.assignedToOrder) - Number(left.assignedToOrder) || left.serial.localeCompare(right.serial, 'pt'));
+    const remainingForItem = Math.max(0, Number(item.quantity ?? 0) - scanned.filter((entry) => entry.itemIndex === itemIndex).length);
+    let generatedShown = 0;
+    return candidates.filter((unit) => {
+      if (!unit.generatedInternal || unit.assignedToOrder) return true;
+      generatedShown += 1;
+      return generatedShown <= remainingForItem;
+    });
   };
 
   const submit = async () => {
@@ -113,7 +120,7 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
     </form>
     <div className="fulfillment-items">{items.map((item, index) => {
       const entries = scanned.filter((entry) => entry.itemIndex === index);
-      const selectableUnits = selectableUnitsForItem(item);
+      const selectableUnits = selectableUnitsForItem(item, index);
       const itemComplete = entries.length >= Number(item.quantity ?? 0);
       const packageIndex = packages.length ? packages.findIndex((pkg) => (pkg.items ?? []).includes(item)) : -1;
       return <article key={`${item.productId}:${item.selectedVariant}:${index}`}>
@@ -122,7 +129,7 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
           <span>Selecionar S/N disponível</span>
           <select value="" disabled={busy || !adminMutationsAvailable || itemComplete || !selectableUnits.length} onChange={(event) => addSerial(event.target.value, index)}>
             <option value="">{itemComplete ? 'Todas as unidades validadas' : selectableUnits.length ? 'Escolher uma unidade…' : 'Sem S/N disponíveis'}</option>
-            {selectableUnits.map((unit) => <option key={`${unit.lotId}:${unit.unitId}`} value={unit.serial}>{unit.serial}{unit.assignedToOrder ? ' · reservado para esta encomenda' : ''}</option>)}
+            {selectableUnits.map((unit) => <option key={`${unit.lotId}:${unit.unitId}`} value={unit.serial}>{unit.serial}{unit.assignedToOrder ? ' · reservado para esta encomenda' : unit.generatedInternal ? ' · etiqueta interna' : ''}</option>)}
           </select>
         </label>
         <div className="fulfillment-serials">{entries.map((entry) => <span key={`${entry.lotId}:${entry.unitId}`}>{entry.serial}<button type="button" onClick={() => setScanned((previous) => previous.filter((unit) => unit.lotId !== entry.lotId || unit.unitId !== entry.unitId))} aria-label={`Remover ${entry.serial}`}><Trash2 /></button></span>)}</div>
