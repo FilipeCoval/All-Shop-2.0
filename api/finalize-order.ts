@@ -16,6 +16,7 @@ import {
   type ReservationRecord,
 } from '../services/server/stock-utils.js';
 import { normalizeProductAvailabilityMode } from '../src/domain/productAvailability.js';
+import { notifyAdminsOfNewOrder } from '../services/server/admin-push.js';
 
 type RequestedItem = {
   productId: number;
@@ -299,6 +300,14 @@ export default async function handler(req: Request, res: Response) {
       });
       return { order: responseOrder, alreadyFinalized: false };
     });
+
+    if (!result.alreadyFinalized) {
+      try {
+        await notifyAdminsOfNewOrder(firestore, result.order);
+      } catch (pushError) {
+        console.warn('[new-order-push] A encomenda foi guardada, mas o aviso aos administradores falhou.', pushError instanceof Error ? pushError.message : pushError);
+      }
+    }
 
     return res.status(200).json({ success: true, ...result });
   } catch (error: any) {

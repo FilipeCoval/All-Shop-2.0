@@ -3,7 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { getMessaging, getToken, isSupported } from 'firebase/messaging';
+import { getMessaging, getToken, isSupported, onMessage, type MessagePayload, type Messaging } from 'firebase/messaging';
 
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
@@ -45,21 +45,27 @@ export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestore
 
 export let messaging: any = null;
 
-async function initMessaging() {
-  if (await isSupported()) {
-    messaging = getMessaging(app);
+let messagingPromise: Promise<Messaging | null> | null = null;
+const getPushMessaging = () => {
+  if (!messagingPromise) {
+    messagingPromise = isSupported()
+      .then((supported) => supported ? getMessaging(app) : null)
+      .catch(() => null);
+    void messagingPromise.then((instance) => { messaging = instance; });
   }
-}
-initMessaging();
+  return messagingPromise;
+};
+void getPushMessaging();
 
 // 2. CONFIGURAÇÃO DE NOTIFICAÇÕES (VAPID Key)
 // Chave atualizada fornecida pelo utilizador (Key pair)
 const VAPID_KEY = "BJXPk7dP-BS47L-yIHR6mg1R-XIUNqtJwfO6TM78mXPJdzlSDR0QqHIqhWeTOYfEb1pS1FM3dx8st4bLG9LIyf0";
 
 export const requestPushPermission = async (): Promise<string | null> => {
-  if (!messaging) return null;
-  
   try {
+    const pushMessaging = await getPushMessaging();
+    if (!pushMessaging || typeof Notification === 'undefined' || !('serviceWorker' in navigator)) return null;
+
     // Verificação de segurança para evitar crash
     if (!VAPID_KEY || !VAPID_KEY.startsWith('B')) {
         console.error("ERRO CRÍTICO: VAPID Key inválida. Deve começar por 'B'.");
@@ -77,8 +83,7 @@ export const requestPushPermission = async (): Promise<string | null> => {
         });
         console.log("Service Worker registrado com sucesso:", registration.scope);
         await registration.update();
-        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
-        console.log("Token FCM gerado com sucesso:", token);
+        const token = await getToken(pushMessaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: registration });
         return token;
       } catch (swError) {
         console.error("Erro ao registrar Service Worker:", swError);
@@ -96,6 +101,18 @@ export const requestPushPermission = async (): Promise<string | null> => {
     return null;
   }
   return null;
+};
+
+export const subscribeForegroundPush = (listener: (payload: MessagePayload) => void) => {
+  let active = true;
+  let unsubscribe: (() => void) | undefined;
+  void getPushMessaging().then((instance) => {
+    if (active && instance) unsubscribe = onMessage(instance, listener);
+  });
+  return () => {
+    active = false;
+    unsubscribe?.();
+  };
 };
 
 

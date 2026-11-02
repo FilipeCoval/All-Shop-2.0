@@ -60,7 +60,19 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const action = text(request.body?.action, 50);
     let targetId = '';
 
-    if (action === 'save_coupon') {
+    if (action === 'register_admin_push') {
+      const token = text(request.body?.token, 500);
+      if (token.length < 20) throw new ApiError(400, 'Token de notificações inválido.');
+      await database.collection('users').doc(admin.uid).set({
+        email: admin.email,
+        normalizedEmail: admin.email,
+        fcmToken: token,
+        deviceTokens: FieldValue.arrayUnion(token),
+        adminNotificationsEnabled: true,
+        adminPushUpdatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return response.status(200).json({ success: true, id: admin.uid });
+    } else if (action === 'save_coupon') {
       const input = request.body?.coupon ?? {};
       targetId = text(input.id, 100) || database.collection('coupons').doc().id;
       const code = text(input.code, 40).toUpperCase();

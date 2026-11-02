@@ -70,4 +70,5 @@ export const recalculateClientLoyalty = (userId: string) => callAdminApi(adminAp
 export const mergeClientAccounts = (primaryUserId: string, duplicateUserId: string, confirmation: string) => callAdminApi(adminApiPath('misc'), { action: 'merge_client_accounts', primaryUserId, duplicateUserId, confirmation });
 export const saveCategory = (category: Record<string, unknown>) => callAdminApi(adminApiPath('misc'), { action: 'save_category', category });
 export const deleteCategory = (categoryId: string) => callAdminApi(adminApiPath('misc'), { action: 'delete_category', categoryId });
+export const registerAdminPushToken = (token: string) => callAdminApi(adminApiPath('misc'), { action: 'register_admin_push', token }, { retryTransient: true });
 export const sendMarketingPush = (message: Record<string, unknown>) => callAdminApi(adminApiPath('marketing'), message);

@@ -70,6 +70,28 @@ const filterLabels: Record<AdminNotificationFilter, string> = {
 };
 
 const severityRank: Record<NotificationSeverity, number> = { info: 1, warning: 2, urgent: 3 };
+const SEEN_NOTIFICATIONS_KEY = 'allshop-admin-seen-notifications-v1';
+const MAX_SEEN_NOTIFICATIONS = 500;
+
+const notificationSignature = (item: AdminNotificationItem) =>
+  [item.id, item.severity, item.title, item.description, item.meta].join('|');
+
+const readSeenNotifications = () => {
+  try {
+    const value = JSON.parse(window.localStorage.getItem(SEEN_NOTIFICATIONS_KEY) || '[]');
+    return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
+  } catch {
+    return new Set<string>();
+  }
+};
+
+const saveSeenNotifications = (signatures: string[]) => {
+  try {
+    window.localStorage.setItem(SEEN_NOTIFICATIONS_KEY, JSON.stringify(signatures.slice(-MAX_SEEN_NOTIFICATIONS)));
+  } catch {
+    // A dashboard continua funcional mesmo quando o navegador bloqueia armazenamento local.
+  }
+};
 
 const normalize = (value: unknown) => String(value ?? '').trim().toLocaleLowerCase('pt-PT');
 
@@ -233,13 +255,16 @@ function buildNotifications(data: AdminSnapshot, stockGroups: StockGroup[], now:
 export function AdminNotificationCenter({ data, stockGroups, onOrder, onSupport, onRequest, onStock, onCashback }: AdminNotificationCenterProps) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<AdminNotificationFilter>('all');
+  const [seenNotifications, setSeenNotifications] = useState<Set<string>>(() => readSeenNotifications());
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
   const previouslyOpen = useRef(false);
   const notifications = useMemo(() => buildNotifications(data, stockGroups, new Date()), [data, stockGroups]);
   const visible = filter === 'all' ? notifications : notifications.filter((item) => item.target.kind === filter);
-  const urgentCount = notifications.filter((item) => item.severity === 'urgent').length;
+  const unreadNotifications = notifications.filter((item) => !seenNotifications.has(notificationSignature(item)));
+  const unreadCount = unreadNotifications.length;
+  const urgentCount = unreadNotifications.filter((item) => item.severity === 'urgent').length;
   const counts = useMemo(() => notifications.reduce<Record<AdminNotificationFilter, number>>((current, item) => {
     current.all += 1;
     current[item.target.kind] += 1;
@@ -264,12 +289,19 @@ export function AdminNotificationCenter({ data, stockGroups, onOrder, onSupport,
 
   useEffect(() => {
     if (open) {
+      const currentSignatures = notifications.map(notificationSignature);
+      setSeenNotifications((current) => {
+        if (currentSignatures.every((signature) => current.has(signature))) return current;
+        const next = new Set([...current, ...currentSignatures]);
+        saveSeenNotifications([...next]);
+        return next;
+      });
       window.requestAnimationFrame(() => panelRef.current?.querySelector<HTMLButtonElement>('.admin-notification-close')?.focus());
     } else if (previouslyOpen.current) {
       triggerRef.current?.focus();
     }
     previouslyOpen.current = open;
-  }, [open]);
+  }, [open, notifications]);
 
   const navigate = (target: NotificationTarget) => {
     setOpen(false);
@@ -286,14 +318,14 @@ export function AdminNotificationCenter({ data, stockGroups, onOrder, onSupport,
         ref={triggerRef}
         type="button"
         className={`admin-notification-trigger${urgentCount ? ' urgent' : ''}`}
-        aria-label={`${notifications.length} alerta${notifications.length === 1 ? '' : 's'} na administração`}
+        aria-label={unreadCount > 0 ? `${unreadCount} alerta${unreadCount === 1 ? '' : 's'} novo${unreadCount === 1 ? '' : 's'} na administração` : 'Sem alertas novos na administração'}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls="admin-notification-panel"
         onClick={() => setOpen((current) => !current)}
       >
         <Bell aria-hidden="true" />
-        {notifications.length > 0 && <span aria-hidden="true">{notifications.length > 99 ? '99+' : notifications.length}</span>}
+        {unreadCount > 0 && <span aria-hidden="true">{unreadCount > 99 ? '99+' : unreadCount}</span>}
       </button>
 
       {open && (
@@ -302,6 +334,7 @@ export function AdminNotificationCenter({ data, stockGroups, onOrder, onSupport,
             <div>
               <p>Centro de alertas</p>
               <h2 id="admin-notification-title">O que precisa de atenção</h2>
+              <small>{notifications.length} pendente{notifications.length === 1 ? '' : 's'} · {unreadCount} novo{unreadCount === 1 ? '' : 's'}</small>
             </div>
             <button type="button" className="admin-notification-close" onClick={() => setOpen(false)} aria-label="Fechar notificações"><X aria-hidden="true" /></button>
           </header>
@@ -318,7 +351,7 @@ export function AdminNotificationCenter({ data, stockGroups, onOrder, onSupport,
             <ul className="admin-notification-list" aria-label={`${visible.length} alertas em ${filterLabels[filter]}`}>
               {visible.map((item) => (
                 <li key={item.id}>
-                  <button type="button" className={`admin-notification-item ${item.severity}`} onClick={() => navigate(item.target)}>
+                  <button type="button" className={`admin-notification-item ${item.severity}${seenNotifications.has(notificationSignature(item)) ? ' seen' : ' unread'}`} onClick={() => navigate(item.target)}>
                     <span className="admin-notification-icon">{notificationIcon(item.target.kind)}</span>
                     <span className="admin-notification-copy">
                       <strong>{item.title}</strong>
@@ -334,7 +367,7 @@ export function AdminNotificationCenter({ data, stockGroups, onOrder, onSupport,
             <div className="admin-notification-empty"><SearchCheck aria-hidden="true" /><strong>Sem alertas nesta área</strong><p>Não existe nada pendente neste filtro.</p></div>
           )}
 
-          <footer className="admin-notification-footer"><AlertTriangle aria-hidden="true" /> Estes alertas acompanham a última atualização da dashboard e não são marcados como lidos.</footer>
+          <footer className="admin-notification-footer"><AlertTriangle aria-hidden="true" /> Abrir o sino limpa o contador. O alerta permanece aqui enquanto a situação não for resolvida.</footer>
         </section>
       )}
     </div>

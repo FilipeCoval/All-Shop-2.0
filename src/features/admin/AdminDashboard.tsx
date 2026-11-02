@@ -15,6 +15,7 @@ import { LOGO_URL, STORE_NAME } from '../../../constants';
 import { AdminCashbackSection } from './AdminCashbackSection';
 import { AdminNotificationCenter, type AdminCashbackNotificationTarget } from './AdminNotificationCenter';
 import { AdminPwaControls } from './AdminPwaControls';
+import { AdminPushControls } from './AdminPushControls';
 import { reviewCatalogContent } from './adminMutations';
 
 interface AdminDashboardProps {
@@ -25,6 +26,11 @@ interface AdminDashboardProps {
 }
 
 type AdminTab = 'overview' | 'products' | 'orders' | 'clients' | 'coupons' | 'support' | 'marketing' | 'imports' | 'cashback' | 'categories' | 'reports' | 'audit' | 'backups';
+const adminTabs = new Set<AdminTab>(['overview', 'products', 'orders', 'clients', 'coupons', 'support', 'marketing', 'imports', 'cashback', 'categories', 'reports', 'audit', 'backups']);
+const tabFromLocation = (): AdminTab => {
+  const requested = typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('tab');
+  return requested && adminTabs.has(requested as AdminTab) ? requested as AdminTab : 'overview';
+};
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const statusClass = (status: string) => `status status-${status.toLocaleLowerCase('pt').replace(/\s/g, '-')}`;
 const tabTitles: Record<AdminTab, string> = {
@@ -48,7 +54,7 @@ const tabDescriptions: Record<AdminTab, string> = {
 };
 
 export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }: AdminDashboardProps) {
-  const [tab, setTab] = useState<AdminTab>('overview');
+  const [tab, setTab] = useState<AdminTab>(() => tabFromLocation());
   const [data, setData] = useState<AdminSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +73,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
   const [catalogReviewBusy, setCatalogReviewBusy] = useState(false);
   const refreshInFlight = useRef(false);
   const automaticRefreshPaused = useRef(false);
+  const requestedOrderId = useRef(typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('order') || '');
   automaticRefreshPaused.current = Boolean(
     selectedOrder
     || catalogEditorOpen
@@ -115,11 +122,14 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
       if (document.visibilityState === 'visible' && !automaticRefreshPaused.current) void refresh(true);
     };
     const interval = window.setInterval(refreshWhenVisible, 60_000);
+    const refreshFromPush = () => void refresh(true);
     window.addEventListener('focus', refreshWhenVisible);
+    window.addEventListener('allshop-admin-push', refreshFromPush);
     document.addEventListener('visibilitychange', refreshWhenVisible);
     return () => {
       window.clearInterval(interval);
       window.removeEventListener('focus', refreshWhenVisible);
+      window.removeEventListener('allshop-admin-push', refreshFromPush);
       document.removeEventListener('visibilitychange', refreshWhenVisible);
     };
   }, [refresh]);
@@ -135,6 +145,17 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
       return undefined;
     }
   }, []);
+
+  useEffect(() => {
+    if (!data || !requestedOrderId.current) return;
+    const requested = requestedOrderId.current.replace(/^#/, '');
+    const order = data.orders.find((item) => item.id.replace(/^#/, '') === requested);
+    requestedOrderId.current = '';
+    if (order) {
+      setTab('orders');
+      setSelectedOrder(order);
+    }
+  }, [data]);
 
   const stockGroups = useMemo(
     () => data ? buildStockGroups(data.lots, data.products, data.reservations) : [],
@@ -191,6 +212,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
             {!['overview', 'marketing', 'cashback', 'reports', 'backups'].includes(tab) && <label className="admin-search"><Search /><input placeholder={`Pesquisar em ${tabTitles[tab].toLocaleLowerCase('pt')}…`} value={search} onChange={(event) => setSearch(event.target.value)} /></label>}
             {tab === 'orders' && <button className="telegram-recovery-button" type="button" onClick={() => setTelegramRecoveryOpen(true)}><Plus /> Recuperar pedido Telegram</button>}
             <AdminPwaControls />
+            <AdminPushControls />
             {data && <AdminNotificationCenter
               data={data}
               stockGroups={stockGroups}
