@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   applyFulfillmentToPackages,
   FulfillmentError,
+  fulfillmentAvailableUnitCapacity,
   fulfillmentItemsFromPackages,
   isOrderFulfillmentComplete,
   matchingFulfillmentLots,
@@ -110,6 +111,40 @@ assert.equal(relocation.updatedLots.find((lot) => lot.id === 'L-DEBITED')?.quant
 assert.equal(relocation.updatedLots.find((lot) => lot.id === 'L-CHOSEN')?.quantitySold, 1);
 assert.equal(relocation.updatedLots.reduce((sum, lot) => sum + Number(lot.quantitySold), 0), soldBeforeRelocation);
 assert.equal(relocation.updatedLots[1].units?.[0].soldToOrder, 'AS-REALLOC');
+
+const fullLotsWithUnassignedSales = [
+  {
+    id: 'L-OLDER-DEBIT',
+    publicProductId: 2,
+    variant: '',
+    quantityBought: 1,
+    quantitySold: 1,
+    units: [{ id: 'INT-OLDER', status: 'AVAILABLE' }],
+  },
+  {
+    id: 'L-CHOSEN-FULL',
+    publicProductId: 2,
+    variant: '',
+    quantityBought: 1,
+    quantitySold: 1,
+    units: [
+      { id: 'INT-REAL', status: 'AVAILABLE' },
+      { id: 'INT-EXTRA', status: 'AVAILABLE' },
+    ],
+  },
+];
+assert.equal(fulfillmentAvailableUnitCapacity(fullLotsWithUnassignedSales[1]), 1, 'identificadores excedentes não podem aparecer como stock físico');
+const lastUnitFulfillment = planOrderFulfillment({
+  orderId: 'AS-772844',
+  orderItems: [{ productId: 2, quantity: 1 }],
+  lots: fullLotsWithUnassignedSales,
+  serialNumbers: ['INT-REAL'],
+  stockAlreadyDeducted: true,
+  fulfilledAt: '2026-11-02T16:00:00Z',
+});
+assert.equal(lastUnitFulfillment.updatedLots.find((lot) => lot.id === 'L-CHOSEN-FULL')?.quantitySold, 1);
+assert.equal(lastUnitFulfillment.updatedLots.find((lot) => lot.id === 'L-CHOSEN-FULL')?.units?.filter((unit) => unit.status === 'SOLD').length, 1);
+assert.equal(lastUnitFulfillment.updatedLots.find((lot) => lot.id === 'L-OLDER-DEBIT')?.quantitySold, 1, 'outras vendas antigas não devem ser deslocadas');
 
 const packages = [
   {

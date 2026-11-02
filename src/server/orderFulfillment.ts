@@ -1,4 +1,5 @@
 import { normalizeVariant } from './checkoutCore.js';
+export { fulfillmentAvailableUnitCapacity } from '../domain/fulfillmentCapacity.js';
 
 export type FulfillmentUnit = {
   id?: string;
@@ -147,28 +148,7 @@ export function planOrderFulfillment(input: {
   const existingAssignedTotal = [...existingAssigned.values()].reduce((sum, value) => sum + value, 0);
   if (existingAssignedTotal > totalExpected) throw new FulfillmentError('Existem mais unidades associadas à encomenda do que artigos por expedir.');
 
-  const baselineByLot = new Map(existingAssigned);
-  if (input.stockAlreadyDeducted) {
-    const unattributedSold = new Map(lots.map((lot) => {
-      const soldUnits = (lot.units ?? []).filter((unit) => unit.status === 'SOLD').length;
-      return [lot.id, Math.max(0, Number(lot.quantitySold ?? 0) - soldUnits)] as const;
-    }));
-    for (const item of expected) {
-      let remaining = item.quantity - item.existingAssigned;
-      for (const lot of lots) {
-        if (remaining <= 0) break;
-        if (!item.matchingLotIds.has(lot.id)) continue;
-        const available = unattributedSold.get(lot.id) ?? 0;
-        const take = Math.min(remaining, available);
-        if (!take) continue;
-        baselineByLot.set(lot.id, (baselineByLot.get(lot.id) ?? 0) + take);
-        unattributedSold.set(lot.id, available - take);
-        remaining -= take;
-      }
-      if (remaining > 0) throw new FulfillmentError('O stock previamente abatido não pode ser reconciliado com os lotes desta encomenda.');
-    }
-  }
-  const chosen = new Map<string, { lotId: string; unitId: string; serialNumber: string }>();
+  const chosen = new Map<string, { lotId: string; unitId: string; serialNumber: string; itemIndex: number }>();
 
   for (let serialIndex = 0; serialIndex < serialNumbers.length; serialIndex += 1) {
     const serial = serialNumbers[serialIndex];
@@ -195,11 +175,42 @@ export function planOrderFulfillment(input: {
     const serialNumber = fulfillmentUnitSerial(unit) || serial;
     target.assignedUnitIds.push(unitId);
     target.assignedSerials.push(serialNumber);
-    chosen.set(unitKey, { lotId: lot.id, unitId, serialNumber });
+    chosen.set(unitKey, { lotId: lot.id, unitId, serialNumber, itemIndex: target.index });
   }
 
   const selectedByLot = new Map<string, number>();
   for (const selected of chosen.values()) selectedByLot.set(selected.lotId, (selectedByLot.get(selected.lotId) ?? 0) + 1);
+  const baselineByLot = new Map(existingAssigned);
+  if (input.stockAlreadyDeducted) {
+    const unattributedSold = new Map(lots.map((lot) => {
+      const soldUnits = (lot.units ?? []).filter((unit) => unit.status === 'SOLD').length;
+      return [lot.id, Math.max(0, Number(lot.quantitySold ?? 0) - soldUnits)] as const;
+    }));
+    for (const item of expected) {
+      let remaining = item.quantity - item.existingAssigned;
+      // A compra já abateu o stock, mas ainda não conhecia o S/N. Primeiro ligamos
+      // esse abatimento ao lote das unidades agora escolhidas. Só depois usamos
+      // outro lote compatível, permitindo mover o débito sem duplicar uma venda.
+      const chosenLotIds = [...new Set([...chosen.values()]
+        .filter((selected) => selected.itemIndex === item.index)
+        .map((selected) => selected.lotId))];
+      const candidateLotIds = [
+        ...chosenLotIds,
+        ...lots.filter((lot) => item.matchingLotIds.has(lot.id) && !chosenLotIds.includes(lot.id)).map((lot) => lot.id),
+      ];
+      for (const lotId of candidateLotIds) {
+        if (remaining <= 0) break;
+        if (!item.matchingLotIds.has(lotId)) continue;
+        const available = unattributedSold.get(lotId) ?? 0;
+        const take = Math.min(remaining, available);
+        if (!take) continue;
+        baselineByLot.set(lotId, (baselineByLot.get(lotId) ?? 0) + take);
+        unattributedSold.set(lotId, available - take);
+        remaining -= take;
+      }
+      if (remaining > 0) throw new FulfillmentError('O stock previamente abatido não pode ser reconciliado com os lotes desta encomenda.');
+    }
+  }
   let totalProductCost = 0;
   const updatedLots = lots.map((lot) => {
     const selected = selectedByLot.get(lot.id) ?? 0;

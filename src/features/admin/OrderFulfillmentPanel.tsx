@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AdminOrder, AdminOrderItem, InventoryLot } from './adminTypes';
 import { adminMutationsAvailable, fulfillOrder } from './adminMutations';
 import { displayUnitCode, normalizeUnitCode, stableUnitId, unitMatchesCode } from './unitIdentity';
+import { fulfillmentAvailableUnitCapacity } from '../../domain/fulfillmentCapacity';
 
 type ScannedUnit = { serial: string; itemIndex: number; lotId: string; unitId: string };
 type SelectableUnit = { serial: string; lotId: string; unitId: string; assignedToOrder: boolean };
@@ -19,6 +20,13 @@ const matchingLotsForItem = (lots: InventoryLot[], item: AdminOrderItem) => {
   if (!variant) return generic.length ? generic : productLots;
   const exact = productLots.filter((lot) => normalize(lot.variant) === variant);
   return exact.length ? exact : generic;
+};
+
+const selectableUnitsInLot = (lot: InventoryLot, orderId: string) => {
+  const units = lot.units ?? [];
+  const assigned = units.filter((unit) => unit.status === 'SOLD' && orderKey(unit.soldToOrder) === orderKey(orderId));
+  const available = units.filter((unit) => unit.status === 'AVAILABLE').slice(0, fulfillmentAvailableUnitCapacity(lot));
+  return [...assigned, ...available];
 };
 
 export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: AdminOrder; lots: InventoryLot[]; onChanged: () => Promise<void> }) {
@@ -44,7 +52,7 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
     const serial = normalizeUnitCode(raw);
     setError(null); setMessage(null);
     if (!serial) return;
-    const matches = lots.flatMap((lot) => (lot.units ?? []).filter((unit) => unitMatchesCode(unit, serial)).map((unit) => ({ lot, unit })));
+    const matches = lots.flatMap((lot) => selectableUnitsInLot(lot, order.id).filter((unit) => unitMatchesCode(unit, serial)).map((unit) => ({ lot, unit })));
     if (!matches.length) { setError(`O S/N ${serial} não existe no inventário.`); return; }
     if (matches.length > 1) { setError(`O S/N ${serial} aparece em mais do que um lote.`); return; }
     const { lot, unit } = matches[0];
@@ -70,7 +78,7 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
   const selectableUnitsForItem = (item: AdminOrderItem): SelectableUnit[] => {
     const selectedUnits = new Set(scanned.map((entry) => `${entry.lotId}:${entry.unitId}`));
     return matchingLotsForItem(lots, item).flatMap((lot) => {
-      return (lot.units ?? []).flatMap((unit) => {
+      return selectableUnitsInLot(lot, order.id).flatMap((unit) => {
         const serial = displayUnitCode(unit);
         const unitId = stableUnitId(unit);
         const assignedToOrder = unit.status === 'SOLD' && orderKey(unit.soldToOrder) === orderKey(order.id);
