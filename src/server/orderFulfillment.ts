@@ -43,6 +43,18 @@ export type FulfillmentPackage = {
 
 export class FulfillmentError extends Error {}
 
+export type PlanOrderFulfillmentInput = {
+  orderId: string;
+  orderItems: FulfillmentItem[];
+  lots: FulfillmentLot[];
+  serialNumbers: string[];
+  serialItemIndexes?: number[];
+  stockAlreadyDeducted: boolean;
+  customerName?: string;
+  customerEmail?: string;
+  fulfilledAt: string;
+};
+
 const cleanOrderId = (value: unknown) => String(value ?? '').replace(/^#+/, '').trim();
 const cleanSerial = (value: unknown) => String(value ?? '').trim().toUpperCase();
 
@@ -106,17 +118,7 @@ export function applyFulfillmentToPackages(input: {
   });
 }
 
-export function planOrderFulfillment(input: {
-  orderId: string;
-  orderItems: FulfillmentItem[];
-  lots: FulfillmentLot[];
-  serialNumbers: string[];
-  serialItemIndexes?: number[];
-  stockAlreadyDeducted: boolean;
-  customerName?: string;
-  customerEmail?: string;
-  fulfilledAt: string;
-}) {
+export function planOrderFulfillment(input: PlanOrderFulfillmentInput) {
   const orderId = cleanOrderId(input.orderId);
   const lots = input.lots.map((lot) => ({ ...lot, units: (lot.units ?? []).map((unit) => ({ ...unit })) }));
   const expected = input.orderItems.map((item, index) => ({
@@ -231,11 +233,17 @@ export function planOrderFulfillment(input: {
       }
       return unit;
     });
+    const originalQuantitySold = Math.max(0, Number(lot.quantitySold ?? 0));
     const delta = selected - (baselineByLot.get(lot.id) ?? 0);
-    const quantitySold = Math.max(0, Number(lot.quantitySold ?? 0) + delta);
+    const quantitySold = Math.max(0, originalQuantitySold + delta);
     const soldUnitCount = units.filter((unit) => unit.status === 'SOLD').length;
     const quantityBought = Math.max(0, Number(lot.quantityBought ?? 0));
-    if (quantitySold < soldUnitCount || quantitySold > quantityBought) {
+    const legacyOverflow = originalQuantitySold > quantityBought;
+    const createsNewOverflow = quantitySold > quantityBought && (!legacyOverflow || quantitySold > originalQuantitySold);
+    // Alguns lotes antigos já têm o contador abatido acima da compra registada.
+    // Atribuir um S/N a uma dessas vendas é seguro quando não aumenta essa
+    // divergência; continuamos a bloquear qualquer novo abatimento impossível.
+    if (quantitySold < soldUnitCount || createsNewOverflow) {
       throw new FulfillmentError(`O lote ${lot.id} não tem quantidade física suficiente para estas unidades.`);
     }
     return { ...lot, units, quantitySold, status: quantitySold >= Number(lot.quantityBought ?? 0) ? 'SOLD' : quantitySold > 0 ? 'PARTIAL' : 'AVAILABLE' };
@@ -251,4 +259,23 @@ export function planOrderFulfillment(input: {
     serialNumbers: itemSerials.flat(),
     totalProductCost: Math.round(totalProductCost * 100) / 100,
   };
+}
+
+export function planStoredOrderFulfillment(input: Omit<PlanOrderFulfillmentInput, 'stockAlreadyDeducted'> & { stockDeducted?: boolean }) {
+  if (typeof input.stockDeducted === 'boolean') {
+    const { stockDeducted, ...planInput } = input;
+    return planOrderFulfillment({ ...planInput, stockAlreadyDeducted: stockDeducted });
+  }
+
+  const { stockDeducted: _missingLegacyFlag, ...planInput } = input;
+  try {
+    // Encomendas antigas não guardavam a flag, embora o checkout já tivesse
+    // abatido o stock. Tentar primeiro a reconciliação evita uma segunda baixa.
+    return planOrderFulfillment({ ...planInput, stockAlreadyDeducted: true });
+  } catch (error) {
+    if (!(error instanceof FulfillmentError) || !error.message.includes('stock previamente abatido não pode ser reconciliado')) throw error;
+    // Se não existir qualquer abatimento por associar, trata-se de uma encomenda
+    // antiga que ainda não mexeu no stock e pode seguir o fluxo normal.
+    return planOrderFulfillment({ ...planInput, stockAlreadyDeducted: false });
+  }
 }

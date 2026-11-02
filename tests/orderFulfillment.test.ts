@@ -7,6 +7,7 @@ import {
   isOrderFulfillmentComplete,
   matchingFulfillmentLots,
   planOrderFulfillment,
+  planStoredOrderFulfillment,
 } from '../src/server/orderFulfillment.js';
 import { isGeneratedInternalUnit } from '../src/domain/fulfillmentCapacity.js';
 
@@ -45,6 +46,36 @@ assert.throws(
   () => planOrderFulfillment({ ...base, serialNumbers: ['SN-NEW', 'EAN-NEW'] }),
   (error) => error instanceof FulfillmentError && error.message.includes('mesma unidade'),
 );
+
+const legacyOrderWithoutStockFlag = planStoredOrderFulfillment({
+  orderId: 'AS-772844',
+  orderItems: [{ productId: 2, quantity: 1 }],
+  lots: [{
+    id: 'Eumw9cqGBw0BIJnZ90dL',
+    publicProductId: 2,
+    quantityBought: 5,
+    quantitySold: 5,
+    units: [
+      { id: 'INT-OLD-1', status: 'SOLD', soldToOrder: 'AS-OLD-1' },
+      { id: 'INT-OLD-2', status: 'SOLD', soldToOrder: 'AS-OLD-2' },
+      { id: 'INT-4C52E5CF', status: 'AVAILABLE' },
+      { id: 'INT-74278CEB', status: 'AVAILABLE' },
+    ],
+  }],
+  serialNumbers: ['INT-4C52E5CF'],
+  fulfilledAt: '2026-11-02T16:40:00Z',
+});
+assert.equal(legacyOrderWithoutStockFlag.updatedLots[0].quantitySold, 5, 'uma encomenda antiga já abatida não pode descontar novamente');
+assert.equal(legacyOrderWithoutStockFlag.updatedLots[0].units?.find((unit) => unit.id === 'INT-4C52E5CF')?.soldToOrder, 'AS-772844');
+
+const legacyOrderNotYetDeducted = planStoredOrderFulfillment({
+  orderId: 'AS-LEGACY-NOT-DEDUCTED',
+  orderItems: [{ productId: 3, quantity: 1 }],
+  lots: [{ id: 'L-FREE', publicProductId: 3, quantityBought: 1, quantitySold: 0, units: [{ id: 'SN-FREE', status: 'AVAILABLE' }] }],
+  serialNumbers: ['SN-FREE'],
+  fulfilledAt: '2026-11-02T16:41:00Z',
+});
+assert.equal(legacyOrderNotYetDeducted.updatedLots[0].quantitySold, 1, 'uma encomenda antiga sem abatimento deve consumir stock normalmente');
 
 const genericLot = {
   id: 'L-GENERIC',
@@ -148,6 +179,40 @@ const lastUnitFulfillment = planOrderFulfillment({
 assert.equal(lastUnitFulfillment.updatedLots.find((lot) => lot.id === 'L-CHOSEN-FULL')?.quantitySold, 1);
 assert.equal(lastUnitFulfillment.updatedLots.find((lot) => lot.id === 'L-CHOSEN-FULL')?.units?.filter((unit) => unit.status === 'SOLD').length, 1);
 assert.equal(lastUnitFulfillment.updatedLots.find((lot) => lot.id === 'L-OLDER-DEBIT')?.quantitySold, 1, 'outras vendas antigas não devem ser deslocadas');
+
+const legacyOverflowFulfillment = planOrderFulfillment({
+  orderId: 'AS-LEGACY-OVERFLOW',
+  orderItems: [{ productId: 2, quantity: 1 }],
+  lots: [{
+    id: 'L-LEGACY-OVERFLOW',
+    publicProductId: 2,
+    quantityBought: 1,
+    quantitySold: 2,
+    units: [
+      { id: 'INT-OLD-SALE', status: 'SOLD', soldToOrder: 'AS-OLDER' },
+      { id: 'INT-LAST-SALE', status: 'AVAILABLE' },
+    ],
+  }],
+  serialNumbers: ['INT-LAST-SALE'],
+  stockAlreadyDeducted: true,
+  fulfilledAt: '2026-11-02T16:30:00Z',
+});
+assert.equal(legacyOverflowFulfillment.updatedLots[0].quantitySold, 2, 'ligar uma etiqueta não pode repetir a venda');
+assert.equal(legacyOverflowFulfillment.updatedLots[0].units?.filter((unit) => unit.status === 'SOLD').length, 2);
+assert.equal(legacyOverflowFulfillment.updatedLots[0].units?.[1].soldToOrder, 'AS-LEGACY-OVERFLOW');
+
+assert.throws(
+  () => planOrderFulfillment({
+    orderId: 'AS-NEW-OVERFLOW',
+    orderItems: [{ productId: 2, quantity: 1 }],
+    lots: [{ id: 'L-NORMAL', publicProductId: 2, quantityBought: 1, quantitySold: 1, units: [{ id: 'INT-ALREADY-SOLD', status: 'SOLD', soldToOrder: 'AS-OLDER' }, { id: 'INT-EXTRA', status: 'AVAILABLE' }] }],
+    serialNumbers: ['INT-EXTRA'],
+    stockAlreadyDeducted: false,
+    fulfilledAt: '2026-11-02T16:31:00Z',
+  }),
+  (error) => error instanceof FulfillmentError && error.message.includes('quantidade física suficiente'),
+  'uma nova venda impossível deve continuar bloqueada',
+);
 
 const packages = [
   {

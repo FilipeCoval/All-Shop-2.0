@@ -6,7 +6,7 @@ import { getAdminDb } from '../firebaseAdmin.js';
 import { projectPublicStock, type LotData, type ReservationData } from '../stockProjection.js';
 import { applyPartialCancellation, calculateCancellationRefund, validateCancellationItems } from '../orderCancellation.js';
 import { activeReservedQuantity, allocateSale, normalizeVariant, toMillis } from '../checkoutCore.js';
-import { applyFulfillmentToPackages, FulfillmentError, fulfillmentItemsFromPackages, fulfillmentUnitSerial, isOrderFulfillmentComplete, planOrderFulfillment, type FulfillmentLot, type FulfillmentPackage } from '../orderFulfillment.js';
+import { applyFulfillmentToPackages, FulfillmentError, fulfillmentItemsFromPackages, fulfillmentUnitSerial, isOrderFulfillmentComplete, planStoredOrderFulfillment, type FulfillmentLot, type FulfillmentPackage } from '../orderFulfillment.js';
 
 const STATUSES = new Set(['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue', 'Cancelado', 'Reclamação', 'Devolvido', 'Levantamento em Loja']);
 const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -422,13 +422,13 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const userSnapshot = userRef ? await transaction.get(userRef) : null;
         let plan;
         try {
-          plan = planOrderFulfillment({
+          plan = planStoredOrderFulfillment({
             orderId,
             orderItems,
             lots: contexts.flatMap((context) => context.lots),
             serialNumbers,
             ...(selections.length ? { serialItemIndexes: selections.map((selection) => selection.itemIndex) } : {}),
-            stockAlreadyDeducted: order.stockDeducted === true,
+            ...(typeof order.stockDeducted === 'boolean' ? { stockDeducted: order.stockDeducted } : {}),
             customerName: text(order.shippingInfo?.name, 140),
             customerEmail: text(order.shippingInfo?.email, 180).toLowerCase(),
             fulfilledAt: now,
