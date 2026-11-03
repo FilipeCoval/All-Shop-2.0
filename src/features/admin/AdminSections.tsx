@@ -10,9 +10,9 @@ import { buildReportTimeline, type ReportTimelinePoint } from './reportTimeline'
 
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const shortDate = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'short' });
-const safeDate = (value?: string) => {
+const safeDate = (value?: string | { seconds?: number; toDate?: () => Date }) => {
   if (!value) return '—';
-  const parsed = new Date(value);
+  const parsed = typeof value === 'string' ? new Date(value) : typeof value.toDate === 'function' ? value.toDate() : new Date(Number(value.seconds ?? 0) * 1000);
   return Number.isFinite(parsed.getTime()) ? shortDate.format(parsed) : '—';
 };
 const statusClass = (status = '') => `status status-${status.toLocaleLowerCase('pt').replace(/\s/g, '-')}`;
@@ -121,21 +121,21 @@ export function ClientsSection({ users, search, onOpen }: { users: AdminUser[]; 
   </TableCard>;
 }
 
-export function CouponsSection({ coupons, search, onCreate, onEdit }: { coupons: AdminCoupon[]; search: string; onCreate: () => void; onEdit: (coupon: AdminCoupon) => void }) {
+export function CouponsSection({ coupons, products, search, onCreate, onEdit }: { coupons: AdminCoupon[]; products: Product[]; search: string; onCreate: () => void; onEdit: (coupon: AdminCoupon) => void }) {
   const visible = coupons.filter((coupon) => String(coupon.code ?? '').toLocaleLowerCase('pt').includes(search.toLocaleLowerCase('pt')));
   return <TableCard title="Cupões" description="Campanhas, utilização e limites." count={`${visible.length} cupões`} action={<button className="heading-action" onClick={onCreate}>Novo cupão</button>}>
-    <table><thead><tr><th>Código</th><th>Desconto</th><th>Compra mínima</th><th>Utilizações</th><th>Estado</th><th></th></tr></thead>
-      <tbody>{visible.map((coupon) => <tr key={coupon.id}><td><strong>{coupon.code ?? '—'}</strong></td><td>{coupon.type === 'PERCENTAGE' ? `${Number(coupon.value ?? 0)}%` : euro.format(Number(coupon.value ?? 0))}</td><td>{euro.format(Number(coupon.minPurchase ?? 0))}</td><td>{Number(coupon.usageCount ?? 0)}{coupon.maxUsages ? ` / ${coupon.maxUsages}` : ''}</td><td><span className={coupon.isActive ? 'ok-pill' : 'warning-pill'}>{coupon.isActive ? 'Ativo' : 'Inativo'}</span></td><td><button className="table-action" onClick={() => onEdit(coupon)}>Editar</button></td></tr>)}</tbody>
+    <table><thead><tr><th>Código</th><th>Desconto</th><th>Aplicação</th><th>Compra mínima</th><th>Utilizações</th><th>Estado</th><th></th></tr></thead>
+      <tbody>{visible.map((coupon) => { const product = coupon.validProductId ? products.find((item) => Number(item.id) === Number(coupon.validProductId)) : null; return <tr key={coupon.id}><td><strong>{coupon.code ?? '—'}</strong></td><td>{coupon.type === 'PERCENTAGE' ? `${Number(coupon.value ?? 0)}%${coupon.maxDiscount ? ` (máx. ${euro.format(coupon.maxDiscount)})` : ''}` : euro.format(Number(coupon.value ?? 0))}</td><td>{product?.name ?? (coupon.validProductId ? `Produto ${coupon.validProductId}` : 'Toda a loja')}</td><td>{euro.format(Number(coupon.minPurchase ?? 0))}</td><td>{Number(coupon.usageCount ?? 0)}{coupon.maxUsages ? ` / ${coupon.maxUsages}` : ''}</td><td><span className={coupon.isActive ? 'ok-pill' : 'warning-pill'}>{coupon.isActive ? 'Ativo' : 'Inativo'}</span></td><td><button className="table-action" onClick={() => onEdit(coupon)}>Editar</button></td></tr>; })}</tbody>
     </table>
   </TableCard>;
 }
 
 export function SupportSection({ tickets, requests, search, onTicket, onRequest }: { tickets: SupportTicket[]; requests: ProductRequest[]; search: string; onTicket: (ticket: SupportTicket) => void; onRequest: (request: ProductRequest) => void }) {
   const visibleTickets = tickets.filter((ticket) => `${ticket.subject ?? ''} ${ticket.customerName ?? ''} ${ticket.customerEmail ?? ''}`.toLocaleLowerCase('pt').includes(search.toLocaleLowerCase('pt')));
-  const visibleRequests = requests.filter((request) => `${request.productName ?? ''} ${request.userEmail ?? ''}`.toLocaleLowerCase('pt').includes(search.toLocaleLowerCase('pt')));
+  const visibleRequests = requests.filter((request) => `${request.productName ?? ''} ${request.userEmail ?? ''} ${request.category ?? ''} ${request.urgency ?? ''} ${request.budgetRange ?? ''}`.toLocaleLowerCase('pt').includes(search.toLocaleLowerCase('pt')));
   return <div className="stacked-tables">
     <TableCard title="Suporte" description="Conversas e pedidos de assistência." count={`${visibleTickets.length} tickets`}><table><thead><tr><th>Assunto</th><th>Cliente</th><th>Categoria</th><th>Prioridade</th><th>Estado</th><th>Atualizado</th><th></th></tr></thead><tbody>{visibleTickets.map((ticket) => <tr key={ticket.id}><td><strong>{ticket.subject ?? 'Sem assunto'}</strong>{ticket.unreadAdmin && <small className="unread-note">Nova mensagem</small>}</td><td>{ticket.customerName ?? ticket.customerEmail ?? '—'}</td><td>{ticket.category ?? '—'}</td><td>{ticket.priority ?? '—'}</td><td><span className={statusClass(ticket.status)}>{ticket.status ?? 'Aberto'}</span></td><td>{safeDate(ticket.updatedAt)}</td><td><button className="table-action" onClick={() => onTicket(ticket)}>Gerir</button></td></tr>)}</tbody></table></TableCard>
-    <TableCard title="Pedidos de produtos" description="Produtos procurados pelos clientes." count={`${visibleRequests.length} pedidos`}><table><thead><tr><th>Produto</th><th>Cliente</th><th>Categoria</th><th>Urgência</th><th>Estado</th><th>Data</th><th></th></tr></thead><tbody>{visibleRequests.map((request) => <tr key={request.id}><td><strong>{request.productName ?? '—'}</strong></td><td>{request.userEmail ?? '—'}</td><td>{request.category ?? '—'}</td><td>{request.urgency ?? '—'}</td><td><span className={statusClass(request.status)}>{request.status ?? 'Análise'}</span></td><td>{safeDate(request.createdAt)}</td><td><button className="table-action" onClick={() => onRequest(request)}>Gerir</button></td></tr>)}</tbody></table></TableCard>
+    <TableCard title="Pedidos de produtos" description="Produtos procurados pelos clientes." count={`${visibleRequests.length} pedidos`}><table><thead><tr><th>Produto</th><th>Cliente</th><th>Categoria</th><th>Orçamento</th><th>Urgência</th><th>Estado</th><th>Data</th><th></th></tr></thead><tbody>{visibleRequests.map((request) => <tr key={request.id}><td><strong>{request.productName ?? '—'}</strong>{request.photos?.length ? <small>{request.photos.length} fotografia(s)</small> : null}</td><td>{request.userEmail ?? '—'}</td><td>{request.category ?? '—'}</td><td>{request.budgetRange ?? '—'}</td><td>{request.urgency ?? '—'}</td><td><span className={statusClass(request.status)}>{request.status ?? 'Análise'}</span>{request.userDecision && <small>Cliente: {request.userDecision}</small>}</td><td>{safeDate(request.createdAt)}</td><td><button className="table-action" onClick={() => onRequest(request)}>Gerir</button></td></tr>)}</tbody></table></TableCard>
   </div>;
 }
 

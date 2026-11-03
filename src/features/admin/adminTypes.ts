@@ -164,6 +164,8 @@ export interface AdminCoupon {
   type?: 'PERCENTAGE' | 'FIXED';
   value?: number;
   minPurchase?: number;
+  maxDiscount?: number | null;
+  validProductId?: number | null;
   isActive?: boolean;
   usageCount?: number;
   maxUsages?: number;
@@ -239,12 +241,23 @@ export interface ImportItem {
 
 export interface ProductRequest {
   id: string;
+  userId?: string;
   productName?: string;
   userEmail?: string;
   category?: string;
+  state?: string;
   urgency?: string;
+  specifications?: string;
+  details?: string;
+  budgetRange?: string;
+  referenceLink?: string;
+  notificationsEnabled?: boolean;
+  photos?: string[];
   status?: string;
-  createdAt?: string;
+  adminComment?: string;
+  userDecision?: 'Aceite' | 'Recusada' | string;
+  createdAt?: string | { seconds?: number; toDate?: () => Date };
+  updatedAt?: string | { seconds?: number; toDate?: () => Date };
 }
 
 export interface StoreCategory {

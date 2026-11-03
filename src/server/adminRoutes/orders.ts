@@ -171,12 +171,13 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const action = text(request.body?.action, 40);
     const orderId = cleanOrderId(request.body?.orderId);
     if (!orderId) throw new ApiError(400, 'A encomenda não foi indicada.');
-    if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'fulfill_order'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
+    if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'create_manual_order', 'fulfill_order'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
+    const creatingOrder = action === 'recover_telegram_order' || action === 'create_manual_order';
 
     // Procurar formatos antigos do ID fora da transação evita que cada alteração
     // simples fique desnecessariamente dependente de dois documentos e uma query.
     // A transação continua a reler o documento escolhido antes de o alterar.
-    const existingOrderRef = action === 'recover_telegram_order'
+    const existingOrderRef = creatingOrder
       ? null
       : await resolveExistingOrderRef(database, orderId);
 
@@ -185,7 +186,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const legacyOrderRef = database.collection('orders').doc(`#${orderId}`);
       let orderRef = existingOrderRef ?? canonicalOrderRef;
       let orderSnapshot;
-      if (action === 'recover_telegram_order') {
+      if (creatingOrder) {
         const [canonicalOrderSnapshot, legacyOrderSnapshot] = await Promise.all([
           transaction.get(canonicalOrderRef),
           transaction.get(legacyOrderRef),
@@ -213,10 +214,10 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const withDocument = (order: DocumentData, changed = true) => ({ order, documentId: orderRef.id, changed });
       const now = new Date().toISOString();
 
-      if (action === 'recover_telegram_order') {
+      if (creatingOrder) {
         if (orderSnapshot.exists) {
           const existing = orderSnapshot.data() ?? {};
-          if (existing.recoveredFromTelegram === true) return withDocument({ ...existing, id: orderId }, false);
+          if ((action === 'recover_telegram_order' && existing.recoveredFromTelegram === true) || (action === 'create_manual_order' && existing.createdManually === true)) return withDocument({ ...existing, id: orderId }, false);
           throw new ApiError(409, 'Esta encomenda já existe na base de dados. Atualize a dashboard.');
         }
         if (!/^AS-\d{6,16}$/.test(orderId)) throw new ApiError(400, 'A referência do pedido é inválida.');
@@ -344,15 +345,25 @@ export default async function handler(request: VercelRequest, response: VercelRe
           }
         }
 
-        const total = Math.max(0, Number(request.body?.total ?? canonicalItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0)));
+        const itemSubtotal = canonicalItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
         const deliveryMethod = request.body?.deliveryMethod === 'Shipping' ? 'Shipping' : 'Pickup';
+        const customerShippingCost = deliveryMethod === 'Shipping' ? Math.max(0, Number(request.body?.shippingCost ?? 0)) : 0;
+        const total = Math.max(0, Number(request.body?.total ?? itemSubtotal + customerShippingCost));
+        const requestedStatus = text(request.body?.status, 30);
+        const initialStatus = action === 'create_manual_order' && ['Pendente', 'Processamento', 'Pago'].includes(requestedStatus) ? requestedStatus : 'Pendente';
+        const manualSource = action === 'create_manual_order';
+        const shippingAddress = deliveryMethod === 'Pickup'
+          ? { street: 'Levantamento na Loja (All-Shop)', doorNumber: '-', zip: '2400-135', city: 'Leiria' }
+          : { street: text(request.body?.street, 180), doorNumber: text(request.body?.doorNumber, 60), zip: text(request.body?.zip, 30), city: text(request.body?.city, 100) };
+        if (deliveryMethod === 'Shipping' && (!shippingAddress.street || !shippingAddress.zip || !shippingAddress.city)) throw new ApiError(400, 'Preencha a morada, código postal e localidade do envio.');
         const order: DocumentData = {
-          date: now, status: 'Pendente', total: Math.round(total * 100) / 100, subtotal: Math.round(total * 100) / 100, discountValue: 0, shippingCost: 0, stockDeducted, stockReconciliationRequired, recoveredFromTelegram: true, recoveredAt: now, recoveredByUserId: admin.uid,
-          shippingInfo: { name: customerName, phone, email, paymentMethod: text(request.body?.paymentMethod, 60) || 'MB Way', deliveryMethod, ...(deliveryMethod === 'Pickup' ? { street: 'Levantamento na Loja (All-Shop)', doorNumber: '-', zip: '2400-135', city: 'Leiria' } : {}) },
-          items: canonicalItems, statusHistory: [{ status: 'Pendente', date: now, notes: stockDeducted ? 'Pedido recuperado manualmente a partir da mensagem do Telegram' : 'Pedido recuperado do Telegram sem abatimento de stock; inventário requer acerto manual' }], createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+          date: now, status: initialStatus, total: Math.round(total * 100) / 100, subtotal: Math.round(itemSubtotal * 100) / 100, discountValue: 0, shippingCost: Math.round(customerShippingCost * 100) / 100, stockDeducted, stockReconciliationRequired,
+          ...(manualSource ? { createdManually: true, manualOrderCreatedAt: now, manualOrderCreatedBy: admin.uid } : { recoveredFromTelegram: true, recoveredAt: now, recoveredByUserId: admin.uid }),
+          shippingInfo: { name: customerName, phone, email, paymentMethod: text(request.body?.paymentMethod, 60) || 'MB Way', deliveryMethod, ...shippingAddress },
+          items: canonicalItems, statusHistory: [{ status: initialStatus, date: now, notes: stockDeducted ? (manualSource ? 'Encomenda criada manualmente na administração com stock abatido' : 'Pedido recuperado manualmente a partir da mensagem do Telegram') : (manualSource ? 'Encomenda manual criada sem abatimento; inventário requer acerto manual' : 'Pedido recuperado do Telegram sem abatimento de stock; inventário requer acerto manual') }], createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
         };
         transaction.set(orderRef, order);
-        transaction.set(database.collection('admin_audit_log').doc(), { action: 'recover_telegram_order', adminId: admin.uid, adminEmail: admin.email, orderId, changes: { recoveredFromTelegram: true, stockDeducted, stockReconciliationRequired }, createdAt: FieldValue.serverTimestamp() });
+        transaction.set(database.collection('admin_audit_log').doc(), { action, adminId: admin.uid, adminEmail: admin.email, orderId, changes: { source: manualSource ? 'manual' : 'telegram', stockDeducted, stockReconciliationRequired }, createdAt: FieldValue.serverTimestamp() });
         return withDocument({ ...order, id: orderId });
       }
 

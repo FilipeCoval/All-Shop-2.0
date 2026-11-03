@@ -11,6 +11,7 @@ import { AuditSection, BackupsSection, CategoriesSection, MarketingSection } fro
 import type { Product } from '../../types/domain';
 import { ImportEditor } from './ImportEditor';
 import { TelegramOrderRecovery } from './TelegramOrderRecovery';
+import { ManualOrderEditor } from './ManualOrderEditor';
 import { LOGO_URL, STORE_NAME } from '../../../constants';
 import { AdminCashbackSection } from './AdminCashbackSection';
 import { AdminNotificationCenter, type AdminCashbackNotificationTarget } from './AdminNotificationCenter';
@@ -70,6 +71,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
   const [importEditorOpen, setImportEditorOpen] = useState(false);
   const [editingImport, setEditingImport] = useState<AdminSnapshot['imports'][number] | null>(null);
   const [telegramRecoveryOpen, setTelegramRecoveryOpen] = useState(false);
+  const [manualOrderOpen, setManualOrderOpen] = useState(false);
   const [catalogReviewBusy, setCatalogReviewBusy] = useState(false);
   const refreshInFlight = useRef(false);
   const automaticRefreshPaused = useRef(false);
@@ -80,7 +82,8 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
     || lotEditorOpen
     || actionTarget
     || importEditorOpen
-    || telegramRecoveryOpen,
+    || telegramRecoveryOpen
+    || manualOrderOpen,
   );
 
   const refresh = useCallback(async (silent = false) => {
@@ -210,7 +213,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
           <div><p className="eyebrow">Centro de controlo</p><h1>{tabTitles[tab]}</h1><p className="admin-page-description">{tabDescriptions[tab]}</p></div>
           <div className="admin-actions">
             {!['overview', 'marketing', 'cashback', 'reports', 'backups'].includes(tab) && <label className="admin-search"><Search /><input placeholder={`Pesquisar em ${tabTitles[tab].toLocaleLowerCase('pt')}…`} value={search} onChange={(event) => setSearch(event.target.value)} /></label>}
-            {tab === 'orders' && <button className="telegram-recovery-button" type="button" onClick={() => setTelegramRecoveryOpen(true)}><Plus /> Recuperar pedido Telegram</button>}
+            {tab === 'orders' && <div className="order-create-actions"><button className="manual-order-button" type="button" onClick={() => setManualOrderOpen(true)}><Plus /> Nova encomenda</button><button className="telegram-recovery-button" type="button" onClick={() => setTelegramRecoveryOpen(true)}><History /> Recuperar Telegram</button></div>}
             <AdminPwaControls />
             <AdminPushControls />
             {data && <AdminNotificationCenter
@@ -272,7 +275,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
         {data && tab === 'products' && <ProductsSection products={data.products} groups={stockGroups} search={search} reviewingContent={catalogReviewBusy} onReviewContent={() => void reviewCatalog()} onCreateProduct={() => { setEditingProduct(null); setCatalogEditorOpen(true); }} onEditProduct={(product) => { setEditingProduct(product); setCatalogEditorOpen(true); }} onCreateLot={(productId) => { setEditingLot(null); setInitialLotProductId(productId); setLotEditorOpen(true); }} onOpenStock={(group) => { setSelectedStock(group); setSelectedOrder(null); }} />}
         {data && tab === 'orders' && <OrdersSection orders={data.orders} search={search} onOpen={(order) => { setSelectedOrder(order); setSelectedStock(null); }} />}
         {data && tab === 'clients' && <ClientsSection users={data.users} search={search} onOpen={(user) => setActionTarget({ kind: 'client', value: user })} />}
-        {data && tab === 'coupons' && <CouponsSection coupons={data.coupons} search={search} onCreate={() => setActionTarget({ kind: 'coupon', value: null })} onEdit={(coupon) => setActionTarget({ kind: 'coupon', value: coupon })} />}
+        {data && tab === 'coupons' && <CouponsSection coupons={data.coupons} products={data.products} search={search} onCreate={() => setActionTarget({ kind: 'coupon', value: null })} onEdit={(coupon) => setActionTarget({ kind: 'coupon', value: coupon })} />}
         {data && tab === 'support' && <SupportSection tickets={data.tickets} requests={data.requests} search={search} onTicket={(ticket) => setActionTarget({ kind: 'ticket', value: ticket })} onRequest={(request) => setActionTarget({ kind: 'request', value: request })} />}
         {data && tab === 'marketing' && <MarketingSection users={data.users} onSent={refresh} />}
         {data && tab === 'imports' && <ImportsSection shipments={data.imports} search={search} onCreate={() => { setEditingImport(null); setImportEditorOpen(true); }} onOpen={(shipment) => { setEditingImport(shipment); setImportEditorOpen(true); }} />}
@@ -287,7 +290,8 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
       {data && <LotEditor open={lotEditorOpen} lot={editingLot} initialProductId={initialLotProductId} products={data.products} onClose={() => setLotEditorOpen(false)} onSaved={refresh} />}
       {data && <ImportEditor open={importEditorOpen} shipment={editingImport} products={data.products} onClose={() => setImportEditorOpen(false)} onSaved={refresh} />}
       {data && <TelegramOrderRecovery open={telegramRecoveryOpen} products={data.products} onClose={() => setTelegramRecoveryOpen(false)} onSaved={refresh} />}
-      <AdminActionEditor target={actionTarget} orders={data?.orders ?? []} users={data?.users ?? []} onClose={() => setActionTarget(null)} onSaved={refresh} />
+      {data && <ManualOrderEditor open={manualOrderOpen} products={data.products} onClose={() => setManualOrderOpen(false)} onSaved={refresh} />}
+      <AdminActionEditor target={actionTarget} orders={data?.orders ?? []} users={data?.users ?? []} products={data?.products ?? []} onClose={() => setActionTarget(null)} onSaved={refresh} />
     </main>
   );
 }
