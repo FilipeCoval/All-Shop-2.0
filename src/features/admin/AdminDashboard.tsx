@@ -290,7 +290,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
       {data && <LotEditor open={lotEditorOpen} lot={editingLot} initialProductId={initialLotProductId} products={data.products} onClose={() => setLotEditorOpen(false)} onSaved={refresh} />}
       {data && <ImportEditor open={importEditorOpen} shipment={editingImport} products={data.products} onClose={() => setImportEditorOpen(false)} onSaved={refresh} />}
       {data && <TelegramOrderRecovery open={telegramRecoveryOpen} products={data.products} onClose={() => setTelegramRecoveryOpen(false)} onSaved={refresh} />}
-      {data && <ManualOrderEditor open={manualOrderOpen} products={data.products} onClose={() => setManualOrderOpen(false)} onSaved={refresh} />}
+      {data && <ManualOrderEditor open={manualOrderOpen} products={data.products} lots={data.lots} reservations={data.reservations} onClose={() => setManualOrderOpen(false)} onSaved={refresh} />}
       <AdminActionEditor target={actionTarget} orders={data?.orders ?? []} users={data?.users ?? []} products={data?.products ?? []} onClose={() => setActionTarget(null)} onSaved={refresh} />
     </main>
   );

@@ -348,16 +348,26 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const itemSubtotal = canonicalItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
         const deliveryMethod = request.body?.deliveryMethod === 'Shipping' ? 'Shipping' : 'Pickup';
         const customerShippingCost = deliveryMethod === 'Shipping' ? Math.max(0, Number(request.body?.shippingCost ?? 0)) : 0;
-        const total = Math.max(0, Number(request.body?.total ?? itemSubtotal + customerShippingCost));
         const requestedStatus = text(request.body?.status, 30);
         const initialStatus = action === 'create_manual_order' && ['Pendente', 'Processamento', 'Pago'].includes(requestedStatus) ? requestedStatus : 'Pendente';
         const manualSource = action === 'create_manual_order';
+        // Nas encomendas criadas aqui o total é sempre calculado no servidor.
+        // Isto mantém subtotal, desconto, portes e total coerentes no histórico,
+        // mesmo se a página estiver desatualizada ou alguém alterar o pedido no navegador.
+        const requestedDiscount = Number(request.body?.discountValue ?? 0);
+        if (manualSource && (!Number.isFinite(requestedDiscount) || requestedDiscount < 0 || requestedDiscount > itemSubtotal)) {
+          throw new ApiError(400, 'O desconto da encomenda não é válido.');
+        }
+        const discountValue = manualSource ? Math.min(itemSubtotal, Math.max(0, requestedDiscount)) : 0;
+        const total = manualSource
+          ? Math.max(0, itemSubtotal - discountValue + customerShippingCost)
+          : Math.max(0, Number(request.body?.total ?? itemSubtotal + customerShippingCost));
         const shippingAddress = deliveryMethod === 'Pickup'
           ? { street: 'Levantamento na Loja (All-Shop)', doorNumber: '-', zip: '2400-135', city: 'Leiria' }
           : { street: text(request.body?.street, 180), doorNumber: text(request.body?.doorNumber, 60), zip: text(request.body?.zip, 30), city: text(request.body?.city, 100) };
         if (deliveryMethod === 'Shipping' && (!shippingAddress.street || !shippingAddress.zip || !shippingAddress.city)) throw new ApiError(400, 'Preencha a morada, código postal e localidade do envio.');
         const order: DocumentData = {
-          date: now, status: initialStatus, total: Math.round(total * 100) / 100, subtotal: Math.round(itemSubtotal * 100) / 100, discountValue: 0, shippingCost: Math.round(customerShippingCost * 100) / 100, stockDeducted, stockReconciliationRequired,
+          date: now, status: initialStatus, total: Math.round(total * 100) / 100, subtotal: Math.round(itemSubtotal * 100) / 100, discountValue: Math.round(discountValue * 100) / 100, shippingCost: Math.round(customerShippingCost * 100) / 100, stockDeducted, stockReconciliationRequired,
           ...(manualSource ? { createdManually: true, manualOrderCreatedAt: now, manualOrderCreatedBy: admin.uid } : { recoveredFromTelegram: true, recoveredAt: now, recoveredByUserId: admin.uid }),
           shippingInfo: { name: customerName, phone, email, paymentMethod: text(request.body?.paymentMethod, 60) || 'MB Way', deliveryMethod, ...shippingAddress },
           items: canonicalItems, statusHistory: [{ status: initialStatus, date: now, notes: stockDeducted ? (manualSource ? 'Encomenda criada manualmente na administração com stock abatido' : 'Pedido recuperado manualmente a partir da mensagem do Telegram') : (manualSource ? 'Encomenda manual criada sem abatimento; inventário requer acerto manual' : 'Pedido recuperado do Telegram sem abatimento de stock; inventário requer acerto manual') }], createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
