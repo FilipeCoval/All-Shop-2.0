@@ -3,13 +3,14 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Product } from '../types';
 import { ShoppingCart, Eye, Heart, Scale, Plus, Loader2, Star } from 'lucide-react';
+import type { EffectiveProductAvailability } from '../src/domain/productAvailability';
 
 interface InteractiveProductCardProps {
   product: Product;
   availableStock: number;
   onAddToCart: (product: Product) => void;
   isProcessing: boolean;
-  isOutOfStock: boolean;
+  availability: EffectiveProductAvailability;
   badge: any;
   wishlist: number[];
   onToggleWishlist: (id: number) => void;
@@ -20,6 +21,7 @@ interface InteractiveProductCardProps {
   displayPrice: number;
   pricePrefix: string | null;
   showPromo: boolean | number;
+  publicDescription: string;
 }
 
 const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
@@ -27,7 +29,7 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
   availableStock,
   onAddToCart,
   isProcessing,
-  isOutOfStock,
+  availability,
   badge,
   wishlist,
   onToggleWishlist,
@@ -37,8 +39,12 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
   setQuickViewProduct,
   displayPrice,
   pricePrefix,
-  showPromo
+  showPromo,
+  publicDescription
 }) => {
+  const isOutOfStock = availability === 'OUT_OF_STOCK';
+  const isComingSoon = availability === 'COMING_SOON';
+  const isUnavailable = availability !== 'AVAILABLE';
   // Determine a color based on the product category or name
   const getBrandColor = () => {
     const name = product.name.toLowerCase();
@@ -93,7 +99,7 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
         <img
           src={product.image}
           alt={product.name}
-          className={`max-w-full max-h-full object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.2)] ${isOutOfStock ? 'grayscale opacity-50' : ''}`}
+          className={`max-w-full max-h-full object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.2)] ${isUnavailable ? 'grayscale opacity-50' : ''}`}
         />
         
         {isOutOfStock && (
@@ -115,12 +121,13 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
             </h3>
           </a>
           <p className="text-sm text-gray-500 dark:text-slate-400 lg:group-hover:text-white/70 line-clamp-2 mb-4 transition-colors">
-            {product.description}
+            {publicDescription}
           </p>
         </div>
 
         <div className="mt-auto flex items-end justify-between">
           <div className="flex flex-col">
+            {pricePrefix && <span className="mb-0.5 text-xs font-extrabold uppercase tracking-wide text-gray-500 transition-colors lg:group-hover:text-white/70">{pricePrefix}</span>}
             {showPromo && (
               <span className="text-sm text-gray-400 lg:group-hover:text-white/50 line-through font-bold transition-colors">
                 {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.originalPrice!)}
@@ -131,7 +138,7 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
               {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(displayPrice)}
             </span>
             <span className="text-xs text-gray-500 lg:group-hover:text-white/60 font-medium mt-1 transition-colors">
-              {availableStock === 0 ? 'Esgotado' : (availableStock <= 3 ? 'Últimas unidades' : '')}
+              {isComingSoon ? 'Em breve' : isOutOfStock ? 'Esgotado' : (availableStock <= 3 ? 'Últimas unidades' : '')}
             </span>
           </div>
 
@@ -145,8 +152,8 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
             </button>
             <button 
               onClick={() => onAddToCart(product)} 
-              disabled={isOutOfStock || isProcessing}
-              className={`p-3 rounded-2xl shadow-xl active:scale-95 transition-all ${isOutOfStock ? 'bg-gray-200 text-gray-400' : 'bg-white text-primary hover:bg-gray-100'}`}
+              disabled={isUnavailable || isProcessing}
+              className={`p-3 rounded-2xl shadow-xl active:scale-95 transition-all ${isUnavailable ? 'bg-gray-200 text-gray-400' : 'bg-white text-primary hover:bg-gray-100'}`}
             >
               {isProcessing ? <Loader2 size={24} className="animate-spin" /> : <Plus size={24} />}
             </button>
@@ -163,10 +170,10 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
           </button>
           <button 
             onClick={() => onAddToCart(product)} 
-            disabled={isOutOfStock || isProcessing}
-            className={`flex-1 flex justify-center items-center gap-2 py-3 rounded-xl font-bold transition-all ${isOutOfStock ? 'bg-gray-200 text-gray-400' : 'bg-primary text-white hover:bg-primary/90'}`}
+            disabled={isUnavailable || isProcessing}
+            className={`flex-1 flex justify-center items-center gap-2 py-3 rounded-xl font-bold transition-all ${isUnavailable ? 'bg-gray-200 text-gray-400' : 'bg-primary text-white hover:bg-primary/90'}`}
           >
-            {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <><ShoppingCart size={18} /> Adicionar</>}
+            {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <><ShoppingCart size={18} /> {isComingSoon ? 'Em breve' : isOutOfStock ? 'Esgotado' : 'Adicionar'}</>}
           </button>
         </div>
       </div>

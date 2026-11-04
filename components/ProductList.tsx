@@ -6,6 +6,8 @@ import { Plus, Eye, AlertTriangle, ArrowRight, Search, Heart, ArrowUpDown, Layou
 import QuickViewModal from './QuickViewModal';
 import InteractiveProductCard from './InteractiveProductCard';
 import { useStoreCategories } from '../hooks/useStoreCategories';
+import { effectiveProductAvailability, type EffectiveProductAvailability } from '../src/domain/productAvailability';
+import { productStartingPrice, publicProductSummary } from '../src/domain/productPresentation';
 
 interface ProductListProps {
   products: Product[];
@@ -121,7 +123,7 @@ const ProductList: React.FC<ProductListProps> = ({
       // 2. Ordenação
       result.sort((a, b) => {
           // Helper para obter o menor preço (se tiver variantes)
-          const getPrice = (p: Product) => p.variants && p.variants.length > 0 ? Math.min(...p.variants.map(v => v.price)) : p.price;
+          const getPrice = (p: Product) => productStartingPrice(p);
 
           if (sortOption === 'price-asc') {
               return getPrice(a) - getPrice(b);
@@ -134,8 +136,8 @@ const ProductList: React.FC<ProductListProps> = ({
               const stockB = getStock(b.id);
               
               // Define o que é "Visível/Prioritário": Tem Stock OU é infinito (999) OU está marcado como "Em Breve"
-              const isAvailableA = stockA > 0 || stockA === 999 || a.comingSoon;
-              const isAvailableB = stockB > 0 || stockB === 999 || b.comingSoon;
+              const isAvailableA = effectiveProductAvailability(a, stockA) !== 'OUT_OF_STOCK';
+              const isAvailableB = effectiveProductAvailability(b, stockB) !== 'OUT_OF_STOCK';
 
               // 1º Critério: Disponibilidade (Stock aparece antes de Esgotado)
               if (isAvailableA && !isAvailableB) return -1; // A sobe
@@ -177,16 +179,17 @@ const ProductList: React.FC<ProductListProps> = ({
       }
   };
 
-  const getProductBadge = (product: Product) => {
-      if (product.comingSoon) return { text: 'EM BREVE', color: 'bg-purple-600', icon: <CalendarClock size={10} /> };
-      if (product.promoEndsAt && new Date(product.promoEndsAt) > new Date()) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
+  const getProductBadge = (product: Product, availability: EffectiveProductAvailability) => {
+      if (availability === 'COMING_SOON') return { text: 'EM BREVE', color: 'bg-purple-600', icon: <CalendarClock size={10} /> };
+      const variantPromotion = product.variants?.some((variant) => Number(variant.originalPrice ?? 0) > Number(variant.price ?? 0));
+      if (variantPromotion || (!product.variants?.length && product.promoEndsAt && new Date(product.promoEndsAt) > new Date())) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
       
       if (product.badges && product.badges.length > 0) {
           const upperBadges = product.badges.map(b => b.toUpperCase());
           
           if (upperBadges.includes('NOVIDADE')) return { text: 'NOVIDADE', color: 'bg-indigo-600', icon: <Sparkles size={10} /> };
           if (upperBadges.includes('MAIS VENDIDO')) return { text: 'MAIS VENDIDO', color: 'bg-orange-500', icon: <Flame size={10} /> };
-          if (upperBadges.includes('PROMOÇÃO')) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
+          if (upperBadges.includes('PROMOÇÃO') && (!product.variants?.length || variantPromotion)) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
           if (upperBadges.includes('LIMITADO')) return { text: 'EDIÇÃO LIMITADA', color: 'bg-purple-600', icon: <Star size={10} /> };
           if (upperBadges.includes('OUTLET')) return { text: 'OUTLET', color: 'bg-gray-600', icon: <ArrowDown size={10} /> };
           if (upperBadges.includes('ESSENCIAL')) return { text: 'ESSENCIAL', color: 'bg-blue-600', icon: <Star size={10} /> };
@@ -274,27 +277,25 @@ const ProductList: React.FC<ProductListProps> = ({
             }`}>
             {paginatedProducts.map((product) => {
                 const stock = getStock(product.id);
-                const isOutOfStock = stock <= 0 && stock !== 999 && !product.comingSoon;
+                const availability = effectiveProductAvailability(product, stock);
+                const isOutOfStock = availability === 'OUT_OF_STOCK';
+                const isComingSoon = availability === 'COMING_SOON';
+                const isUnavailable = availability !== 'AVAILABLE';
                 
                 const promoEnded = product.promoEndsAt ? new Date(product.promoEndsAt) <= new Date() : false;
-                const badge = !promoEnded ? getProductBadge(product) : null; // Don't show promo badge if ended
+                const hasVariants = Boolean(product.variants?.length);
+                const badge = getProductBadge(product, availability);
 
-                // Calculate Display Price (Revert to original if promo ended)
-                let displayPrice = product.price;
-                let pricePrefix = null;
-                
-                const hasVariants = product.variants && product.variants.length > 0;
-                
-                if (promoEnded && product.originalPrice) {
-                    displayPrice = product.originalPrice;
-                } else if (hasVariants && product.variants) {
-                    const minPrice = Math.min(...product.variants.map(v => v.price));
-                    displayPrice = minPrice;
-                    pricePrefix = "A partir de";
-                }
+                // Num produto com versões, o cartão mostra apenas o menor preço.
+                // Promoções e preços anteriores pertencem à versão escolhida e só aparecem no detalhe.
+                const displayPrice = hasVariants
+                    ? productStartingPrice(product)
+                    : promoEnded && product.originalPrice ? product.originalPrice : product.price;
+                const pricePrefix = hasVariants ? 'Desde' : null;
+                const publicDescription = publicProductSummary(product);
 
                 const isProcessing = processingProductIds.includes(product.id);
-                const showPromo = !promoEnded && product.originalPrice && product.originalPrice > displayPrice;
+                const showPromo = !hasVariants && !promoEnded && product.originalPrice && product.originalPrice > displayPrice;
 
                 if (viewMode === 'list') {
                     return (
@@ -320,7 +321,7 @@ const ProductList: React.FC<ProductListProps> = ({
                                     <a href={`#product/${product.id}`} onClick={handleProductClick(product.id)} className="block hover:text-primary transition-colors">
                                         <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">{product.name}</h3>
                                     </a>
-                                    <p className="text-sm text-gray-500 dark:text-slate-400 line-clamp-2 mb-3">{product.description}</p>
+                                    <p className="text-sm text-gray-500 dark:text-slate-400 line-clamp-2 mb-3">{publicDescription}</p>
                                 </div>
                                 <div className="flex flex-row sm:flex-col justify-between items-end sm:items-end gap-4 min-w-[140px] sm:border-l border-gray-100 dark:border-slate-800 sm:pl-6">
                                     <div className="text-right">
@@ -328,16 +329,16 @@ const ProductList: React.FC<ProductListProps> = ({
                                         {showPromo && <div className="text-sm text-gray-400 line-through font-medium">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.originalPrice!)}</div>}
                                         <div className={`text-2xl font-bold ${showPromo ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(displayPrice)}</div>
                                         <div className="text-[10px] font-bold mt-1 text-gray-400 dark:text-slate-500 uppercase tracking-tight">
-                                           {stock === 0 ? 'Esgotado' : (stock <= 3 ? 'Últimas unidades' : '')}
+                                           {isComingSoon ? 'Em breve' : isOutOfStock ? 'Esgotado' : (stock <= 3 ? 'Últimas unidades' : '')}
                                         </div>
                                     </div>
                                     {hasVariants ? (
                                         <button onClick={handleProductClick(product.id)} className="px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 bg-secondary hover:bg-primary text-white"><Eye size={16} /> Ver Opções</button>
-                                    ) : product.comingSoon ? (
+                                    ) : isComingSoon ? (
                                         <button onClick={handleProductClick(product.id)} className="px-4 py-2 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 rounded-lg text-sm font-bold transition-colors">Ver Detalhes</button>
                                     ) : (
-                                        <button onClick={() => onAddToCart(product)} disabled={isOutOfStock || isProcessing} className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${isOutOfStock ? 'bg-gray-200 dark:bg-slate-700 text-gray-400 cursor-not-allowed' : 'bg-secondary hover:bg-primary text-white'}`}>
-                                            {isProcessing ? <Loader2 size={16} className="animate-spin"/> : isOutOfStock ? 'Esgotado' : <><Plus size={16} /> Comprar</>}
+                                        <button onClick={() => onAddToCart(product)} disabled={isUnavailable || isProcessing} className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${isUnavailable ? 'bg-gray-200 dark:bg-slate-700 text-gray-400 cursor-not-allowed' : 'bg-secondary hover:bg-primary text-white'}`}>
+                                            {isProcessing ? <Loader2 size={16} className="animate-spin"/> : isOutOfStock ? 'Esgotado' : isComingSoon ? 'Em breve' : <><Plus size={16} /> Comprar</>}
                                         </button>
                                     )}
                                 </div>
@@ -353,7 +354,7 @@ const ProductList: React.FC<ProductListProps> = ({
                         availableStock={stock}
                         onAddToCart={onAddToCart}
                         isProcessing={isProcessing}
-                        isOutOfStock={isOutOfStock}
+                        availability={availability}
                         badge={badge}
                         wishlist={wishlist}
                         onToggleWishlist={onToggleWishlist}
@@ -364,6 +365,7 @@ const ProductList: React.FC<ProductListProps> = ({
                         displayPrice={displayPrice}
                         pricePrefix={pricePrefix}
                         showPromo={!!showPromo}
+                        publicDescription={publicDescription}
                     />
                 );
             })}

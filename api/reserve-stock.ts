@@ -14,6 +14,7 @@ import {
   getBatchPhysical,
   type ReservationRecord,
 } from '../services/server/stock-utils.js';
+import { normalizeProductAvailabilityMode } from '../src/domain/productAvailability.js';
 
 const MAX_QUANTITY_PER_ITEM = 20;
 
@@ -49,6 +50,13 @@ export default async function handler(req: Request, res: Response) {
 
       if (inventorySnapshot.empty || !productSnapshot.exists) {
         throw new Error('Este produto deixou de estar disponível. Atualize a página.');
+      }
+      const availabilityMode = normalizeProductAvailabilityMode(productSnapshot.data() ?? {});
+      if (availabilityMode === 'COMING_SOON') {
+        throw new Error('Este produto está marcado como “Em breve” e ainda não pode ser comprado.');
+      }
+      if (availabilityMode === 'OUT_OF_STOCK') {
+        throw new Error('Este produto está temporariamente marcado como esgotado.');
       }
 
       const now = Date.now();

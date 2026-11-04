@@ -3,6 +3,22 @@ import React, { Component, ReactNode, ErrorInfo } from 'react';
 import ReactDOM from 'react-dom/client';
 import './src/index.css';
 import App from './App';
+import { registerAllShopPwa } from './src/pwa/pwaClient';
+
+registerAllShopPwa();
+
+// A aplicação de administração tem uma instalação PWA independente.
+// Se um sistema operativo reutilizar por engano a janela da loja, enviamo-lo
+// imediatamente para a entrada exclusiva do admin.
+const handleAdminPwaLaunch = () => {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('source') === 'admin-pwa') {
+    window.location.replace('/admin?source=admin-pwa');
+    return true;
+  }
+
+  return false;
+};
 
 // --- ROUTER GUARD PARA URLS LIMPOS ---
 // Se o utilizador vier de uma partilha (ex: /product/17), convertemos para o formato Hash (/#product/17)
@@ -16,7 +32,9 @@ const handleCleanUrlRedirect = () => {
     }
   }
 };
-handleCleanUrlRedirect();
+if (!handleAdminPwaLaunch()) {
+  handleCleanUrlRedirect();
+}
 
 // Error Boundary para capturar crashes e evitar ecrã branco
 interface ErrorBoundaryProps {

@@ -84,6 +84,7 @@ out
 # Nuxt.js build output
 .nuxt
 dist
+dist-admin
 
 # Gatsby files
 .cache/
@@ -122,3 +123,4 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+.vercel
