@@ -99,15 +99,47 @@ export function StockSection({ groups, search, onOpen, onCreate }: { groups: Sto
 }
 
 export function OrdersSection({ orders, search, onOpen }: { orders: AdminOrder[]; search: string; onOpen: (order: AdminOrder) => void }) {
-  const visible = orders.filter((order) => `${order.id} ${order.shippingInfo?.name ?? ''} ${order.shippingInfo?.email ?? ''}`.toLocaleLowerCase('pt').includes(search.toLocaleLowerCase('pt')));
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [stockFilter, setStockFilter] = useState<'all' | 'pending' | 'registered' | 'legacy'>('all');
+  const [requestFilter, setRequestFilter] = useState<'all' | 'cancellation' | 'return'>('all');
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
+  const now = new Date();
+  const searchQuery = search.toLocaleLowerCase('pt');
+  const statusOptions = Array.from(new Set(orders.map((order) => order.status).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt'));
+  const activeOrders = orders.filter((order) => ['Pendente', 'Processamento', 'Pago'].includes(order.status)).length;
+  const pendingStock = orders.filter((order) => order.stockDeducted === false).length;
+  const pendingRequests = orders.filter((order) => order.cancellationRequest?.status === 'Pendente' || order.returnRequest?.status === 'Pendente').length;
+  const visible = orders.filter((order) => {
+    const textMatches = `${order.id} ${order.shippingInfo?.name ?? ''} ${order.shippingInfo?.email ?? ''}`.toLocaleLowerCase('pt').includes(searchQuery);
+    const statusMatches = statusFilter === 'all' || (statusFilter === 'active' ? ['Pendente', 'Processamento', 'Pago'].includes(order.status) : order.status === statusFilter);
+    const stockMatches = stockFilter === 'all' || (stockFilter === 'pending' ? order.stockDeducted === false : stockFilter === 'registered' ? order.stockDeducted === true : typeof order.stockDeducted === 'undefined');
+    const requestMatches = requestFilter === 'all' || (requestFilter === 'cancellation' ? order.cancellationRequest?.status === 'Pendente' : order.returnRequest?.status === 'Pendente');
+    const date = order.date ? new Date(order.date) : null;
+    const dateMatches = dateFilter === 'all' || (date && Number.isFinite(date.getTime()) && (dateFilter === 'today'
+      ? date.toDateString() === now.toDateString()
+      : dateFilter === 'week'
+        ? date.getTime() >= now.getTime() - 7 * 24 * 60 * 60 * 1000
+        : date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()));
+    return textMatches && statusMatches && stockMatches && requestMatches && Boolean(dateMatches);
+  });
+  const filtersActive = statusFilter !== 'all' || stockFilter !== 'all' || requestFilter !== 'all' || dateFilter !== 'all';
+  const resetFilters = () => { setStatusFilter('all'); setStockFilter('all'); setRequestFilter('all'); setDateFilter('all'); };
   return <TableCard title="Encomendas" description="Estados e stock serão alterados apenas pelo servidor protegido." count={`${visible.length} encomendas`}>
+    <div className="orders-toolbar" aria-label="Filtros de encomendas">
+      <label>Estado<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Todos os estados</option><option value="active">Por tratar ({activeOrders})</option>{statusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+      <label>Stock<select value={stockFilter} onChange={(event) => setStockFilter(event.target.value as typeof stockFilter)}><option value="all">Todo o stock</option><option value="pending">Baixa pendente ({pendingStock})</option><option value="registered">Baixa registada</option><option value="legacy">Histórico antigo</option></select></label>
+      <label>Pedido<select value={requestFilter} onChange={(event) => setRequestFilter(event.target.value as typeof requestFilter)}><option value="all">Todos os pedidos</option><option value="cancellation">Cancelamentos pendentes ({orders.filter((order) => order.cancellationRequest?.status === 'Pendente').length})</option><option value="return">Devoluções pendentes ({orders.filter((order) => order.returnRequest?.status === 'Pendente').length})</option></select></label>
+      <label>Período<select value={dateFilter} onChange={(event) => setDateFilter(event.target.value as typeof dateFilter)}><option value="all">Todas as datas</option><option value="today">Hoje</option><option value="week">Últimos 7 dias</option><option value="month">Este mês</option></select></label>
+      {filtersActive && <button type="button" className="orders-filter-reset" onClick={resetFilters}>Limpar filtros</button>}
+      {pendingRequests > 0 && <span className="orders-filter-note">{pendingRequests} pedido{pendingRequests === 1 ? '' : 's'} a tratar</span>}
+    </div>
     <table><thead><tr><th>Encomenda</th><th>Cliente</th><th>Data</th><th>Total</th><th>Estado</th><th>Stock</th><th>Pedidos</th><th></th></tr></thead>
       <tbody>{visible.map((order) => <tr key={order.id}>
         <td><strong>#{order.id.replace(/^#/, '')}</strong></td><td><strong>{order.shippingInfo?.name ?? 'Cliente'}</strong><small>{order.shippingInfo?.email ?? '—'}</small></td>
         <td>{safeDate(order.date)}</td><td><strong>{euro.format(Number(order.total ?? 0))}</strong></td><td><span className={statusClass(order.status)}>{order.status}</span></td>
         <td>{order.stockDeducted === true ? 'Registado' : order.stockDeducted === false ? 'Pendente' : 'Antigo'}</td>
         <td>{order.cancellationRequest?.status === 'Pendente' ? <span className="warning-pill">Cancelamento</span> : order.returnRequest?.status === 'Pendente' ? <span className="warning-pill">Devolução</span> : '—'}</td><td><button className="table-action" onClick={() => onOpen(order)}>Abrir</button></td>
-      </tr>)}</tbody>
+      </tr>)}{visible.length === 0 && <tr><td className="orders-empty" colSpan={8}>Não existem encomendas com estes filtros.</td></tr>}</tbody>
     </table>
   </TableCard>;
 }
