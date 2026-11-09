@@ -217,7 +217,7 @@ export function ReportsSection({ orders, groups, users, categories }: { orders: 
         const lot = allLots.find((item) => item.units?.some((unit) => unitMatchesCode(unit, serial)));
         return sum + cashbackPerUnit(lot);
       }, 0);
-      else cashback = (order.items ?? []).reduce((sum, item) => sum + cashbackPerUnit(fallbackLot(item.productId, item.selectedVariant)) * Number(item.quantity ?? 1), 0);
+      else cashback = (order.items ?? []).filter((item) => item.isCustom !== true).reduce((sum, item) => sum + cashbackPerUnit(fallbackLot(item.productId, item.selectedVariant)) * Number(item.quantity ?? 1), 0);
       if (order.totalProductCost != null) return Math.max(0, Number(order.totalProductCost) - cashback);
       let cost = 0;
       if (serials.length) {
@@ -225,13 +225,16 @@ export function ReportsSection({ orders, groups, users, categories }: { orders: 
           const lot = allLots.find((item) => item.units?.some((unit) => unitMatchesCode(unit, serial)));
           return sum + Number(lot?.purchasePrice ?? 0);
         }, 0);
-        const totalQuantity = (order.items ?? []).reduce((sum, item) => sum + Number(item.quantity ?? 1), 0);
+        const totalQuantity = (order.items ?? []).filter((item) => item.isCustom !== true).reduce((sum, item) => sum + Number(item.quantity ?? 1), 0);
         if (totalQuantity > serials.length) {
-          const items = order.items ?? [];
+          const items = (order.items ?? []).filter((item) => item.isCustom !== true);
           const averageFallback = items.length ? items.reduce((sum, item) => sum + Number(fallbackLot(item.productId, item.selectedVariant)?.purchasePrice ?? 0), 0) / items.length : 0;
           cost += averageFallback * (totalQuantity - serials.length);
         }
-      } else cost = (order.items ?? []).reduce((sum, item) => sum + Number(fallbackLot(item.productId, item.selectedVariant)?.purchasePrice ?? 0) * Number(item.quantity ?? 1), 0);
+        cost += (order.items ?? []).filter((item) => item.isCustom === true).reduce((sum, item) => sum + Math.max(0, Number(item.unitCost ?? 0)) * Number(item.quantity ?? 1), 0);
+      } else cost = (order.items ?? []).reduce((sum, item) => item.isCustom === true
+        ? sum + Math.max(0, Number(item.unitCost ?? 0)) * Number(item.quantity ?? 1)
+        : sum + Number(fallbackLot(item.productId, item.selectedVariant)?.purchasePrice ?? 0) * Number(item.quantity ?? 1), 0);
       return Math.max(0, cost - cashback);
     };
     const getFinancials = (order: AdminOrder) => {

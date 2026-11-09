@@ -1,7 +1,102 @@
-import { BellRing, Database, Download, Image as ImageIcon, Megaphone, Pencil, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react';
+import { BellRing, CheckCircle2, ClipboardCopy, Database, Download, Image as ImageIcon, Mail, Megaphone, Pencil, Plus, Send, ShieldCheck, Trash2 } from 'lucide-react';
 import { FormEvent, useMemo, useState } from 'react';
-import type { AdminAuditEntry, AdminSnapshot, AdminUser, StoreCategory } from './adminTypes';
-import { adminMutationsAvailable, deleteCategory, sendMarketingPush } from './adminMutations';
+import type { AdminAuditEntry, AdminSnapshot, AdminUser, StockAlert, StockGroup, StoreCategory } from './adminTypes';
+import { adminMutationsAvailable, closeStockWaitlist, deleteCategory, notifyStockWaitlist, sendMarketingPush } from './adminMutations';
+
+type WaitlistGroup = {
+  key: string;
+  productId: number;
+  productName: string;
+  variantName: string;
+  alerts: StockAlert[];
+  available: number;
+};
+
+const normaliseWaitlistKey = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('pt');
+
+export function StockWaitlistSection({ alerts, groups, onChanged }: { alerts: StockAlert[]; groups: StockGroup[]; onChanged: () => Promise<void> }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ title: '', body: '', link: 'https://www.all-shop.net' });
+  const [busy, setBusy] = useState<'push' | 'close' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const pending = useMemo(() => alerts.filter((alert) => alert.status !== 'NOTIFIED'), [alerts]);
+  const waitlist = useMemo(() => {
+    const entries = new Map<string, WaitlistGroup>();
+    for (const alert of pending) {
+      const productId = Number(alert.productId);
+      if (!Number.isInteger(productId) || productId <= 0) continue;
+      const variantName = String(alert.variantName ?? '').trim();
+      const key = `${productId}:${normaliseWaitlistKey(variantName)}`;
+      const stock = groups.find((group) => Number(group.productId) === productId);
+      const current = entries.get(key);
+      const next: WaitlistGroup = current ?? {
+        key,
+        productId,
+        productName: String(alert.productName ?? stock?.name ?? `Produto ${productId}`),
+        variantName,
+        alerts: [],
+        available: Math.max(0, Number(stock?.available ?? 0)),
+      };
+      next.alerts.push(alert);
+      entries.set(key, next);
+    }
+    return [...entries.values()].sort((left, right) => right.alerts.length - left.alerts.length || left.productName.localeCompare(right.productName, 'pt'));
+  }, [groups, pending]);
+
+  const openComposer = (group: WaitlistGroup) => {
+    setExpanded(group.key); setError(null); setMessage(null);
+    setDraft({
+      title: `${group.productName} já está disponível`,
+      body: `O artigo que pediu já chegou à All-Shop.${group.variantName ? ` Versão: ${group.variantName}.` : ''} Stock limitado.`,
+      link: `https://www.all-shop.net/#/product/${group.productId}`,
+    });
+  };
+  const copyEmails = async (group: WaitlistGroup) => {
+    const emails = [...new Set(group.alerts.map((alert) => String(alert.email ?? '').trim().toLowerCase()).filter(Boolean))].join(', ');
+    try { await navigator.clipboard.writeText(emails); setMessage(`${group.alerts.length} email(s) copiados para BCC.`); }
+    catch { setError('Não foi possível copiar automaticamente. Selecione os emails manualmente.'); }
+  };
+  const sendPush = async (group: WaitlistGroup) => {
+    if (!draft.title.trim() || !draft.body.trim()) { setError('Preencha o título e a mensagem do aviso.'); return; }
+    if (!window.confirm(`Enviar o aviso push aos ${group.alerts.length} cliente(s) desta lista?`)) return;
+    setBusy('push'); setError(null); setMessage(null);
+    try {
+      const result = await notifyStockWaitlist({ alertIds: group.alerts.map((alert) => alert.id), ...draft });
+      setMessage(`${Number(result.sentCount ?? 0)} aviso(s) push enviado(s). Os restantes podem ser avisados por email com “Copiar BCC”.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível enviar os avisos.'); }
+    finally { setBusy(null); }
+  };
+  const close = async (group: WaitlistGroup) => {
+    if (!window.confirm(`Marcar os ${group.alerts.length} pedido(s) como avisados? Esta ação remove-os da lista ativa.`)) return;
+    setBusy('close'); setError(null); setMessage(null);
+    try {
+      const result = await closeStockWaitlist(group.alerts.map((alert) => alert.id));
+      setMessage(`${Number(result.closedCount ?? group.alerts.length)} pedido(s) marcados como avisados.`);
+      setExpanded(null); await onChanged();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível fechar os avisos.'); }
+    finally { setBusy(null); }
+  };
+
+  return <div className="waitlist-section">
+    <article className="waitlist-hero"><div><p className="eyebrow">Clientes interessados</p><h2><BellRing /> Lista de espera</h2><p>Avise quem pediu um artigo esgotado, sem perder nenhum contacto.</p></div><strong>{pending.length}<small>pedidos ativos</small></strong></article>
+    {message && <p className="form-success">{message}</p>}{error && <p className="form-error">{error}</p>}
+    <div className="waitlist-grid">{waitlist.map((group) => <article className="admin-panel waitlist-card" key={group.key}>
+      <header><div><p className="eyebrow">{group.variantName || 'Qualquer versão'}</p><h3>{group.productName}</h3><p>{group.alerts.length} cliente(s) à espera · {group.available} unidade(s) livres no total</p></div><span className={group.available > 0 ? 'waitlist-stock-ready' : 'waitlist-stock-empty'}>{group.available > 0 ? 'Stock disponível' : 'Sem stock'}</span></header>
+      <div className="waitlist-emails">{group.alerts.slice(0, 4).map((alert) => <span key={alert.id}>{alert.email}</span>)}{group.alerts.length > 4 && <span>+ {group.alerts.length - 4} contactos</span>}</div>
+      <div className="waitlist-actions"><button className="secondary-button" type="button" onClick={() => void copyEmails(group)}><ClipboardCopy /> Copiar BCC</button><button className="save-button" type="button" onClick={() => expanded === group.key ? setExpanded(null) : openComposer(group)}><Mail /> Preparar aviso</button></div>
+      {expanded === group.key && <div className="waitlist-composer">
+        <label className="editor-field"><span>Título do aviso</span><input maxLength={120} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
+        <label className="editor-field"><span>Mensagem</span><textarea rows={3} maxLength={500} value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.target.value })} /></label>
+        <label className="editor-field"><span>Destino ao abrir</span><input type="url" value={draft.link} onChange={(event) => setDraft({ ...draft, link: event.target.value })} /></label>
+        <p className="safe-action-note">O push só chega a quem tem a app e autorizou notificações. Para email, copie os contactos para BCC e marque como avisados quando terminar.</p>
+        <div><button className="secondary-button" type="button" disabled={!adminMutationsAvailable || busy !== null} onClick={() => void sendPush(group)}><Send /> {busy === 'push' ? 'A enviar…' : 'Enviar push'}</button><button className="save-button" type="button" disabled={!adminMutationsAvailable || busy !== null} onClick={() => void close(group)}><CheckCircle2 /> {busy === 'close' ? 'A fechar…' : 'Marcar como avisados'}</button></div>
+      </div>}
+    </article>)}</div>
+    {!waitlist.length && <article className="admin-panel waitlist-empty"><CheckCircle2 /><div><h3>Sem clientes em espera</h3><p>Os novos pedidos feitos em “Avise-me quando chegar” aparecerão aqui.</p></div></article>}
+    {!adminMutationsAvailable && <p className="safe-action-note utility-note">O envio e fecho dos avisos ficam disponíveis no ambiente Vercel.</p>}
+  </div>;
+}
 
 export function CategoriesSection({ categories, search, onCreate, onEdit, onChanged }: { categories: StoreCategory[]; search: string; onCreate: () => void; onEdit: (category: StoreCategory) => void; onChanged: () => Promise<void> }) {
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -86,7 +181,7 @@ export function AuditSection({ entries, search }: { entries: AdminAuditEntry[]; 
   return <div className="admin-table-card"><div className="table-heading"><div><h2>Histórico administrativo</h2><p>Registo das alterações feitas através do novo servidor protegido.</p></div><span>{visible.length} ações</span></div><div className="table-scroll"><table><thead><tr><th>Ação</th><th>Alvo</th><th>Administrador</th><th>Data</th></tr></thead><tbody>{visible.map((entry) => <tr key={entry.id}><td><strong>{auditLabel(entry.action)}</strong><small>{entry.action ?? '—'}</small></td><td>{entry.targetId ?? '—'}</td><td>{entry.adminEmail ?? '—'}</td><td>{formatAuditDate(entry.createdAt)}</td></tr>)}</tbody></table></div>{!visible.length && <p className="empty-inline spacious">Ainda não existem ações registadas na nova versão.</p>}</div>;
 }
 
-const auditNames: Record<string, string> = { save_product: 'Produto guardado', delete_review: 'Avaliação apagada', save_lot: 'Lote guardado', confirm_lot_received: 'Receção do lote confirmada', delete_lot: 'Lote apagado', sync_product: 'Stock sincronizado', confirm_cashback_received: 'Cashback recebido', set_status: 'Estado da encomenda alterado', update_tracking: 'Rastreio atualizado', review_request: 'Pedido revisto', recover_telegram_order: 'Pedido Telegram recuperado', create_manual_order: 'Encomenda manual criada', save_coupon: 'Cupão guardado', update_ticket: 'Ticket atualizado', update_request: 'Pedido de produto atualizado', update_import_status: 'Importação atualizada', save_import: 'Importação guardada', delete_import: 'Importação apagada', adjust_points: 'AllPoints ajustados', update_client_quota: 'Quota de ofertas atualizada', recalculate_client_loyalty: 'Fidelização recalculada', merge_client_accounts: 'Contas de cliente fundidas', save_category: 'Categoria guardada', delete_category: 'Categoria apagada', send_marketing_push: 'Notificação enviada' };
+const auditNames: Record<string, string> = { save_product: 'Produto guardado', delete_review: 'Avaliação apagada', save_lot: 'Lote guardado', confirm_lot_received: 'Receção do lote confirmada', delete_lot: 'Lote apagado', sync_product: 'Stock sincronizado', confirm_cashback_received: 'Cashback recebido', set_status: 'Estado da encomenda alterado', update_tracking: 'Rastreio atualizado', review_request: 'Pedido revisto', recover_telegram_order: 'Pedido Telegram recuperado', create_manual_order: 'Encomenda manual criada', fulfill_order: 'Entrega ou expedição confirmada', save_coupon: 'Cupão guardado', update_ticket: 'Ticket atualizado', update_request: 'Pedido de produto atualizado', update_import_status: 'Importação atualizada', save_import: 'Importação guardada', delete_import: 'Importação apagada', adjust_points: 'AllPoints ajustados', update_client_quota: 'Quota de ofertas atualizada', recalculate_client_loyalty: 'Fidelização recalculada', merge_client_accounts: 'Contas de cliente fundidas', save_category: 'Categoria guardada', delete_category: 'Categoria apagada', send_marketing_push: 'Notificação enviada', notify_stock_waitlist_push: 'Avisos da lista de espera enviados', close_stock_waitlist: 'Lista de espera fechada' };
 const auditLabel = (action?: string) => auditNames[action ?? ''] ?? 'Ação administrativa';
 function formatAuditDate(value: AdminAuditEntry['createdAt']) {
   if (!value) return '—';

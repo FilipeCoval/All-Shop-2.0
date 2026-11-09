@@ -59,10 +59,13 @@ async function notifyFulfillment(database: ReturnType<typeof getAdminDb>, order:
 }
 
 type RecoveryItemInput = {
-  productId: number;
+  productId?: number;
+  isCustom?: boolean;
+  name?: string;
   quantity: number;
   variantName: string;
   overridePrice: number;
+  unitCost?: number;
 };
 
 type RestockContext = {
@@ -225,20 +228,29 @@ export default async function handler(request: VercelRequest, response: VercelRe
         if (!rawItems.length || rawItems.length > 20) throw new ApiError(400, 'Indique pelo menos um artigo.');
         const customerName = text(request.body?.name, 140); const phone = text(request.body?.phone, 50); const email = text(request.body?.email, 180).toLowerCase();
         if (!customerName || !phone) throw new ApiError(400, 'Nome e telemóvel são obrigatórios.');
+        const manualSource = action === 'create_manual_order';
 
         // Firestore exige que todas as leituras da transação aconteçam antes da primeira escrita.
         // O fluxo anterior lia/escrevia produto a produto; pedidos com 2+ artigos falhavam no segundo artigo.
         const parsedItems: RecoveryItemInput[] = rawItems.map((raw) => {
           const item = raw && typeof raw === 'object' ? raw as Record<string, unknown> : {};
+          const isCustom = manualSource && item.isCustom === true;
           const productId = Number(item.productId);
           const quantity = Math.trunc(Number(item.quantity));
           const variantName = text(item.variantName, 120);
           const overridePrice = Number(item.price);
-          if (!Number.isInteger(productId) || productId <= 0 || !Number.isInteger(quantity) || quantity < 1 || quantity > 20) throw new ApiError(400, 'Existe um artigo inválido.');
+          if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20 || !Number.isFinite(overridePrice) || overridePrice < 0) throw new ApiError(400, 'Existe um artigo inválido.');
+          if (isCustom) {
+            const name = text(item.name, 180);
+            const unitCost = Number(item.unitCost ?? 0);
+            if (!name || !Number.isFinite(unitCost) || unitCost < 0) throw new ApiError(400, 'O artigo por pedido tem dados inválidos.');
+            return { isCustom: true, name, quantity, variantName, overridePrice, unitCost: Math.round(unitCost * 100) / 100 };
+          }
+          if (!Number.isInteger(productId) || productId <= 0) throw new ApiError(400, 'Existe um artigo inválido.');
           return { productId, quantity, variantName, overridePrice };
         });
 
-        const uniqueProductIds = [...new Set(parsedItems.map((item) => item.productId))];
+        const uniqueProductIds = [...new Set(parsedItems.flatMap((item) => item.isCustom || !item.productId ? [] : [item.productId]))];
         const productContexts = new Map<number, { productRef: DocumentReference; product: DocumentData; lots: LotData[]; reservations: ReservationData[] }>();
 
         await Promise.all(uniqueProductIds.map(async (productId) => {
@@ -261,13 +273,25 @@ export default async function handler(request: VercelRequest, response: VercelRe
 
         const allowWithoutStock = request.body?.allowWithoutStock === true;
         const canonicalItems: DocumentData[] = parsedItems.map((item) => {
-          const context = productContexts.get(item.productId);
-          if (!context) throw new ApiError(409, `O produto ${item.productId} não pôde ser carregado.`);
+          if (item.isCustom) return {
+            isCustom: true,
+            name: item.name,
+            quantity: item.quantity,
+            price: Math.round(item.overridePrice * 100) / 100,
+            unitCost: Math.round(Math.max(0, Number(item.unitCost ?? 0)) * 100) / 100,
+            selectedVariant: item.variantName,
+            unitIds: [],
+            serialNumbers: [],
+          };
+          const productId = item.productId;
+          if (!productId) throw new ApiError(409, 'O artigo não tem produto associado.');
+          const context = productContexts.get(productId);
+          if (!context) throw new ApiError(409, `O produto ${productId} não pôde ser carregado.`);
           const { product } = context;
           const variant = Array.isArray(product.variants) ? product.variants.find((entry: DocumentData) => normalizeVariant(entry?.name) === normalizeVariant(item.variantName)) : null;
           if (item.variantName && !variant) throw new ApiError(409, `A variante “${item.variantName}” já não existe em ${String(product.name ?? 'produto')}.`);
           const price = Number.isFinite(item.overridePrice) && item.overridePrice >= 0 ? item.overridePrice : Number(variant?.price ?? product.price ?? 0);
-          return { productId: item.productId, name: String(product.name ?? 'Produto'), quantity: item.quantity, price: Math.round(price * 100) / 100, selectedVariant: item.variantName, image: String(variant?.image ?? product.image ?? ''), unitIds: [], serialNumbers: [] };
+          return { productId, name: String(product.name ?? 'Produto'), quantity: item.quantity, price: Math.round(price * 100) / 100, selectedVariant: item.variantName, image: String(variant?.image ?? product.image ?? ''), unitIds: [], serialNumbers: [] };
         });
         const touchedProducts = new Set<number>();
         let stockDeducted = true;
@@ -285,12 +309,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
 
         for (let index = 0; index < parsedItems.length; index += 1) {
           const item = parsedItems[index];
-          const context = productContexts.get(item.productId)!;
+          if (item.isCustom) continue;
+          const productId = item.productId;
+          if (!productId) throw new ApiError(409, 'O artigo não tem produto associado.');
+          const context = productContexts.get(productId)!;
           const { product, reservations } = context;
-          const lots = workingLots.get(item.productId) ?? [];
-          const reserved = activeReservedQuantity(reservations, item.productId, item.variantName);
+          const lots = workingLots.get(productId) ?? [];
+          const reserved = activeReservedQuantity(reservations, productId, item.variantName);
           try {
-            const allocation = allocateSale(lots, item.productId, item.variantName, item.quantity, reserved);
+            const allocation = allocateSale(lots, productId, item.variantName, item.quantity, reserved);
             const unitIds: string[] = [];
             const serialNumbers: string[] = [];
             for (const { lot, sold } of allocation) {
@@ -311,7 +338,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
             }
             canonicalItems[index].unitIds = unitIds;
             canonicalItems[index].serialNumbers = serialNumbers;
-            touchedProducts.add(item.productId);
+            touchedProducts.add(productId);
           } catch {
             if (!allowWithoutStock) throw new ApiError(409, `Não existe stock livre suficiente para “${String(product.name ?? 'produto')}”.`);
             stockDeducted = false;
@@ -350,7 +377,6 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const customerShippingCost = deliveryMethod === 'Shipping' ? Math.max(0, Number(request.body?.shippingCost ?? 0)) : 0;
         const requestedStatus = text(request.body?.status, 30);
         const initialStatus = action === 'create_manual_order' && ['Pendente', 'Processamento', 'Pago'].includes(requestedStatus) ? requestedStatus : 'Pendente';
-        const manualSource = action === 'create_manual_order';
         // Nas encomendas criadas aqui o total é sempre calculado no servidor.
         // Isto mantém subtotal, desconto, portes e total coerentes no histórico,
         // mesmo se a página estiver desatualizada ou alguém alterar o pedido no navegador.
@@ -398,7 +424,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
           : Array.isArray(request.body?.serialNumbers)
             ? request.body.serialNumbers.map((value: unknown) => text(value, 160).toUpperCase()).filter(Boolean)
             : [];
-        if (!serialNumbers.length || serialNumbers.length > 100) throw new ApiError(400, 'Indique os S/N das unidades a expedir.');
+        if (serialNumbers.length > 100) throw new ApiError(400, 'Foram indicados demasiados S/N para esta expedição.');
         const orderPackages = Array.isArray(order.packages)
           ? order.packages.filter((pkg: unknown): pkg is FulfillmentPackage => Boolean(pkg && typeof pkg === 'object'))
           : [];
@@ -407,12 +433,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
           throw new ApiError(409, 'Esta encomenda contém artigos antigos sem referência de produto e não pode ser expedida automaticamente.');
         }
         const orderItems: DocumentData[] = orderPackages.length ? fulfillmentItemsFromPackages(orderPackages) : rootOrderItems;
-        if (!orderItems.length || orderItems.some((item) => !Number.isInteger(Number(item.productId)) || Number(item.productId) <= 0 || !Number.isInteger(Number(item.quantity)) || Number(item.quantity) <= 0)) {
+        if (!orderItems.length || orderItems.some((item) => !Number.isInteger(Number(item.quantity)) || Number(item.quantity) <= 0 || (item.isCustom !== true && (!Number.isInteger(Number(item.productId)) || Number(item.productId) <= 0)))) {
           throw new ApiError(409, 'Esta encomenda contém artigos antigos ou inválidos e não pode ser expedida automaticamente.');
         }
         if (selections.some((selection) => selection.itemIndex >= orderItems.length)) throw new ApiError(400, 'A seleção de S/N já não corresponde aos artigos desta encomenda. Atualize a dashboard.');
-        const productIds = [...new Set(orderItems.map((item) => Number(item.productId)).filter((id) => Number.isInteger(id) && id > 0))];
-        if (!productIds.length) throw new ApiError(409, 'A encomenda não contém produtos válidos.');
+        if (selections.some((selection) => orderItems[selection.itemIndex]?.isCustom === true)) throw new ApiError(400, 'Os artigos por pedido não têm S/N para validar.');
+        const inventoryItems = orderItems.filter((item) => item.isCustom !== true);
+        const inventoryQuantity = inventoryItems.reduce((sum, item) => sum + Math.max(0, Number(item.quantity ?? 0)), 0);
+        if (serialNumbers.length !== inventoryQuantity) throw new ApiError(400, inventoryQuantity ? 'Indique os S/N de todas as unidades do catálogo a expedir.' : 'Esta encomenda não precisa de S/N.');
+        const productIds = [...new Set(inventoryItems.map((item) => Number(item.productId)).filter((id) => Number.isInteger(id) && id > 0))];
 
         const contexts = await Promise.all(productIds.map(async (productId) => {
           const productRef = database.collection('products_public').doc(String(productId));
@@ -441,23 +470,27 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const isPickup = order.shippingInfo?.deliveryMethod === 'Pickup' || order.status === 'Levantamento em Loja';
         const userRef = isPickup && typeof order.userId === 'string' && order.userId && !order.pointsAwarded ? database.collection('users').doc(order.userId) : null;
         const userSnapshot = userRef ? await transaction.get(userRef) : null;
-        let plan;
-        try {
-          plan = planStoredOrderFulfillment({
-            orderId,
-            orderItems,
-            lots: contexts.flatMap((context) => context.lots),
-            serialNumbers,
-            ...(selections.length ? { serialItemIndexes: selections.map((selection) => selection.itemIndex) } : {}),
-            ...(typeof order.stockDeducted === 'boolean' ? { stockDeducted: order.stockDeducted } : {}),
-            ...(order.stockReconciliationRequired === true ? { stockReconciliationRequired: true } : {}),
-            customerName: text(order.shippingInfo?.name, 140),
-            customerEmail: text(order.shippingInfo?.email, 180).toLowerCase(),
-            fulfilledAt: now,
-          });
-        } catch (error) {
-          if (error instanceof FulfillmentError) throw new ApiError(409, error.message);
-          throw error;
+        let plan: { updatedLots: FulfillmentLot[]; itemUnitIds: string[][]; itemSerials: string[][]; serialNumbers: string[]; totalProductCost: number };
+        if (!inventoryItems.length) {
+          plan = { updatedLots: [], itemUnitIds: orderItems.map(() => []), itemSerials: orderItems.map(() => []), serialNumbers: [], totalProductCost: 0 };
+        } else {
+          try {
+            plan = planStoredOrderFulfillment({
+              orderId,
+              orderItems,
+              lots: contexts.flatMap((context) => context.lots),
+              serialNumbers,
+              ...(selections.length ? { serialItemIndexes: selections.map((selection) => selection.itemIndex) } : {}),
+              ...(typeof order.stockDeducted === 'boolean' ? { stockDeducted: order.stockDeducted } : {}),
+              ...(order.stockReconciliationRequired === true ? { stockReconciliationRequired: true } : {}),
+              customerName: text(order.shippingInfo?.name, 140),
+              customerEmail: text(order.shippingInfo?.email, 180).toLowerCase(),
+              fulfilledAt: now,
+            });
+          } catch (error) {
+            if (error instanceof FulfillmentError) throw new ApiError(409, error.message);
+            throw error;
+          }
         }
 
         const updatedById = new Map<string, FulfillmentLot>(plan.updatedLots.map((lot: FulfillmentLot) => [lot.id, lot]));
@@ -491,6 +524,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const trackingNumber = requestedTrackingNumber
           || updatedPackages.map((pkg) => text(pkg.trackingNumber, 150)).find(Boolean)
           || '';
+        const customProductCost = orderItems.filter((item) => item.isCustom === true).reduce((sum, item) => sum + Math.max(0, Number(item.unitCost ?? 0)) * Math.max(0, Number(item.quantity ?? 0)), 0);
         const update: DocumentData = {
           ...(orderPackages.length ? { packages: updatedPackages } : { items: updatedItems }),
           status,
@@ -498,12 +532,12 @@ export default async function handler(request: VercelRequest, response: VercelRe
           fulfilledAt: now,
           fulfilledBy: admin.email,
           serialNumbersUsed: plan.serialNumbers,
-          totalProductCost: plan.totalProductCost,
+          totalProductCost: Math.round((plan.totalProductCost + customProductCost) * 100) / 100,
           trackingNumber: trackingNumber || null,
           stockDeducted: true,
           stockReconciliationRequired: false,
           updatedAt: FieldValue.serverTimestamp(),
-          statusHistory: FieldValue.arrayUnion({ status, date: now, notes: isPickup ? 'Levantamento validado por S/N na All-Shop 3.0' : `Expedição validada por S/N na All-Shop 3.0${trackingNumber ? ` · Rastreio: ${trackingNumber}` : ''}` }),
+          statusHistory: FieldValue.arrayUnion({ status, date: now, notes: inventoryItems.length ? (isPickup ? 'Levantamento validado por S/N na All-Shop 3.0' : `Expedição validada por S/N na All-Shop 3.0${trackingNumber ? ` · Rastreio: ${trackingNumber}` : ''}`) : (isPickup ? 'Levantamento de artigo por pedido confirmado' : `Artigo por pedido expedido${trackingNumber ? ` · Rastreio: ${trackingNumber}` : ''}`) }),
         };
         if (userSnapshot?.exists && userRef) {
           const user = userSnapshot.data() ?? {};
@@ -513,7 +547,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
           update.pointsAwarded = true;
         }
         transaction.update(orderRef, update);
-        transaction.set(database.collection('stock_movements').doc(), { type: 'SALE', orderId, items: updatedItems.map((item: DocumentData) => ({ productId: item.productId, quantity: item.quantity, unitIds: item.unitIds, serialNumbers: item.serialNumbers })), totalValue: Number(order.total ?? 0), createdAt: now, createdBy: admin.email });
+        if (inventoryItems.length) transaction.set(database.collection('stock_movements').doc(), { type: 'SALE', orderId, items: updatedItems.filter((item: DocumentData) => item.isCustom !== true).map((item: DocumentData) => ({ productId: item.productId, quantity: item.quantity, unitIds: item.unitIds, serialNumbers: item.serialNumbers })), totalValue: Number(order.total ?? 0), createdAt: now, createdBy: admin.email });
         transaction.set(database.collection('admin_audit_log').doc(), { action, adminId: admin.uid, adminEmail: admin.email, orderId, changes: { status, trackingNumber: trackingNumber || null, serialNumbers: plan.serialNumbers }, createdAt: FieldValue.serverTimestamp() });
         return withDocument({ ...order, ...update, id: orderId });
       }

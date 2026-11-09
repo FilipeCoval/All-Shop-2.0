@@ -68,6 +68,10 @@ export interface AdminOrderItem {
   name?: string;
   quantity?: number;
   price?: number;
+  /** Artigo vendido por pedido, sem ficha pública nem movimento de inventário. */
+  isCustom?: boolean;
+  /** Custo unitário indicado numa encomenda manual fora do catálogo. */
+  unitCost?: number;
   selectedVariant?: string;
   image?: string;
   unitIds?: string[];
@@ -123,6 +127,19 @@ export interface AdminSnapshot {
   requests: ProductRequest[];
   categories: StoreCategory[];
   audit: AdminAuditEntry[];
+  stockAlerts: StockAlert[];
+}
+
+export interface StockAlert {
+  id: string;
+  email?: string;
+  productId?: number;
+  productName?: string;
+  variantName?: string;
+  date?: string | { seconds?: number; toDate?: () => Date };
+  status?: 'PENDING' | 'NOTIFIED' | string;
+  notifiedAt?: string | { seconds?: number; toDate?: () => Date };
+  notifiedBy?: string;
 }
 
 export interface AdminUser {

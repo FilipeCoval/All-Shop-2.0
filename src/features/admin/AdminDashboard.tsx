@@ -1,4 +1,4 @@
-import { AlertTriangle, Boxes, CircleDollarSign, ClipboardList, Database, FileBarChart, Headphones, History, Import, Layers, LayoutDashboard, LogOut, Megaphone, Moon, PackageCheck, PackagePlus, Plus, RefreshCw, Search, Sun, TicketPercent, UsersRound } from 'lucide-react';
+import { AlertTriangle, BellRing, Boxes, CircleDollarSign, ClipboardList, Database, FileBarChart, Headphones, History, Import, Layers, LayoutDashboard, LogOut, Megaphone, Moon, PackageCheck, PackagePlus, Plus, RefreshCw, Search, Sun, TicketPercent, UsersRound } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { loadAdminSnapshot, subscribeSupportTickets } from './adminApi';
 import type { AdminOrder, AdminSnapshot, InventoryLot, StockGroup } from './adminTypes';
@@ -7,7 +7,7 @@ import { ClientsSection, CouponsSection, ImportsSection, OrdersSection, Products
 import { AdminDetails } from './AdminDetails';
 import { CatalogEditor, LotEditor } from './AdminEditors';
 import { AdminActionEditor, type AdminActionTarget } from './AdminActionEditor';
-import { AuditSection, BackupsSection, CategoriesSection, MarketingSection } from './AdminUtilitySections';
+import { AuditSection, BackupsSection, CategoriesSection, MarketingSection, StockWaitlistSection } from './AdminUtilitySections';
 import type { Product } from '../../types/domain';
 import { ImportEditor } from './ImportEditor';
 import { TelegramOrderRecovery } from './TelegramOrderRecovery';
@@ -26,8 +26,8 @@ interface AdminDashboardProps {
   onToggleDarkMode: () => void;
 }
 
-type AdminTab = 'overview' | 'products' | 'orders' | 'clients' | 'coupons' | 'support' | 'marketing' | 'imports' | 'cashback' | 'categories' | 'reports' | 'audit' | 'backups';
-const adminTabs = new Set<AdminTab>(['overview', 'products', 'orders', 'clients', 'coupons', 'support', 'marketing', 'imports', 'cashback', 'categories', 'reports', 'audit', 'backups']);
+type AdminTab = 'overview' | 'products' | 'orders' | 'clients' | 'coupons' | 'support' | 'marketing' | 'waitlist' | 'imports' | 'cashback' | 'categories' | 'reports' | 'audit' | 'backups';
+const adminTabs = new Set<AdminTab>(['overview', 'products', 'orders', 'clients', 'coupons', 'support', 'marketing', 'waitlist', 'imports', 'cashback', 'categories', 'reports', 'audit', 'backups']);
 const tabFromLocation = (): AdminTab => {
   const requested = typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('tab');
   return requested && adminTabs.has(requested as AdminTab) ? requested as AdminTab : 'overview';
@@ -40,7 +40,7 @@ const orderDateValue = (date?: AdminOrder['date']) => {
 };
 const tabTitles: Record<AdminTab, string> = {
   overview: 'Hoje na loja', products: 'Produtos e stock', orders: 'Encomendas', clients: 'Clientes',
-  coupons: 'Cupões', support: 'Suporte', marketing: 'Marketing', imports: 'Importações', cashback: 'Cashback', categories: 'Categorias', reports: 'Relatórios', audit: 'Histórico', backups: 'Backups',
+  coupons: 'Cupões', support: 'Suporte', marketing: 'Marketing', waitlist: 'Lista de espera', imports: 'Importações', cashback: 'Cashback', categories: 'Categorias', reports: 'Relatórios', audit: 'Histórico', backups: 'Backups',
 };
 const tabDescriptions: Record<AdminTab, string> = {
   overview: 'O que precisa da sua atenção, sem ruído.',
@@ -50,6 +50,7 @@ const tabDescriptions: Record<AdminTab, string> = {
   coupons: 'Crie e acompanhe descontos da loja.',
   support: 'Pedidos de apoio e produtos procurados.',
   marketing: 'Comunicação com clientes que aceitaram notificações.',
+  waitlist: 'Pedidos de aviso para artigos temporariamente esgotados.',
   imports: 'Compras a fornecedores, envios e custos.',
   cashback: 'Valores por receber e confirmação segura da sua receção.',
   categories: 'Organização visual do catálogo.',
@@ -205,6 +206,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
           <p className="admin-nav-label">Crescimento</p>
           <button className={tab === 'coupons' ? 'active' : ''} onClick={() => setTab('coupons')}><TicketPercent /> Cupões</button>
           <button className={tab === 'marketing' ? 'active' : ''} onClick={() => setTab('marketing')}><Megaphone /> Marketing</button>
+          <button className={tab === 'waitlist' ? 'active' : ''} onClick={() => setTab('waitlist')}><BellRing /> Lista de espera{data && data.stockAlerts.filter((alert) => alert.status !== 'NOTIFIED').length > 0 && <span className="admin-nav-count">{data.stockAlerts.filter((alert) => alert.status !== 'NOTIFIED').length}</span>}</button>
           <p className="admin-nav-label">Gestão</p>
           <button className={tab === 'imports' ? 'active' : ''} onClick={() => setTab('imports')}><Import /> Importações</button>
           <button className={tab === 'cashback' ? 'active' : ''} onClick={() => setTab('cashback')}><CircleDollarSign /> Cashback{pendingCashbackCount > 0 && <span className="admin-nav-count">{pendingCashbackCount}</span>}</button>
@@ -288,6 +290,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
         {data && tab === 'coupons' && <CouponsSection coupons={data.coupons} products={data.products} search={search} onCreate={() => setActionTarget({ kind: 'coupon', value: null })} onEdit={(coupon) => setActionTarget({ kind: 'coupon', value: coupon })} />}
         {data && tab === 'support' && <SupportSection tickets={data.tickets} requests={data.requests} search={search} onTicket={(ticket) => setActionTarget({ kind: 'ticket', value: ticket })} onRequest={(request) => setActionTarget({ kind: 'request', value: request })} />}
         {data && tab === 'marketing' && <MarketingSection users={data.users} onSent={refresh} />}
+        {data && tab === 'waitlist' && <StockWaitlistSection alerts={data.stockAlerts} groups={stockGroups} onChanged={refresh} />}
         {data && tab === 'imports' && <ImportsSection shipments={data.imports} search={search} onCreate={() => { setEditingImport(null); setImportEditorOpen(true); }} onOpen={(shipment) => { setEditingImport(shipment); setImportEditorOpen(true); }} />}
         {data && tab === 'cashback' && <AdminCashbackSection lots={data.lots} onChanged={refresh} />}
         {data && tab === 'categories' && <CategoriesSection categories={data.categories} search={search} onCreate={() => setActionTarget({ kind: 'category', value: null })} onEdit={(category) => setActionTarget({ kind: 'category', value: category })} onChanged={refresh} />}

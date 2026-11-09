@@ -1,7 +1,7 @@
 import { collection, getDocs, onSnapshot } from 'firebase/firestore';
 import { firestore } from '../../lib/firebase';
 import type { Product, ProductReview } from '../../types/domain';
-import type { AdminAuditEntry, AdminCoupon, AdminOrder, AdminSnapshot, AdminUser, ImportShipment, InventoryLot, ProductRequest, StockReservation, StoreCategory, SupportTicket } from './adminTypes';
+import type { AdminAuditEntry, AdminCoupon, AdminOrder, AdminSnapshot, AdminUser, ImportShipment, InventoryLot, ProductRequest, StockAlert, StockReservation, StoreCategory, SupportTicket } from './adminTypes';
 import { supportTicketActivity } from './supportConversation';
 
 const getCollection = async <T>(name: string): Promise<T[]> => {
@@ -11,7 +11,7 @@ const getCollection = async <T>(name: string): Promise<T[]> => {
 };
 
 export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
-  const [products, reviews, lots, reservations, orders, users, coupons, tickets, imports, requests, categories, audit] = await Promise.all([
+  const [products, reviews, lots, reservations, orders, users, coupons, tickets, imports, requests, categories, audit, stockAlerts] = await Promise.all([
     getCollection<Product>('products_public'),
     getCollection<ProductReview>('reviews'),
     getCollection<InventoryLot>('products_inventory'),
@@ -24,6 +24,7 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
     getCollection<ProductRequest>('product_requests'),
     getCollection<StoreCategory>('store_categories'),
     getCollection<AdminAuditEntry>('admin_audit_log').catch(() => []),
+    getCollection<StockAlert>('stock_alerts').catch(() => []),
   ]);
 
   return {
@@ -70,6 +71,10 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
     requests,
     categories: categories.sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0)),
     audit: audit.sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt)).slice(0, 100),
+    stockAlerts: stockAlerts
+      .map((alert) => ({ ...alert, productId: alert.productId == null ? undefined : Number(alert.productId) }))
+      .filter((alert) => Boolean(alert.email) && Number.isFinite(alert.productId))
+      .sort((a, b) => timestampMillis(b.date as AdminAuditEntry['createdAt']) - timestampMillis(a.date as AdminAuditEntry['createdAt'])),
   };
 }
 

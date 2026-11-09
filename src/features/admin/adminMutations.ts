@@ -73,3 +73,5 @@ export const saveCategory = (category: Record<string, unknown>) => callAdminApi(
 export const deleteCategory = (categoryId: string) => callAdminApi(adminApiPath('misc'), { action: 'delete_category', categoryId });
 export const registerAdminPushToken = (token: string) => callAdminApi(adminApiPath('misc'), { action: 'register_admin_push', token }, { retryTransient: true });
 export const sendMarketingPush = (message: Record<string, unknown>) => callAdminApi(adminApiPath('marketing'), message);
+export const notifyStockWaitlist = (message: Record<string, unknown>) => callAdminApi(adminApiPath('marketing'), { action: 'notify_stock_waitlist', ...message });
+export const closeStockWaitlist = (alertIds: string[]) => callAdminApi(adminApiPath('marketing'), { action: 'close_stock_waitlist', alertIds });

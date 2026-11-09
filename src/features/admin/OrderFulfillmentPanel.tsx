@@ -41,7 +41,8 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const totalNeeded = useMemo(() => items.reduce((sum, item) => sum + Math.max(0, Number(item.quantity ?? 0)), 0), [items]);
+  const inventoryItems = useMemo(() => items.filter((item) => item.isCustom !== true), [items]);
+  const totalNeeded = useMemo(() => inventoryItems.reduce((sum, item) => sum + Math.max(0, Number(item.quantity ?? 0)), 0), [inventoryItems]);
   const isPickup = order.shippingInfo?.deliveryMethod === 'Pickup' || order.status === 'Levantamento em Loja';
 
   useEffect(() => {
@@ -61,7 +62,7 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
     if (scanned.some((entry) => entry.lotId === lot.id && entry.unitId === unitId)) { setError(`O S/N ${displayedSerial || serial} já foi lido.`); return; }
     const belongsToOrder = unit.status === 'SOLD' && orderKey(unit.soldToOrder) === orderKey(order.id);
     if (unit.status !== 'AVAILABLE' && !belongsToOrder) { setError(`O S/N ${serial} não está disponível para esta encomenda.`); return; }
-    const canAssignToItem = (item: AdminOrderItem, index: number) => matchingLotsForItem(lots, item).some((candidate) => candidate.id === lot.id)
+    const canAssignToItem = (item: AdminOrderItem, index: number) => item.isCustom !== true && matchingLotsForItem(lots, item).some((candidate) => candidate.id === lot.id)
       && scanned.filter((entry) => entry.itemIndex === index).length < Number(item.quantity ?? 0);
     let itemIndex = -1;
     if (preferredItemIndex !== undefined) {
@@ -108,17 +109,18 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
     } finally { setBusy(false); }
   };
 
-  const registeredSerials = Math.max((order.serialNumbersUsed ?? []).length, items.reduce((sum, item) => sum + (item.serialNumbers?.length ?? 0), 0));
-  if (completed) return <section className="fulfillment-complete"><CheckCircle2 /><div><strong>{isPickup ? 'Entrega validada' : 'Expedição concluída'}</strong><p>{registeredSerials} S/N registado(s){order.trackingNumber ? ` · Rastreio ${order.trackingNumber}` : ''}</p></div></section>;
+  const registeredSerials = Math.max((order.serialNumbersUsed ?? []).length, inventoryItems.reduce((sum, item) => sum + (item.serialNumbers?.length ?? 0), 0));
+  if (completed) return <section className="fulfillment-complete"><CheckCircle2 /><div><strong>{isPickup ? 'Entrega validada' : 'Expedição concluída'}</strong><p>{totalNeeded ? `${registeredSerials} S/N registado(s)` : 'Artigo por pedido registado sem movimento de stock'}{order.trackingNumber ? ` · Rastreio ${order.trackingNumber}` : ''}</p></div></section>;
 
   return <div className="fulfillment-panel">
-    <header><span><PackageCheck /></span><div><strong>{isPickup ? 'Validar levantamento' : 'Preparar e expedir'}</strong><p>Leia o S/N de cada unidade. O sistema confirma produto, variante e lote.</p></div><b>{scanned.length}/{totalNeeded}</b></header>
+    <header><span><PackageCheck /></span><div><strong>{isPickup ? 'Validar levantamento' : 'Preparar e expedir'}</strong><p>{totalNeeded ? 'Leia o S/N de cada unidade. O sistema confirma produto, variante e lote.' : 'Este pedido contém apenas artigos por pedido e não necessita de S/N.'}</p></div><b>{scanned.length}/{totalNeeded}</b></header>
     <div className="fulfillment-progress"><i style={{ width: `${totalNeeded ? Math.min(100, scanned.length / totalNeeded * 100) : 0}%` }} /></div>
-    <form className="serial-entry" onSubmit={(event) => { event.preventDefault(); addSerial(current); }}>
+    {totalNeeded > 0 && <form className="serial-entry" onSubmit={(event) => { event.preventDefault(); addSerial(current); }}>
       <label><Barcode /> S/N da unidade<input ref={inputRef} value={current} onChange={(event) => setCurrent(event.target.value)} disabled={busy || !adminMutationsAvailable} placeholder="Leia ou escreva o S/N e carregue Enter" autoComplete="off" /></label>
       <button type="submit" disabled={busy || !adminMutationsAvailable || !current.trim()}>Adicionar</button>
-    </form>
+    </form>}
     <div className="fulfillment-items">{items.map((item, index) => {
+      if (item.isCustom === true) return <article className="fulfillment-custom-item" key={`custom:${item.name}:${index}`}><div className="fulfillment-item-heading"><strong>{item.quantity ?? 0}× {item.name ?? 'Artigo por pedido'}</strong><small>{item.selectedVariant || 'Artigo fora do catálogo'} · não requer S/N nem altera o stock da loja</small></div></article>;
       const entries = scanned.filter((entry) => entry.itemIndex === index);
       const selectableUnits = selectableUnitsForItem(item, index);
       const itemComplete = entries.length >= Number(item.quantity ?? 0);
