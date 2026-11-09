@@ -1659,7 +1659,10 @@ html.dark .review-images a { border-color: #405169; background: #101e31; }
 }
 .recovery-items { display: grid; gap: 12px; }
 .recovery-item { display: grid; grid-template-columns: minmax(220px, 1.6fr) minmax(150px, 1fr) 90px 110px auto; gap: 10px; align-items: end; padding: 12px; border: 1px solid #e5e7eb; border-radius: 12px; background: #fff; }
-.recovery-item.manual-custom-item { grid-template-columns: minmax(175px,1fr) minmax(190px,1.25fr) minmax(150px,.9fr) 78px 100px 110px auto; border-color: #bfdbfe; background: #f8fbff; }
+/* O painel lateral tem largura fixa: pedidos especiais usam duas linhas legíveis, não sete colunas comprimidas. */
+.recovery-item.manual-custom-item { grid-template-columns: repeat(3,minmax(0,1fr)); align-items: end; border-color: #bfdbfe; background: #f8fbff; }
+.manual-custom-item > .editor-field { min-width: 0; }
+.manual-custom-item > .danger-button { grid-column: 3; justify-self: end; width: auto; }
 .recovery-item .danger-button { min-height: 42px; padding: 0 12px; }
 .manual-order-stock { grid-column: 1 / -1; margin: -2px 0 0; color: #047857; font-size: 10px; font-weight: 800; }
 .manual-order-stock.shortage { color: #be123c; }
@@ -1673,7 +1676,7 @@ html.dark .recovery-item.manual-custom-item,.dark .recovery-item.manual-custom-i
 .recovery-fallback span { display: grid; gap: 3px; }
 .recovery-fallback strong { font-size: 12px; }
 .recovery-fallback small { color: #9a3412; font-size: 10px; line-height: 1.45; }
-.editor-drawer.manual-order-editor,.editor-drawer.request-editor { width: min(820px,100%); }
+.editor-drawer.manual-order-editor,.editor-drawer.request-editor { width: min(820px,100%); overflow-x: hidden; }
 .manual-order-total { padding: 16px; display: grid; grid-template-columns: auto repeat(4,minmax(0,1fr)); align-items: center; gap: 18px; border: 1px solid #dbe4ef; border-radius: 14px; background: #f8fafc; }
 .manual-order-total > svg { width: 40px; height: 40px; padding: 10px; border-radius: 12px; background: #ffedd5; color: var(--orange); }
 .manual-order-total span,.manual-order-total label { min-width: 0; display: grid; gap: 3px; }
@@ -1710,7 +1713,7 @@ html.dark .recovery-item.manual-custom-item,.dark .recovery-item.manual-custom-i
 .request-photos { padding: 14px; display: grid; gap: 12px; border: 1px solid var(--line); border-radius: 11px; background: white; }
 .request-photos > div { display: grid; grid-template-columns: repeat(4,1fr); gap: 9px; }.request-photos a { overflow: hidden; border-radius: 9px; background: #f1f5f9; aspect-ratio: 1; }.request-photos img { width: 100%; height: 100%; object-fit: cover; transition: transform .2s ease; }.request-photos a:hover img { transform: scale(1.04); }
 @media (max-width: 900px) { .manual-order-total { grid-template-columns: auto 1fr; }.manual-order-total span,.manual-order-total label { grid-column: 2; }.request-details-grid { grid-template-columns: 1fr 1fr; }.request-photos > div { grid-template-columns: repeat(3,1fr); } }
-@media (max-width: 620px) { .order-create-actions { width: 100%; }.order-create-actions > button { flex: 1 1 0; min-width: 0; padding-inline: 9px; }.manual-order-total,.coupon-calculator-result,.request-details-grid { grid-template-columns: 1fr; }.manual-order-total > svg,.manual-order-total span,.manual-order-total label { grid-column: 1; }.manual-order-total .manual-order-final { padding-left: 0; border-left: 0; border-top: 1px solid #dbe4ef; padding-top: 12px; }.request-overview { align-items: flex-start; flex-direction: column; }.request-photos > div { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 620px) { .order-create-actions { width: 100%; }.order-create-actions > button { flex: 1 1 0; min-width: 0; padding-inline: 9px; }.recovery-item.manual-custom-item { grid-template-columns: 1fr; }.manual-custom-item > .danger-button { grid-column: 1; justify-self: stretch; }.manual-order-total,.coupon-calculator-result,.request-details-grid { grid-template-columns: 1fr; }.manual-order-total > svg,.manual-order-total span,.manual-order-total label { grid-column: 1; }.manual-order-total .manual-order-final { padding-left: 0; border-left: 0; border-top: 1px solid #dbe4ef; padding-top: 12px; }.request-overview { align-items: flex-start; flex-direction: column; }.request-photos > div { grid-template-columns: repeat(2,1fr); } }
 
 /* Logótipo oficial reconstruído em vetor, sem o fundo preto do JPG antigo. */
 .allshop-logo { width: 86px; height: 68px; display: grid; grid-template-rows: 39px 23px; justify-items: center; align-content: center; gap: 0; border-radius: 0; background: transparent; }
