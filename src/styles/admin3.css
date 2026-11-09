@@ -873,6 +873,15 @@ img { display: block; max-width: 100%; }
 .detail-body { padding: 20px; }
 .detail-status { padding: 18px; display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--line); border-radius: 14px; background: white; }
 .detail-status > strong { font-size: 22px; }
+.order-financials { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 9px; }
+.order-financials > span { min-width: 0; padding: 12px; display: grid; gap: 5px; border: 1px solid #dbe4ef; border-radius: 11px; background: #f8fafc; }
+.order-financials small { color: #64748b; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; }
+.order-financials strong { color: #047857; font-size: 17px; white-space: nowrap; }
+.order-financials > span:nth-child(2) strong { color: #1e3a5f; }
+.order-financials .negative strong { color: #be123c; }
+.order-financial-note,.order-financial-pending { margin: 10px 0 0; color: #64748b; font-size: 11px; line-height: 1.45; }
+.order-financial-pending { padding: 10px 12px; border: 1px dashed #cbd5e1; border-radius: 10px; background: #f8fafc; }
+@media (max-width: 620px) { .order-financials { grid-template-columns: 1fr 1fr; } }
 .request-alert { margin-top: 14px; padding: 15px; display: flex; align-items: flex-start; gap: 11px; border: 1px solid #fed7aa; border-radius: 13px; background: #fff7ed; color: #9a3412; }
 .request-alert > svg { width: 19px; flex: 0 0 auto; }
 .request-alert strong { font-size: 13px; }
@@ -1958,6 +1967,11 @@ html.dark .chart-legend { color: #b8c4d5; }
 
 html.dark .admin-detail-drawer,
 html.dark .editor-drawer { background: #081321; color: #e8eef8; }
+html.dark .order-financials > span,
+html.dark .order-financial-pending { border-color: #334155; background: #0b1728; }
+html.dark .order-financials > span:nth-child(2) strong { color: #bfdbfe; }
+html.dark .order-financial-note,
+html.dark .order-financial-pending { color: #a7b4c7; }
 html.dark .admin-detail-drawer > header,
 html.dark .editor-drawer > header { border-color: var(--line); background: rgba(10,21,38,.96); }
 html.dark .detail-section,

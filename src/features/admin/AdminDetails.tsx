@@ -5,6 +5,7 @@ import type { Product } from '../../types/domain';
 import { adminMutationsAvailable, classifyLegacyInventoryLots, confirmInventoryLotReceived, reviewOrderRequest, setOrderStatus, syncProductStock, updateOrderTracking } from './adminMutations';
 import { OrderFulfillmentPanel } from './OrderFulfillmentPanel';
 import { inventoryLotIncomingQuantity, inventoryLotPhysicalQuantity, inventoryLotSoldQuantity, isInventoryLotInTransit } from '../../domain/inventoryReceipt';
+import { unitMatchesCode } from './unitIdentity';
 
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const date = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'medium', timeStyle: 'short' });
@@ -35,6 +36,19 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
     ? order.packages.flatMap((pkg, packageIndex) => (pkg.items ?? []).map((item) => ({ item, packageIndex })))
     : (order.items ?? []).map((item) => ({ item, packageIndex: -1 }));
   const displayedQuantity = displayedItems.reduce((sum, entry) => sum + Math.max(0, Number(entry.item.quantity ?? 0)), 0);
+  const productRevenue = Math.max(0, Number(order.subtotal ?? (order.items ?? []).reduce((sum, item) => sum + Number(item.price ?? 0) * Number(item.quantity ?? 1), 0)) - Number(order.discountValue ?? 0));
+  const recordedCost = order.totalProductCost == null ? null : Math.max(0, Number(order.totalProductCost));
+  const unitCodes = [...new Set([...(order.serialNumbersUsed ?? []), ...(order.items ?? []).flatMap((item) => item.unitIds ?? [])])];
+  const cashbackReceived = unitCodes.reduce((sum, code) => {
+    const lot = lots.find((item) => item.units?.some((unit) => unitMatchesCode(unit, code)));
+    return sum + (lot?.cashbackStatus === 'RECEIVED' ? Math.max(0, Number(lot.cashbackValue ?? 0)) / Math.max(1, Number(lot.quantityBought ?? 1)) : 0);
+  }, 0);
+  const netProductCost = recordedCost == null ? null : Math.max(0, recordedCost - cashbackReceived);
+  const pickup = customer?.deliveryMethod === 'Pickup' || order.status === 'Levantamento em Loja';
+  const customerShipping = pickup ? 0 : Math.max(0, Number(order.shippingCost ?? Math.max(0, Number(order.total ?? 0) - productRevenue)));
+  const storeShipping = pickup ? 0 : Math.max(0, Number(order.storeShippingCost ?? 5.4));
+  const shippingExpense = Math.max(0, storeShipping - customerShipping);
+  const profit = netProductCost == null ? null : productRevenue - netProductCost - shippingExpense;
   const pendingRequest = order.cancellationRequest?.status === 'Pendente' ? { label: 'Cancelamento', ...order.cancellationRequest } : order.returnRequest?.status === 'Pendente' ? { label: 'Devolução', ...order.returnRequest } : null;
   const [status, setStatus] = useState<OrderStatus>(order.status);
   const [tracking, setTracking] = useState(order.trackingNumber ?? '');
@@ -60,6 +74,9 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
 
   return <div className="detail-body">
     <div className="detail-status"><span className={`status status-${order.status.toLocaleLowerCase('pt').replace(/\s/g, '-')}`}>{order.status}</span><strong>{euro.format(Number(order.total ?? 0))}</strong></div>
+    <DetailSection title={order.status === 'Entregue' ? 'Resultado desta encomenda' : 'Resultado previsto'}>
+      {profit == null ? <p className="order-financial-pending">O custo final é confirmado quando a encomenda é expedida/levantada. Depois de entregue, este resumo passa a refletir o valor usado nos relatórios.</p> : <><div className="order-financials"><span><small>Receita dos artigos</small><strong>{euro.format(productRevenue)}</strong></span><span><small>Custo dos produtos</small><strong>{euro.format(netProductCost ?? 0)}</strong></span>{!pickup && <span><small>Portes suportados</small><strong>{euro.format(shippingExpense)}</strong></span>}<span className={profit < 0 ? 'negative' : ''}><small>Lucro líquido</small><strong>{euro.format(profit)}</strong></span></div>{cashbackReceived > 0 && <p className="order-financial-note">Inclui {euro.format(cashbackReceived)} de cashback já recebido.</p>}{order.status !== 'Entregue' && <p className="order-financial-note">Este é o valor previsto; entra no relatório financeiro quando a encomenda for marcada como entregue.</p>}</>}
+    </DetailSection>
     {pendingRequest && <section className="request-alert"><AlertTriangle /><div><strong>Pedido de {pendingRequest.label} pendente</strong><p>{pendingRequest.reason ?? 'Sem motivo indicado.'}</p></div></section>}
     {!terminal && <DetailSection title="Baixa e expedição"><OrderFulfillmentPanel order={order} lots={lots} onChanged={onChanged} /></DetailSection>}
     <DetailSection title="Gestão da encomenda">
