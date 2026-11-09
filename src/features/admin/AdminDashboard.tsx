@@ -34,6 +34,10 @@ const tabFromLocation = (): AdminTab => {
 };
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const statusClass = (status: string) => `status status-${status.toLocaleLowerCase('pt').replace(/\s/g, '-')}`;
+const orderDateValue = (date?: AdminOrder['date']) => {
+  const value = new Date(date ?? 0).getTime();
+  return Number.isFinite(value) ? value : 0;
+};
 const tabTitles: Record<AdminTab, string> = {
   overview: 'Hoje na loja', products: 'Produtos e stock', orders: 'Encomendas', clients: 'Clientes',
   coupons: 'Cupões', support: 'Suporte', marketing: 'Marketing', imports: 'Importações', cashback: 'Cashback', categories: 'Categorias', reports: 'Relatórios', audit: 'Histórico', backups: 'Backups',
@@ -173,6 +177,12 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
   const warningCount = stockGroups.filter((group) => group.warnings.length > 0).length;
   const unreadSupportCount = (data?.tickets ?? []).filter((ticket) => ticket.unreadAdmin).length;
   const pendingCashbackCount = (data?.lots ?? []).filter((lot) => Number(lot.cashbackValue ?? 0) > 0 && (!lot.cashbackStatus || String(lot.cashbackStatus).toUpperCase() === 'PENDING')).length;
+  const recentOrders = useMemo(
+    () => [...(data?.orders ?? [])]
+      .sort((left, right) => orderDateValue(right.date) - orderDateValue(left.date))
+      .slice(0, 6),
+    [data?.orders],
+  );
 
   const openCashbackNotification = (_target: AdminCashbackNotificationTarget) => {
     setTab('cashback');
@@ -263,7 +273,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
               <article className="admin-panel">
                 <header><div><h2>Encomendas recentes</h2><p>Última atividade da loja</p></div><button onClick={() => setTab('orders')}>Ver todas</button></header>
                 <div className="recent-orders">
-                  {data.orders.slice(0, 6).map((order) => (
+                  {recentOrders.map((order) => (
                     <div key={order.id}><span><strong>#{order.id.replace(/^#/, '')}</strong><small>{order.shippingInfo?.name ?? 'Cliente'}</small></span><b className={statusClass(order.status)}>{order.status}</b></div>
                   ))}
                 </div>
