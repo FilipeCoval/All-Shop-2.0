@@ -242,8 +242,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
           if (!Number.isInteger(quantity) || quantity < 1 || quantity > 20 || !Number.isFinite(overridePrice) || overridePrice < 0) throw new ApiError(400, 'Existe um artigo inválido.');
           if (isCustom) {
             const name = text(item.name, 180);
-            const unitCost = Number(item.unitCost ?? 0);
-            if (!name || !Number.isFinite(unitCost) || unitCost < 0) throw new ApiError(400, 'O artigo por pedido tem dados inválidos.');
+            const unitCost = Number(item.unitCost);
+            if (!name || !Number.isFinite(unitCost) || unitCost < 0) throw new ApiError(400, 'Indique o custo de compra do artigo por pedido.');
             return { isCustom: true, name, quantity, variantName, overridePrice, unitCost: Math.round(unitCost * 100) / 100 };
           }
           if (!Number.isInteger(productId) || productId <= 0) throw new ApiError(400, 'Existe um artigo inválido.');
@@ -375,6 +375,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const itemSubtotal = canonicalItems.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
         const deliveryMethod = request.body?.deliveryMethod === 'Shipping' ? 'Shipping' : 'Pickup';
         const customerShippingCost = deliveryMethod === 'Shipping' ? Math.max(0, Number(request.body?.shippingCost ?? 0)) : 0;
+        const storeShippingCost = deliveryMethod === 'Shipping' ? Math.max(0, Number(request.body?.storeShippingCost ?? 5.4)) : 0;
         const requestedStatus = text(request.body?.status, 30);
         const initialStatus = action === 'create_manual_order' && ['Pendente', 'Processamento', 'Pago'].includes(requestedStatus) ? requestedStatus : 'Pendente';
         // Nas encomendas criadas aqui o total é sempre calculado no servidor.
@@ -393,7 +394,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
           : { street: text(request.body?.street, 180), doorNumber: text(request.body?.doorNumber, 60), zip: text(request.body?.zip, 30), city: text(request.body?.city, 100) };
         if (deliveryMethod === 'Shipping' && (!shippingAddress.street || !shippingAddress.zip || !shippingAddress.city)) throw new ApiError(400, 'Preencha a morada, código postal e localidade do envio.');
         const order: DocumentData = {
-          date: now, status: initialStatus, total: Math.round(total * 100) / 100, subtotal: Math.round(itemSubtotal * 100) / 100, discountValue: Math.round(discountValue * 100) / 100, shippingCost: Math.round(customerShippingCost * 100) / 100, stockDeducted, stockReconciliationRequired,
+          date: now, status: initialStatus, total: Math.round(total * 100) / 100, subtotal: Math.round(itemSubtotal * 100) / 100, discountValue: Math.round(discountValue * 100) / 100, shippingCost: Math.round(customerShippingCost * 100) / 100, storeShippingCost: Math.round(storeShippingCost * 100) / 100, stockDeducted, stockReconciliationRequired,
           ...(manualSource ? { createdManually: true, manualOrderCreatedAt: now, manualOrderCreatedBy: admin.uid } : { recoveredFromTelegram: true, recoveredAt: now, recoveredByUserId: admin.uid }),
           shippingInfo: { name: customerName, phone, email, paymentMethod: text(request.body?.paymentMethod, 60) || 'MB Way', deliveryMethod, ...shippingAddress },
           items: canonicalItems, statusHistory: [{ status: initialStatus, date: now, notes: stockDeducted ? (manualSource ? 'Encomenda criada manualmente na administração com stock abatido' : 'Pedido recuperado manualmente a partir da mensagem do Telegram') : (manualSource ? 'Encomenda manual criada sem abatimento; inventário requer acerto manual' : 'Pedido recuperado do Telegram sem abatimento de stock; inventário requer acerto manual') }], createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
