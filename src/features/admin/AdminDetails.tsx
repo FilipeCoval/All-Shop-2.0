@@ -2,7 +2,7 @@ import { AlertTriangle, CalendarDays, CheckCircle2, Mail, MapPin, Package, Phone
 import { useEffect, useState } from 'react';
 import type { AdminOrder, InventoryLot, OrderStatus, StockGroup } from './adminTypes';
 import type { Product } from '../../types/domain';
-import { adminMutationsAvailable, classifyLegacyInventoryLots, confirmInventoryLotReceived, reviewOrderRequest, setOrderStatus, syncProductStock, updateOrderTracking } from './adminMutations';
+import { adminMutationsAvailable, classifyLegacyInventoryLots, confirmInventoryLotReceived, linkOrderToCustomerAccount, reviewOrderRequest, setOrderStatus, syncProductStock, updateOrderTracking } from './adminMutations';
 import { OrderFulfillmentPanel } from './OrderFulfillmentPanel';
 import { inventoryLotIncomingQuantity, inventoryLotPhysicalQuantity, inventoryLotSoldQuantity, isInventoryLotInTransit } from '../../domain/inventoryReceipt';
 import { unitMatchesCode } from './unitIdentity';
@@ -53,11 +53,13 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
   const [status, setStatus] = useState<OrderStatus>(order.status);
   const [tracking, setTracking] = useState(order.trackingNumber ?? '');
   const [packageTrackings, setPackageTrackings] = useState<string[]>(() => (order.packages ?? []).map((pkg) => pkg.trackingNumber ?? ''));
+  const [accountEmail, setAccountEmail] = useState(customer?.email ?? '');
+  const [accountLinked, setAccountLinked] = useState(Boolean(order.userId));
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { setStatus(order.status); setTracking(order.trackingNumber ?? ''); setPackageTrackings((order.packages ?? []).map((pkg) => pkg.trackingNumber ?? '')); setMessage(null); setError(null); }, [order]);
+  useEffect(() => { setStatus(order.status); setTracking(order.trackingNumber ?? ''); setPackageTrackings((order.packages ?? []).map((pkg) => pkg.trackingNumber ?? '')); setAccountEmail(customer?.email ?? ''); setAccountLinked(Boolean(order.userId)); setMessage(null); setError(null); }, [order, customer?.email]);
 
   const run = async (operation: () => Promise<unknown>, success: string) => {
     setBusy(true); setError(null); setMessage(null);
@@ -70,6 +72,15 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
     if (terminal) return;
     if (status === 'Cancelado' && !window.confirm('Cancelar esta encomenda e repor o stock?')) return;
     void run(() => setOrderStatus(order.id, status), `Estado alterado para ${status}.`);
+  };
+
+  const linkCustomerAccount = () => {
+    const email = accountEmail.trim().toLowerCase();
+    if (!email) { setError('Indique o e-mail que o cliente usa para iniciar sessão.'); return; }
+    void run(async () => {
+      await linkOrderToCustomerAccount(order.id, email);
+      setAccountLinked(true);
+    }, 'Encomenda associada à conta. Na próxima abertura da Área de Cliente, a compra será apresentada.');
   };
 
   return <div className="detail-body">
@@ -85,7 +96,7 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
       {pendingRequest && <div className="review-actions"><button disabled={!adminMutationsAvailable || busy} onClick={() => void run(() => reviewOrderRequest(order.id, pendingRequest.label === 'Cancelamento' ? 'cancellation' : 'return', 'approve'), 'Pedido aprovado.')}>Aprovar pedido</button><button disabled={!adminMutationsAvailable || busy} onClick={() => void run(() => reviewOrderRequest(order.id, pendingRequest.label === 'Cancelamento' ? 'cancellation' : 'return', 'reject'), 'Pedido recusado.')}>Recusar</button></div>}
       {message && <p className="form-success">{message}</p>}{error && <p className="form-error">{error}</p>}
     </DetailSection>
-    <DetailSection title="Cliente"><div className="contact-list"><span><Mail />{customer?.email ?? '—'}</span><span><Phone />{customer?.phone ?? '—'}</span><span><MapPin />{customer?.deliveryMethod === 'Pickup' ? 'Levantamento em loja' : [customer?.street, customer?.doorNumber, customer?.zip, customer?.city].filter(Boolean).join(', ') || '—'}</span></div></DetailSection>
+    <DetailSection title="Cliente"><div className="contact-list"><span><Mail />{customer?.email ?? '—'}</span><span><Phone />{customer?.phone ?? '—'}</span><span><MapPin />{customer?.deliveryMethod === 'Pickup' ? 'Levantamento em loja' : [customer?.street, customer?.doorNumber, customer?.zip, customer?.city].filter(Boolean).join(', ') || '—'}</span></div>{accountLinked ? <p className="account-link-status"><CheckCircle2 /> Compra associada a uma conta de cliente.</p> : <div className="account-link-panel"><div><strong>Associar à conta do cliente</strong><p>Use o e-mail com que o cliente inicia sessão. Isto apenas liga a encomenda; não mexe no stock, valor ou estado.</p></div><div className="admin-form-row"><label>E-mail da conta<input type="email" value={accountEmail} onChange={(event) => setAccountEmail(event.target.value)} disabled={!adminMutationsAvailable || busy} placeholder="cliente@email.pt" /></label><button className="save-button secondary" type="button" onClick={linkCustomerAccount} disabled={!adminMutationsAvailable || busy || !accountEmail.trim()}><Save /> Associar conta</button></div></div>}</DetailSection>
     <DetailSection title={`Artigos (${displayedQuantity})`}><div className="detail-items">{displayedItems.map(({ item, packageIndex }, index) => <article key={`${packageIndex}:${item.productId}:${item.selectedVariant}:${index}`}><div>{item.image ? <img src={item.image} alt="" /> : <span className="item-placeholder"><Package /></span>}</div><span><strong>{item.quantity ?? 0}× {item.name ?? `Produto ${item.productId ?? ''}`}</strong><small>{packageIndex >= 0 ? `Volume ${packageIndex + 1} · ` : ''}{item.selectedVariant || 'Sem variante'}</small></span><b>{euro.format(Number(item.price ?? 0) * Number(item.quantity ?? 0))}</b></article>)}</div></DetailSection>
     <DetailSection title="Entrega e pagamento"><div className="contact-list"><span><Truck />{customer?.deliveryMethod === 'Pickup' ? 'Levantamento' : 'Envio'} · {customer?.paymentMethod ?? '—'}</span>{order.packages?.length ? order.packages.map((pkg, index) => <span key={pkg.id || index}><Package />Volume {index + 1}: {pkg.trackingNumber || 'rastreio por indicar'}</span>) : order.trackingNumber && <span><Package />Rastreio: {order.trackingNumber}</span>}</div></DetailSection>
     <DetailSection title="Histórico"><div className="timeline">{(order.statusHistory ?? []).slice().reverse().map((entry, index) => <div key={`${entry.date}:${index}`}><i /><span><strong>{entry.status ?? 'Atualização'}</strong><small>{formatDate(entry.date)}{entry.notes ? ` · ${entry.notes}` : ''}</small></span></div>)}</div></DetailSection>

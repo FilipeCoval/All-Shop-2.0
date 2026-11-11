@@ -902,6 +902,11 @@ img { display: block; max-width: 100%; }
 .contact-list { display: grid; gap: 10px; }
 .contact-list > span { display: flex; align-items: center; gap: 9px; color: #475569; font-size: 12px; line-height: 1.5; }
 .contact-list svg { width: 16px; flex: 0 0 auto; color: #94a3b8; }
+.account-link-panel { display: grid; gap: 12px; margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--line); }
+.account-link-panel strong { color: var(--navy); font-size: 12px; }
+.account-link-panel p { margin: 4px 0 0; color: #64748b; font-size: 11px; line-height: 1.45; }
+.account-link-status { display: flex; align-items: center; gap: 7px; margin: 15px 0 0; color: #047857; font-size: 11px; font-weight: 750; }
+.account-link-status svg { width: 16px; }
 .detail-items { display: grid; gap: 12px; }
 .detail-items article { display: grid; grid-template-columns: 48px 1fr auto; align-items: center; gap: 11px; }
 .detail-items article > div, .item-placeholder { width: 48px; height: 48px; display: grid; place-items: center; overflow: hidden; border-radius: 10px; background: #f8fafc; }
@@ -2200,6 +2205,7 @@ html.dark .report-profit.negative > span { background: rgba(136,19,55,.28); colo
 html.dark .report-profit strong { color: #6ee7b7; }
 html.dark .report-profit.negative strong { color: #fda4af; }
 html.dark .contact-list > span,
+html.dark .account-link-panel p,
 html.dark .lot-list article > div,
 html.dark .fulfillment-panel > header p,
 html.dark .fulfillment-items article small { color: #a7b4c7; }

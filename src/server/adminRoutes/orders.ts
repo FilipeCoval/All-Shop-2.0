@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { getApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { FieldValue, type DocumentData, type DocumentReference, type QueryDocumentSnapshot, type Transaction } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
@@ -174,8 +176,31 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const action = text(request.body?.action, 40);
     const orderId = cleanOrderId(request.body?.orderId);
     if (!orderId) throw new ApiError(400, 'A encomenda não foi indicada.');
-    if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'create_manual_order', 'fulfill_order'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
+    if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'create_manual_order', 'fulfill_order', 'link_customer_account'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
     const creatingOrder = action === 'recover_telegram_order' || action === 'create_manual_order';
+
+    // Uma compra feita como convidado pode ter um e-mail de entrega diferente
+    // do e-mail de login. Neste caso só um administrador pode confirmar a
+    // ligação; nunca tentamos adivinhar ou substituir uma conta existente.
+    let accountToLink: { uid: string; email: string; name: string } | null = null;
+    if (action === 'link_customer_account') {
+      const accountEmail = normalize(request.body?.accountEmail);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(accountEmail)) {
+        throw new ApiError(400, 'Indique o e-mail usado pelo cliente para iniciar sessão.');
+      }
+      try {
+        const account = await getAuth(getApp()).getUserByEmail(accountEmail);
+        const verifiedEmail = normalize(account.email);
+        if (!verifiedEmail) throw new ApiError(404, 'A conta indicada não tem um e-mail válido.');
+        accountToLink = { uid: account.uid, email: verifiedEmail, name: text(account.displayName, 120) };
+      } catch (error: any) {
+        if (error instanceof ApiError) throw error;
+        if (String(error?.code || '') === 'auth/user-not-found') {
+          throw new ApiError(404, 'Não existe nenhuma conta criada com este e-mail.');
+        }
+        throw error;
+      }
+    }
 
     // Procurar formatos antigos do ID fora da transação evita que cada alteração
     // simples fique desnecessariamente dependente de dois documentos e uma query.
@@ -406,6 +431,53 @@ export default async function handler(request: VercelRequest, response: VercelRe
 
       if (!orderSnapshot.exists) throw new ApiError(404, 'Encomenda não encontrada.');
       const order = orderSnapshot.data() ?? {};
+
+      if (action === 'link_customer_account') {
+        const account = accountToLink!;
+        const currentUserId = text(order.userId, 160);
+        if (currentUserId && currentUserId !== account.uid) {
+          throw new ApiError(409, 'Esta encomenda já está associada a outra conta. Confirme a conta antes de alterar esta ligação.');
+        }
+        if (currentUserId === account.uid) return withDocument({ ...order, id: orderId }, false);
+
+        const accountRef = database.collection('users').doc(account.uid);
+        const accountSnapshot = await transaction.get(accountRef);
+        const history = Array.isArray(order.statusHistory) ? order.statusHistory : [];
+        const linkNote = `Associada à conta ${account.email} pelo administrador.`;
+        const update: DocumentData = {
+          userId: account.uid,
+          customerAccountEmail: account.email,
+          statusHistory: [...history, { status: String(order.status || 'Processamento'), date: now, notes: linkNote }],
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+
+        if (!accountSnapshot.exists) {
+          transaction.set(accountRef, {
+            uid: account.uid,
+            email: account.email,
+            name: account.name || text(order.shippingInfo?.name, 120) || 'Cliente',
+            addresses: [],
+            wishlist: [],
+            loyaltyPoints: 0,
+            pointsHistory: [],
+            totalSpent: 0,
+            tier: 'Bronze',
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
+
+        transaction.update(orderRef, update);
+        transaction.set(database.collection('admin_audit_log').doc(), {
+          action,
+          adminId: admin.uid,
+          adminEmail: admin.email,
+          orderId,
+          changes: { linkedUserId: account.uid, linkedAccountEmail: account.email },
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        return withDocument({ ...order, ...update, id: orderId });
+      }
 
       if (action === 'fulfill_order') {
         // Se a primeira resposta se perder depois do commit, a repetição do mesmo
