@@ -14,7 +14,7 @@ export function orderBelongsToClient(order: AdminOrder, client: Pick<AdminUser, 
 }
 
 export function isCommercialOrder(order: AdminOrder) {
-  return order.status !== 'Cancelado' && order.status !== 'Devolvido';
+  return !['A confirmar', 'Cancelado', 'Devolvido'].includes(order.status);
 }
 
 export function tierForTotal(totalSpent: number) {

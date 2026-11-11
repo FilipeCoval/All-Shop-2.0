@@ -15,6 +15,7 @@ type ClientAction = 'cancel_order' | 'cancel_item' | 'request_return';
 type ReviewDecision = 'approve' | 'reject';
 
 const ORDER_STATUSES = new Set([
+  'A confirmar',
   'Pendente',
   'Processamento',
   'Pago',
@@ -235,6 +236,10 @@ export default async function handler(req: Request, res: Response) {
         const order = orderSnapshot.data() || {};
         const currentStatus = String(order.status || 'Pendente');
         if (currentStatus === newStatus) return safeOrderForOwner(orderSnapshot.id, order);
+
+        if (order.awaitingCustomerConfirmation === true) {
+          throw new Error('Este pedido ainda aguarda a confirmação do cliente. Ainda não houve pagamento nem baixa de stock.');
+        }
 
         const now = new Date().toISOString();
         const total = Math.max(0, Number(order.total || 0));

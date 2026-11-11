@@ -9,6 +9,7 @@ import sendPushHandler from './api/send-push.ts';
 import ogHandler from './api/og.ts';
 import reserveStockHandler from './api/reserve-stock.ts';
 import finalizeOrderHandler from './api/finalize-order.ts';
+import createOrderDraftHandler from './api/create-order-draft.ts';
 import updateOrderHandler from './api/update-order.ts';
 import syncUserHandler from './api/sync-user.ts';
 import sitemapHandler from './api/sitemap.ts';
@@ -67,6 +68,14 @@ async function startServer() {
   app.all('/api/finalize-order', async (req, res) => {
     try {
         await finalizeOrderHandler(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.all('/api/create-order-draft', async (req, res) => {
+    try {
+        await createOrderDraftHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

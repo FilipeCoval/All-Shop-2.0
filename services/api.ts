@@ -50,6 +50,21 @@ export async function finalizeOrder(order: any, guestToken?: string) {
   return parseResponse(response);
 }
 
+export async function saveOrderDraft(order: any, guestToken?: string) {
+  const response = await fetch('/api/create-order-draft', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({
+      idempotencyKey: order?.id,
+      items: order?.items,
+      shippingInfo: order?.shippingInfo,
+      guestToken,
+      order,
+    }),
+  });
+  return parseResponse(response);
+}
+
 export async function syncCurrentUser() {
   const response = await fetch('/api/sync-user', {
     method: 'POST',

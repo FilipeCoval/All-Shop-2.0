@@ -1,6 +1,7 @@
 import type { Product, ProductReview } from '../../types/domain';
 
 export type OrderStatus =
+  | 'A confirmar'
   | 'Pendente'
   | 'Processamento'
   | 'Pago'
@@ -102,6 +103,8 @@ export interface AdminOrder {
   fulfilledBy?: string;
   status: OrderStatus;
   stockDeducted?: boolean;
+  awaitingCustomerConfirmation?: boolean;
+  confirmationDeadlineAt?: string;
   shippingInfo?: {
     name?: string; email?: string; phone?: string; street?: string; doorNumber?: string;
     zip?: string; city?: string; paymentMethod?: string; deliveryMethod?: string;

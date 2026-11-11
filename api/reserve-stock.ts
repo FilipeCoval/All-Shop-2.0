@@ -12,6 +12,7 @@ import {
   toReservationRecord,
   getMatchingBatches,
   getBatchPhysical,
+  timestampToMillis,
   type ReservationRecord,
 } from '../services/server/stock-utils.js';
 import { normalizeProductAvailabilityMode } from '../src/domain/productAvailability.js';
@@ -60,6 +61,14 @@ export default async function handler(req: Request, res: Response) {
       }
 
       const now = Date.now();
+      // Reservations expire after 15 minutes. Deleting stale documents while
+      // recalculating keeps the published stock from remaining blocked after a
+      // shopper leaves checkout without completing it.
+      for (const reservationDoc of reservationsSnapshot.docs) {
+        if (timestampToMillis(reservationDoc.data()?.expiresAt) <= now) {
+          transaction.delete(reservationDoc.ref);
+        }
+      }
       const activeReservations = reservationsSnapshot.docs
         .map(toReservationRecord)
         .filter((record): record is ReservationRecord => !!record && record.expiresAtMs > now);

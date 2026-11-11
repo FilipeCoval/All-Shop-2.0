@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Component, ErrorInfo, ReactNode } from 'react';
 
 class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null, errorInfo: ErrorInfo | null}> {
   constructor(props: {children: ReactNode}) {
@@ -64,7 +64,7 @@ import { notifyNewOrder } from './services/telegramNotifier';
 import { supabaseSync } from './services/supabaseSync';
 import LoyaltyPage from './components/LoyaltyPage';
 import { trackVisit } from './services/analyticsService';
-import { reserveStock, finalizeOrder, syncCurrentUser } from './services/api';
+import { reserveStock, finalizeOrder, saveOrderDraft, syncCurrentUser } from './services/api';
 import { effectiveProductAvailability } from './src/domain/productAvailability';
 
 const App: React.FC = () => {
@@ -161,6 +161,7 @@ const App: React.FC = () => {
   // --- LÓGICA DE STOCK ---
   const { loading: stockLoading } = useStock(isAdmin);
   const { products: dbProducts, loading: productsLoading } = usePublicProducts();
+  const zeroStockReconciliationKey = useRef('');
 
   const sessionId = useMemo(() => {
     let id = sessionStorage.getItem('session_id');
@@ -423,6 +424,29 @@ const App: React.FC = () => {
       }
   };
 
+  // A reserva é temporária. Quando uma página abre com um artigo a zero, pede ao
+  // servidor para recalcular esse artigo antes de o mostrar como esgotado. Isto
+  // liberta automaticamente carrinhos abandonados depois dos 15 minutos, sem
+  // que o cliente tenha de voltar a adicionar/remover o artigo.
+  useEffect(() => {
+    const targets = dbProducts.flatMap((product) => {
+      const productTargets: Array<{ id: number; variant: string }> = [];
+      if (Number(product.stock ?? 0) <= 0) productTargets.push({ id: product.id, variant: '' });
+      for (const variant of product.variants ?? []) {
+        if (Number(variant.stock ?? 0) <= 0) productTargets.push({ id: product.id, variant: variant.name || '' });
+      }
+      return productTargets;
+    });
+    const key = targets.map((target) => `${target.id}:${target.variant}`).sort().join('|');
+    if (!key) { zeroStockReconciliationKey.current = ''; return; }
+    if (zeroStockReconciliationKey.current === key) return;
+    zeroStockReconciliationKey.current = key;
+
+    const guestToken = localStorage.getItem('guestToken') || undefined;
+    void Promise.allSettled(targets.map((target) => reserveStock(String(target.id), target.variant, 0, guestToken)))
+      .catch(() => undefined);
+  }, [dbProducts]);
+
   const addToCart = async (product: Product, variant?: ProductVariant) => {
     if (processingProductIds.includes(product.id)) return;
     setProcessingProductIds(prev => [...prev, product.id]);
@@ -575,15 +599,30 @@ const App: React.FC = () => {
   };
 
   const handleCheckout = async (newOrder: Order, isAutoSave: boolean = false): Promise<boolean> => {
-      // A encomenda só é criada quando o cliente confirma que enviou o pedido.
-      // Mantemos o argumento para compatibilidade, mas não gravamos rascunhos que prendem stock.
-      if (isAutoSave) return true;
-
       try {
           const cleanOrder = JSON.parse(JSON.stringify({
               ...newOrder,
               id: String(newOrder.id || '').trim().replace(/^#+/, ''),
           }));
+
+          if (isAutoSave) {
+              const response = await saveOrderDraft(cleanOrder, cleanOrder.guestToken || localStorage.getItem('guestToken') || undefined);
+              const savedDraft = (response?.order || cleanOrder) as Order;
+              setOrders(prev => {
+                  const exists = prev.some(order => order.id === savedDraft.id);
+                  return exists ? prev.map(order => order.id === savedDraft.id ? savedDraft : order) : [savedDraft, ...prev];
+              });
+
+              // O pedido ficou registado, mas ainda não é uma venda: deixa de
+              // prender o artigo no carrinho. A confirmação posterior volta a
+              // validar e a baixar o stock de forma atómica no servidor.
+              await Promise.allSettled(cleanOrder.items.map((item: OrderItem | string) => {
+                  if (typeof item === 'string') return Promise.resolve();
+                  return reserveStock(String(item.productId), item.selectedVariant || '', 0, cleanOrder.guestToken || localStorage.getItem('guestToken') || undefined);
+              }));
+              return true;
+          }
+
           const response = await finalizeOrder(cleanOrder, localStorage.getItem('guestToken') || undefined);
           const savedOrder = (response?.order || cleanOrder) as Order;
 

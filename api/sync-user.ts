@@ -67,7 +67,7 @@ export default async function handler(req: Request, res: Response) {
       const allOrders = [...orderMap.values()];
 
       const totalSpent = roundMoney(allOrders
-        .filter((snapshot) => String(snapshot.data()?.status || '') !== 'Cancelado')
+        .filter((snapshot) => !['Cancelado', 'A confirmar'].includes(String(snapshot.data()?.status || '')))
         .reduce((sum, snapshot) => sum + Number(snapshot.data()?.total || 0), 0));
       const tier = determineTier(totalSpent);
 

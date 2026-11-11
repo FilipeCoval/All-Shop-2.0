@@ -54,7 +54,7 @@ export interface Order {
   id: string;
   date: string;
   total: number;
-  status: 'Pendente' | 'Processamento' | 'Pago' | 'Enviado' | 'Entregue' | 'Cancelado' | 'Reclamação' | 'Devolvido' | 'Levantamento em Loja';
+  status: 'A confirmar' | 'Pendente' | 'Processamento' | 'Pago' | 'Enviado' | 'Entregue' | 'Cancelado' | 'Reclamação' | 'Devolvido' | 'Levantamento em Loja';
   items: (OrderItem | string)[];
   userId?: string | null;
   guestToken?: string;
@@ -97,6 +97,9 @@ export interface Order {
   discountValue?: number; // Valor total do desconto aplicado
   couponCode?: string; // Código do cupão utilizado
   totalProductCost?: number; // Custo exato dos produtos (baseado nos lotes/seriais usados)
+  /** Pedido registado após a mensagem, antes de o cliente o confirmar. */
+  awaitingCustomerConfirmation?: boolean;
+  confirmationDeadlineAt?: string;
 }
 
 export interface StockMovement {

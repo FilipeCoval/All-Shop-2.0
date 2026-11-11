@@ -104,12 +104,24 @@ export default async function handler(req: Request, res: Response) {
     const result = await firestore.runTransaction(async (transaction) => {
       const orderRef = firestore.collection('orders').doc(orderId);
       const existingOrder = await transaction.get(orderRef);
+      let existingDraft: Record<string, any> | null = null;
       if (existingOrder.exists) {
         const existing = existingOrder.data() || {};
-        if (existing.userId && existing.userId !== identity.userId) {
-          throw new Error('Este número de encomenda já está em utilização. Volte ao carrinho e tente novamente.');
+        const isDraftAwaitingConfirmation = existing.awaitingCustomerConfirmation === true && existing.status === 'A confirmar';
+        if (isDraftAwaitingConfirmation) {
+          const belongsToCurrentOwner = existing.userId
+            ? existing.userId === identity.userId
+            : existing.ownerKey === identity.ownerKey;
+          if (!belongsToCurrentOwner) {
+            throw new Error('Este pedido pertence a outra sessão. Volte ao carrinho e tente novamente.');
+          }
+          existingDraft = existing;
+        } else {
+          if (existing.userId && existing.userId !== identity.userId) {
+            throw new Error('Este número de encomenda já está em utilização. Volte ao carrinho e tente novamente.');
+          }
+          return { order: { id: orderId, ...existing }, alreadyFinalized: true };
         }
-        return { order: { id: orderId, ...existing }, alreadyFinalized: true };
       }
 
       const productContexts = new Map<number, any>();
@@ -280,10 +292,13 @@ export default async function handler(req: Request, res: Response) {
 
       const responseOrder = {
         id: orderId,
-        date: new Date().toISOString(),
+        date: existingDraft?.date || new Date().toISOString(),
         total,
         status: 'Processamento',
-        statusHistory: [{ status: 'Processamento', date: new Date().toISOString(), notes: 'Pedido confirmado pelo cliente.' }],
+        statusHistory: [
+          ...(Array.isArray(existingDraft?.statusHistory) ? existingDraft.statusHistory : []),
+          { status: 'Processamento', date: new Date().toISOString(), notes: 'Pedido confirmado pelo cliente.' },
+        ],
         items: canonicalItems,
         userId: identity.userId,
         shippingInfo,
@@ -295,7 +310,7 @@ export default async function handler(req: Request, res: Response) {
       };
       transaction.set(orderRef, {
         ...responseOrder,
-        createdAt: FieldValue.serverTimestamp(),
+        createdAt: existingDraft?.createdAt ?? FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
       return { order: responseOrder, alreadyFinalized: false };

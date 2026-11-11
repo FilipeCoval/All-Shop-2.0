@@ -395,8 +395,8 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
   const highestAffordableReward = affordableRewards.length > 0 ? affordableRewards[affordableRewards.length - 1] : null;
   
   const safeOrders = orders || [];
-  const totalSpentCount = safeOrders.reduce((acc, order) => acc + (order.status !== 'Cancelado' ? (order.total || 0) : 0), 0);
-  const totalOrdersCount = safeOrders.filter(o => o.status !== 'Cancelado').length;
+  const totalSpentCount = safeOrders.reduce((acc, order) => acc + (!['Cancelado', 'A confirmar'].includes(order.status) ? (order.total || 0) : 0), 0);
+  const totalOrdersCount = safeOrders.filter(o => !['Cancelado', 'A confirmar'].includes(o.status)).length;
   
   const displayOrderId = (id: string) => { 
     if (!id) return '#???'; 
@@ -554,7 +554,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
 
   const getStatusStep = (status: string) => {
       const steps = ['Processamento', 'Pago', 'Enviado', 'Entregue'];
-      if (status === 'Reclamação' || status === 'Devolvido' || status === 'Cancelado') return -1;
+      if (status === 'A confirmar' || status === 'Reclamação' || status === 'Devolvido' || status === 'Cancelado') return -1;
       return steps.indexOf(status);
   };
 
@@ -864,7 +864,11 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                         </button>
                                     )}
                                 </div>
-                                {order.status === 'Cancelado' ? (
+                                {order.status === 'A confirmar' ? (
+                                    <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg text-center text-amber-800 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800">
+                                        O seu pedido foi registado e aguarda a confirmação de envio da mensagem. Ainda não foi efetuado qualquer pagamento nem baixa de stock.
+                                    </div>
+                                ) : order.status === 'Cancelado' ? (
                                     <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center text-red-600 dark:text-red-400 font-bold border border-red-100 dark:border-red-800 flex items-center justify-center gap-2">
                                         <XCircle size={20} /> Encomenda Cancelada
                                     </div>
@@ -1001,12 +1005,12 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                     <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                                         <button onClick={() => handlePrintOrder(order)} className="flex items-center gap-2 text-sm font-bold text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 px-4 py-2 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 shadow-sm"><Printer size={16}/> Imprimir Fatura / Garantia</button>
                                         
-                                        {order.status === 'Pendente' && (
+                                        {['Pendente', 'A confirmar'].includes(order.status) && (
                                             <button 
                                                 onClick={() => handleConfirmSentFromClientArea(order)} 
                                                 className="flex items-center gap-2 text-sm font-bold text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400 px-4 py-2 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50 shadow-sm"
                                             >
-                                                <Send size={16}/> Confirmar Envio da Mensagem
+                                                <Send size={16}/> Confirmar envio da mensagem
                                             </button>
                                         )}
 

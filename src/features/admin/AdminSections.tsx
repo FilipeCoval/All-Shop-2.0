@@ -106,13 +106,13 @@ export function OrdersSection({ orders, search, onOpen }: { orders: AdminOrder[]
   const now = new Date();
   const searchQuery = search.toLocaleLowerCase('pt');
   const statusOptions = Array.from(new Set(orders.map((order) => order.status).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt'));
-  const activeOrders = orders.filter((order) => ['Pendente', 'Processamento', 'Pago'].includes(order.status)).length;
-  const pendingStock = orders.filter((order) => order.stockDeducted === false).length;
+  const activeOrders = orders.filter((order) => ['A confirmar', 'Pendente', 'Processamento', 'Pago'].includes(order.status)).length;
+  const pendingStock = orders.filter((order) => order.stockDeducted === false && !order.awaitingCustomerConfirmation && order.status !== 'A confirmar').length;
   const pendingRequests = orders.filter((order) => order.cancellationRequest?.status === 'Pendente' || order.returnRequest?.status === 'Pendente').length;
   const visible = orders.filter((order) => {
     const textMatches = `${order.id} ${order.shippingInfo?.name ?? ''} ${order.shippingInfo?.email ?? ''}`.toLocaleLowerCase('pt').includes(searchQuery);
-    const statusMatches = statusFilter === 'all' || (statusFilter === 'active' ? ['Pendente', 'Processamento', 'Pago'].includes(order.status) : order.status === statusFilter);
-    const stockMatches = stockFilter === 'all' || (stockFilter === 'pending' ? order.stockDeducted === false : stockFilter === 'registered' ? order.stockDeducted === true : typeof order.stockDeducted === 'undefined');
+    const statusMatches = statusFilter === 'all' || (statusFilter === 'active' ? ['A confirmar', 'Pendente', 'Processamento', 'Pago'].includes(order.status) : order.status === statusFilter);
+    const stockMatches = stockFilter === 'all' || (stockFilter === 'pending' ? order.stockDeducted === false && !order.awaitingCustomerConfirmation && order.status !== 'A confirmar' : stockFilter === 'registered' ? order.stockDeducted === true : typeof order.stockDeducted === 'undefined');
     const requestMatches = requestFilter === 'all' || (requestFilter === 'cancellation' ? order.cancellationRequest?.status === 'Pendente' : order.returnRequest?.status === 'Pendente');
     const date = order.date ? new Date(order.date) : null;
     const dateMatches = dateFilter === 'all' || (date && Number.isFinite(date.getTime()) && (dateFilter === 'today'
@@ -137,7 +137,7 @@ export function OrdersSection({ orders, search, onOpen }: { orders: AdminOrder[]
       <tbody>{visible.map((order) => <tr key={order.id}>
         <td><strong>#{order.id.replace(/^#/, '')}</strong></td><td><strong>{order.shippingInfo?.name ?? 'Cliente'}</strong><small>{order.shippingInfo?.email ?? '—'}</small></td>
         <td>{safeDate(order.date)}</td><td><strong>{euro.format(Number(order.total ?? 0))}</strong></td><td><span className={statusClass(order.status)}>{order.status}</span></td>
-        <td>{order.stockDeducted === true ? 'Registado' : order.stockDeducted === false ? 'Pendente' : 'Antigo'}</td>
+        <td>{order.awaitingCustomerConfirmation || order.status === 'A confirmar' ? 'Sem reserva' : order.stockDeducted === true ? 'Registado' : order.stockDeducted === false ? 'Pendente' : 'Antigo'}</td>
         <td>{order.cancellationRequest?.status === 'Pendente' ? <span className="warning-pill">Cancelamento</span> : order.returnRequest?.status === 'Pendente' ? <span className="warning-pill">Devolução</span> : '—'}</td><td><button className="table-action" onClick={() => onOpen(order)}>Abrir</button></td>
       </tr>)}{visible.length === 0 && <tr><td className="orders-empty" colSpan={8}>Não existem encomendas com estes filtros.</td></tr>}</tbody>
     </table>
