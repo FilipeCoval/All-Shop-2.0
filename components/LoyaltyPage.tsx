@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { User, Coupon, PointHistory } from '../types';
-import {  db , modularDb } from '../services/firebaseConfig';
-import { collection, doc, updateDoc, setDoc, runTransaction, arrayUnion, onSnapshot, query, where } from 'firebase/firestore';
+import { User, Coupon } from '../types';
+import { modularDb } from '../services/firebaseConfig';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { redeemLoyaltyReward } from '../services/api';
 
 import { Coins, Gift, Calendar, Star, ArrowRight, Loader2, CheckCircle, AlertTriangle, Lock, Share2, Ticket, Copy } from 'lucide-react';
 import { LOYALTY_TIERS, SHARE_URL } from '../constants';
@@ -50,58 +51,12 @@ const AllPoints: React.FC<AllPointsProps> = ({ user, onUpdateUser, onOpenLogin, 
     setGeneratedCoupon(null);
 
     try {
-        const code = `ALL-${reward.value}${reward.type === 'PERCENTAGE' ? 'P' : 'E'}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-        
-        const newCoupon: Coupon = {
-            code,
-            type: reward.type,
-            value: reward.value,
-            minPurchase: 0,
-            isActive: true,
-            usageCount: 0,
-            maxUsages: 1,
-            userId: user.uid,
-            maxDiscount: reward.maxDiscount
-        };
-
-        const pointsCost = Number(reward.points);
-        if (isNaN(pointsCost) || pointsCost <= 0) {
-            throw new Error("Custo de pontos inválido");
-        }
-
-        await runTransaction(modularDb, async (transaction) => {
-            // 1. Ler dados do utilizador para garantir consistência
-            const userRef = doc(modularDb, 'users', user.uid);
-            const userDoc = await transaction.get(userRef);
-            
-            if (!userDoc.exists()) throw new Error("Utilizador não encontrado.");
-            
-            const userData = userDoc.data() as User;
-            const currentPoints = userData.loyaltyPoints || 0;
-
-            if (currentPoints < pointsCost) {
-                throw new Error("Pontos insuficientes.");
-            }
-
-            // 2. Criar Cupão
-            const couponRef = doc(collection(modularDb, 'coupons'));
-            transaction.set(couponRef, newCoupon);
-
-            // 3. Deduzir Pontos
-            const newHistory: PointHistory = {
-                id: `redeem-${Date.now()}`,
-                date: new Date().toISOString(),
-                amount: -pointsCost,
-                reason: `Troca por ${reward.label}`
-            };
-
-            transaction.update(userRef, {
-                loyaltyPoints: currentPoints - pointsCost,
-                pointsHistory: arrayUnion(newHistory)
-            });
+        const result = await redeemLoyaltyReward(reward.id);
+        onUpdateUser({
+            loyaltyPoints: Number(result.loyaltyPoints || 0),
+            pointsHistory: Array.isArray(result.pointsHistory) ? result.pointsHistory : user.pointsHistory,
         });
-
-        setGeneratedCoupon(code);
+        setGeneratedCoupon(result.code);
 
     } catch (err: any) {
         console.error("Erro ao trocar pontos:", err);

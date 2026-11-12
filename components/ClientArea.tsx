@@ -12,7 +12,7 @@ import {   db, storage, requestPushPermission, messaging , modularDb } from '../
 import { collection, doc, updateDoc, addDoc, arrayUnion, arrayRemove, deleteField, onSnapshot, query, where, getDoc, runTransaction, getFirestore, writeBatch, getDocs } from 'firebase/firestore';
 import { ref, deleteObject, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 
-import { requestOrderAction } from '../services/api';
+import { redeemLoyaltyReward, requestOrderAction } from '../services/api';
 import LoyaltyPage from './LoyaltyPage';
 import RequestsTab from './RequestsTab';
 
@@ -344,15 +344,12 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
       if (!window.confirm(`Trocar ${reward.cost} pontos por um vale de ${reward.value}€?`)) return;
       setIsRedeeming(reward.id);
       try {
-          const code = `REWARD-${user.uid?.substring(0,4).toUpperCase()}-${Date.now().toString().substring(7)}`;
-          const newCoupon: Coupon = { code, type: 'FIXED', value: reward.value, minPurchase: reward.minPurchase, isActive: true, usageCount: 0 };
-          await addDoc(collection(modularDb, 'coupons'), newCoupon);
-          const newHistoryItem: PointHistory = { id: Date.now().toString(), date: new Date().toISOString(), amount: -reward.cost, reason: `Resgate: ${reward.title}` };
-          const updatedPoints = currentPoints - reward.cost;
-          const updatedHistory = [newHistoryItem, ...(user.pointsHistory || [])];
-          await updateDoc(doc(modularDb, 'users', user.uid), { loyaltyPoints: updatedPoints, pointsHistory: updatedHistory });
-          onUpdateUser({ loyaltyPoints: updatedPoints, pointsHistory: updatedHistory });
-          alert(`Parabéns! O seu código é: ${code}\n(Pode encontrá-lo no checkout)`);
+          const result = await redeemLoyaltyReward(reward.id);
+          onUpdateUser({
+              loyaltyPoints: Number(result.loyaltyPoints || 0),
+              pointsHistory: Array.isArray(result.pointsHistory) ? result.pointsHistory : user.pointsHistory,
+          });
+          alert(`Parabéns! O seu código é: ${result.code}\n(Pode encontrá-lo no checkout)`);
       } catch (error) { 
           console.error(error); 
           alert("Erro ao resgatar recompensa. Tente novamente."); 

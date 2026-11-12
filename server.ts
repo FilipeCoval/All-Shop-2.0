@@ -10,6 +10,7 @@ import ogHandler from './api/og.ts';
 import reserveStockHandler from './api/reserve-stock.ts';
 import finalizeOrderHandler from './api/finalize-order.ts';
 import createOrderDraftHandler from './api/create-order-draft.ts';
+import redeemLoyaltyRewardHandler from './api/redeem-loyalty-reward.ts';
 import updateOrderHandler from './api/update-order.ts';
 import syncUserHandler from './api/sync-user.ts';
 import sitemapHandler from './api/sitemap.ts';
@@ -76,6 +77,14 @@ async function startServer() {
   app.all('/api/create-order-draft', async (req, res) => {
     try {
         await createOrderDraftHandler(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.all('/api/redeem-loyalty-reward', async (req, res) => {
+    try {
+        await redeemLoyaltyRewardHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

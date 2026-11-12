@@ -74,6 +74,15 @@ export async function syncCurrentUser() {
   return parseResponse(response);
 }
 
+export async function redeemLoyaltyReward(rewardId: string) {
+  const response = await fetch('/api/redeem-loyalty-reward', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({ rewardId }),
+  });
+  return parseResponse(response);
+}
+
 export async function trackOrder(orderId: string, email: string) {
   const response = await fetch('/api/track-order', {
     method: 'POST',
