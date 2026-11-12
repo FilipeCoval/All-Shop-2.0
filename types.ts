@@ -100,6 +100,41 @@ export interface Order {
   /** Pedido registado após a mensagem, antes de o cliente o confirmar. */
   awaitingCustomerConfirmation?: boolean;
   confirmationDeadlineAt?: string;
+  /** Reserva de um artigo ainda não recebido. Não altera o stock físico nem entra como receita antes da entrega. */
+  preorder?: PreorderOrderInfo;
+}
+
+export interface ProductPreorderConfig {
+  enabled: boolean;
+  /** Quantidade máxima que pode ser aceite para esta previsão de compra. */
+  capacity: number;
+  /** Quantidade de pré-reservas ativas que já ocupa a capacidade. */
+  reservedQuantity: number;
+  /** Data estimada para expedição ou disponibilidade, informada pela loja. */
+  estimatedDispatchDate: string;
+  /** O sinal é fixo para manter a mensagem clara para o cliente. */
+  depositPercent: 50;
+  /** Prazo para o cliente liquidar o sinal após criar o pedido. */
+  paymentDeadlineHours: number;
+  note?: string;
+}
+
+export interface PreorderOrderInfo {
+  kind: 'PREORDER';
+  productId: number;
+  variantName?: string;
+  quantity: number;
+  status: 'DEPOSIT_PENDING' | 'DEPOSIT_RECEIVED' | 'BALANCE_RECEIVED' | 'CANCELLED' | 'EXPIRED' | 'FULFILLED';
+  capacityHeld: boolean;
+  depositPercent: 50;
+  depositDue: number;
+  balanceDue: number;
+  depositDeadlineAt: string;
+  estimatedDispatchDate: string;
+  termsAcceptedAt: string;
+  depositReceivedAt?: string;
+  balanceReceivedAt?: string;
+  capacityReleasedAt?: string;
 }
 
 export interface StockMovement {
@@ -234,6 +269,7 @@ export interface Product {
   specs?: Record<string, string | boolean>; // Especificações técnicas para comparação
   isFreebie?: boolean; // NOVO: Produto elegível como oferta
   isPrivate?: boolean; // NOVO: Produto privado (só admin vê)
+  preorder?: ProductPreorderConfig;
 }
 
 export interface ProductVariant {

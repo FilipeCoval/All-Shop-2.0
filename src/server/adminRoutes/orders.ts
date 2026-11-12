@@ -14,6 +14,7 @@ const STATUSES = new Set(['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entre
 const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const normalize = (value: unknown) => text(value).toLowerCase();
 const cleanOrderId = (value: unknown) => text(value, 100).replace(/^#+/, '');
+const preorderReservationId = (orderId: string) => `preorder_${orderId}`;
 
 const inventoryUnits = (value: unknown, lotId: string): DocumentData[] => {
   if (value === undefined) return [];
@@ -176,7 +177,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const action = text(request.body?.action, 40);
     const orderId = cleanOrderId(request.body?.orderId);
     if (!orderId) throw new ApiError(400, 'A encomenda não foi indicada.');
-    if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'create_manual_order', 'fulfill_order', 'link_customer_account'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
+    if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'create_manual_order', 'fulfill_order', 'link_customer_account', 'confirm_preorder_deposit', 'confirm_preorder_balance', 'cancel_preorder'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
     const creatingOrder = action === 'recover_telegram_order' || action === 'create_manual_order';
 
     // Uma compra feita como convidado pode ter um e-mail de entrega diferente
@@ -479,10 +480,75 @@ export default async function handler(request: VercelRequest, response: VercelRe
         return withDocument({ ...order, ...update, id: orderId });
       }
 
+      const preorder = order.preorder && typeof order.preorder === 'object' && !Array.isArray(order.preorder)
+        ? order.preorder as DocumentData
+        : null;
+
+      if (action === 'confirm_preorder_deposit' || action === 'confirm_preorder_balance' || action === 'cancel_preorder') {
+        if (!preorder || preorder.kind !== 'PREORDER') throw new ApiError(409, 'Esta encomenda não é uma pré-reserva.');
+        const preorderStatus = text(preorder.status, 50);
+        const productId = Number(preorder.productId);
+        if (!Number.isInteger(productId) || productId <= 0) throw new ApiError(409, 'A pré-reserva não tem um produto válido associado.');
+
+        if (action === 'confirm_preorder_deposit') {
+          if (preorderStatus === 'DEPOSIT_RECEIVED' || preorderStatus === 'BALANCE_RECEIVED' || preorderStatus === 'FULFILLED') return withDocument({ ...order, id: orderId }, false);
+          if (preorderStatus !== 'DEPOSIT_PENDING') throw new ApiError(409, 'Esta pré-reserva já foi cancelada ou expirou.');
+          const updatedPreorder = { ...preorder, status: 'DEPOSIT_RECEIVED', depositReceivedAt: now };
+          const update = { status: 'Processamento', preorder: updatedPreorder, updatedAt: FieldValue.serverTimestamp(), statusHistory: FieldValue.arrayUnion({ status: 'Sinal recebido', date: now, notes: 'Sinal de 50% confirmado pela administração.' }) };
+          transaction.update(orderRef, update);
+          transaction.set(database.collection('admin_audit_log').doc(), { action, adminId: admin.uid, adminEmail: admin.email, orderId, changes: { preorderStatus: 'DEPOSIT_RECEIVED' }, createdAt: FieldValue.serverTimestamp() });
+          return withDocument({ ...order, ...update, id: orderId });
+        }
+
+        if (action === 'confirm_preorder_balance') {
+          if (preorderStatus === 'BALANCE_RECEIVED' || preorderStatus === 'FULFILLED') return withDocument({ ...order, id: orderId }, false);
+          if (preorderStatus !== 'DEPOSIT_RECEIVED') throw new ApiError(409, 'Confirme primeiro a receção do sinal de 50%.');
+          const updatedPreorder = { ...preorder, status: 'BALANCE_RECEIVED', balanceReceivedAt: now };
+          const update = { status: 'Pago', preorder: updatedPreorder, updatedAt: FieldValue.serverTimestamp(), statusHistory: FieldValue.arrayUnion({ status: 'Saldo recebido', date: now, notes: 'Saldo da pré-reserva confirmado. Pode preparar a expedição quando houver stock físico.' }) };
+          transaction.update(orderRef, update);
+          transaction.set(database.collection('admin_audit_log').doc(), { action, adminId: admin.uid, adminEmail: admin.email, orderId, changes: { preorderStatus: 'BALANCE_RECEIVED' }, createdAt: FieldValue.serverTimestamp() });
+          return withDocument({ ...order, ...update, id: orderId });
+        }
+
+        if (preorderStatus === 'FULFILLED') throw new ApiError(409, 'Uma pré-reserva já entregue não pode ser cancelada por este atalho.');
+        if (preorderStatus === 'CANCELLED' || preorderStatus === 'EXPIRED') return withDocument({ ...order, id: orderId }, false);
+        const productRef = database.collection('products_public').doc(String(productId));
+        const inventoryQuery = database.collection('products_inventory').where('publicProductId', '==', productId);
+        const reservationsQuery = database.collection('stock_reservations').where('productId', '==', productId);
+        const [productSnapshot, inventorySnapshot, reservationsSnapshot] = await Promise.all([
+          transaction.get(productRef),
+          transaction.get(inventoryQuery),
+          transaction.get(reservationsQuery),
+        ]);
+        if (!productSnapshot.exists) throw new ApiError(409, 'O produto desta pré-reserva já não existe no catálogo.');
+        const product = productSnapshot.data() ?? {};
+        const productPreorder = product.preorder && typeof product.preorder === 'object' ? product.preorder as DocumentData : {};
+        const held = preorder.capacityHeld === true ? Math.max(0, Number(preorder.quantity ?? 0)) : 0;
+        const reservationId = preorderReservationId(orderId);
+        const reservationsForProjection = reservationsSnapshot.docs
+          .filter((document) => document.id !== reservationId)
+          .map((document) => ({ id: document.id, ...document.data() } as ReservationData));
+        const lotsForProjection = inventorySnapshot.docs.map((document) => ({ id: document.id, ...document.data() } as LotData));
+        const productUpdate = {
+          ...projectPublicStock(productId, product, lotsForProjection, reservationsForProjection),
+          preorder: { ...productPreorder, reservedQuantity: Math.max(0, Number(productPreorder.reservedQuantity ?? 0) - held) },
+          stockUpdatedAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        };
+        const updatedPreorder = { ...preorder, status: 'CANCELLED', capacityHeld: false, capacityReleasedAt: now };
+        const update = { status: 'Cancelado', preorder: updatedPreorder, updatedAt: FieldValue.serverTimestamp(), statusHistory: FieldValue.arrayUnion({ status: 'Cancelado', date: now, notes: 'Pré-reserva cancelada e vaga libertada pela administração.' }) };
+        transaction.update(productRef, productUpdate);
+        transaction.delete(database.collection('stock_reservations').doc(reservationId));
+        transaction.update(orderRef, update);
+        transaction.set(database.collection('admin_audit_log').doc(), { action, adminId: admin.uid, adminEmail: admin.email, orderId, changes: { preorderStatus: 'CANCELLED', capacityReleased: held }, createdAt: FieldValue.serverTimestamp() });
+        return withDocument({ ...order, ...update, id: orderId });
+      }
+
       if (action === 'fulfill_order') {
         // Se a primeira resposta se perder depois do commit, a repetição do mesmo
         // pedido deve confirmar o resultado já guardado, não apresentar um erro.
         if (isOrderFulfillmentComplete(order)) return withDocument({ ...order, id: orderId }, false);
+        if (preorder?.kind === 'PREORDER' && preorder.status !== 'BALANCE_RECEIVED') throw new ApiError(409, 'Registe primeiro o sinal e o saldo da pré-reserva antes de expedir.');
         if (['Cancelado', 'Devolvido'].includes(String(order.status ?? ''))) throw new ApiError(409, 'Uma encomenda cancelada ou devolvida não pode ser expedida.');
         const rawSelections: unknown[] = Array.isArray(request.body?.selections) ? request.body.selections : [];
         const selections = rawSelections.map((raw) => {
@@ -574,7 +640,17 @@ export default async function handler(request: VercelRequest, response: VercelRe
             if (!ref) continue;
             transaction.update(ref, { quantitySold: Number(lot.quantitySold ?? 0), status: lot.status, units: lot.units ?? [] });
           }
-          transaction.update(context.productRef, { ...projectPublicStock(context.productId, context.product, projectedLots, context.reservations), stockUpdatedAt: FieldValue.serverTimestamp() });
+          const releaseReservation = preorder?.kind === 'PREORDER' && preorder.capacityHeld === true && Number(preorder.productId) === context.productId;
+          const reservationsForProjection = releaseReservation
+            ? context.reservations.filter((reservation) => String(reservation.id ?? '') !== preorderReservationId(orderId))
+            : context.reservations;
+          const productUpdate: DocumentData = { ...projectPublicStock(context.productId, context.product, projectedLots, reservationsForProjection), stockUpdatedAt: FieldValue.serverTimestamp() };
+          if (preorder?.kind === 'PREORDER' && preorder.capacityHeld === true && Number(preorder.productId) === context.productId) {
+            const productPreorder = context.product.preorder && typeof context.product.preorder === 'object' ? context.product.preorder as DocumentData : {};
+            productUpdate.preorder = { ...productPreorder, reservedQuantity: Math.max(0, Number(productPreorder.reservedQuantity ?? 0) - Math.max(0, Number(preorder.quantity ?? 0))) };
+            transaction.delete(database.collection('stock_reservations').doc(preorderReservationId(orderId)));
+          }
+          transaction.update(context.productRef, productUpdate);
         }
 
         const status = isPickup ? 'Entregue' : 'Enviado';
@@ -612,6 +688,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
           updatedAt: FieldValue.serverTimestamp(),
           statusHistory: FieldValue.arrayUnion({ status, date: now, notes: inventoryItems.length ? (isPickup ? 'Levantamento validado por S/N na All-Shop 3.0' : `Expedição validada por S/N na All-Shop 3.0${trackingNumber ? ` · Rastreio: ${trackingNumber}` : ''}`) : (isPickup ? 'Levantamento de artigo por pedido confirmado' : `Artigo por pedido expedido${trackingNumber ? ` · Rastreio: ${trackingNumber}` : ''}`) }),
         };
+        if (preorder?.kind === 'PREORDER') update.preorder = { ...preorder, status: 'FULFILLED', capacityHeld: false, capacityReleasedAt: now };
         if (userSnapshot?.exists && userRef) {
           const user = userSnapshot.data() ?? {};
           const multiplier = user.tier === 'Ouro' ? 1.5 : user.tier === 'Prata' ? 1.25 : 1;
@@ -657,6 +734,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
       if (action === 'set_status') {
         const status = text(request.body?.status, 60);
         if (!STATUSES.has(status)) throw new ApiError(400, 'Estado inválido.');
+        if (preorder?.kind === 'PREORDER' && status === 'Cancelado') {
+          throw new ApiError(409, 'Cancele esta pré-reserva pelo botão próprio para libertar a vaga corretamente.');
+        }
         if (status === String(order.status ?? 'Pendente')) return withDocument({ ...order, id: orderId }, false);
         if (['Cancelado', 'Devolvido'].includes(String(order.status ?? ''))) {
           throw new ApiError(409, 'Uma encomenda cancelada ou devolvida fica fechada e não pode ser reaberta.');
@@ -692,6 +772,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const kind = request.body?.requestKind === 'return' ? 'return' : request.body?.requestKind === 'cancellation' ? 'cancellation' : null;
         const decision = request.body?.decision === 'approve' ? 'approve' : request.body?.decision === 'reject' ? 'reject' : null;
         if (!kind || !decision) throw new ApiError(400, 'Decisão inválida.');
+        if (preorder?.kind === 'PREORDER' && kind === 'cancellation' && decision === 'approve') {
+          throw new ApiError(409, 'Cancele esta pré-reserva pelo botão próprio para libertar a vaga corretamente.');
+        }
         const field = kind === 'return' ? 'returnRequest' : 'cancellationRequest';
         const completedDecision = decision === 'approve' ? 'Aprovado' : 'Rejeitado';
         if (order[field]?.status === completedDecision) return withDocument({ ...order, id: orderId }, false);

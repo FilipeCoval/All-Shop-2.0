@@ -12,6 +12,8 @@ import { STORE_NAME, PUBLIC_URL, SHARE_URL } from '../constants';
 import { modularDb } from '../services/firebaseConfig';
 import { doc, updateDoc, increment, arrayUnion, collection, addDoc } from 'firebase/firestore';
 import { effectiveProductAvailability } from '../src/domain/productAvailability';
+import { formatPreorderDate, getPreorderOffer } from '../src/domain/preorder';
+import PreorderModal from './PreorderModal';
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('pt-PT', {
     style: 'currency',
@@ -86,6 +88,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
 
   const [alertEmail, setAlertEmail] = useState(currentUser?.email || '');
   const [alertStatus, setAlertStatus] = useState<'idle' | 'loading' | 'success'>('idle');
+  const [isPreorderOpen, setIsPreorderOpen] = useState(false);
 
   // Verifica se o utilizador comprou este produto
   const hasPurchased = useMemo(() => {
@@ -106,6 +109,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
     setIsImageZoomOpen(false);
     setAlertStatus('idle');
     setAlertEmail(currentUser?.email || '');
+    setIsPreorderOpen(false);
     window.scrollTo(0, 0);
     document.title = `${product.name} | ${STORE_NAME}`;
     
@@ -143,6 +147,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   const isComingSoon = availability === 'COMING_SOON';
   const isOutOfStock = availability === 'OUT_OF_STOCK';
   const isUnavailable = availability !== 'AVAILABLE';
+  const preorderOffer = getPreorderOffer(product);
+  const canPreorder = Boolean(preorderOffer && preorderOffer.remaining > 0);
   const isLowStock = currentStock > 0 && currentStock <= 3 && currentStock !== 999 && availability === 'AVAILABLE';
   const isFavorite = wishlist.includes(product.id);
   
@@ -179,7 +185,9 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   };
 
   const handleAddToCart = () => {
-      if (isUnavailable || (hasVariants && !isVariantSelected) || isProcessing) return;
+      if (hasVariants && !isVariantSelected) return;
+      if (isUnavailable && canPreorder) { setIsPreorderOpen(true); return; }
+      if (isUnavailable || isProcessing) return;
       if (selectedVariant) onAddToCart(product, selectedVariant);
       else onAddToCart(product);
   };
@@ -323,13 +331,15 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
     }
   };
 
-  const buyButtonLabel = isUnavailable
+  const buyButtonLabel = isUnavailable && canPreorder
+    ? (hasVariants && !isVariantSelected ? 'Escolha uma opção' : 'Pré-reservar com 50%')
+    : isUnavailable
     ? (isComingSoon ? 'Brevemente disponível' : 'Indisponível')
     : (hasVariants && !isVariantSelected)
       ? 'Escolha uma opção'
       : 'Adicionar ao carrinho';
 
-  const buyButtonDisabled = isUnavailable || (hasVariants && !isVariantSelected) || isProcessing;
+  const buyButtonDisabled = (!canPreorder && isUnavailable) || (hasVariants && !isVariantSelected) || isProcessing;
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-white dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 animate-fade-in transition-colors duration-300 pb-28 md:pb-10">
@@ -361,7 +371,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                 <img
                   src={selectedImage}
                   alt={product.name}
-                  className={`h-full w-full object-contain p-6 transition duration-500 group-hover:scale-[1.035] sm:p-10 ${isUnavailable ? 'grayscale-[35%] opacity-70' : ''}`}
+                  className={`h-full w-full object-contain p-6 transition duration-500 group-hover:scale-[1.035] sm:p-10 ${isUnavailable && !canPreorder ? 'grayscale-[35%] opacity-70' : ''}`}
                 />
               </button>
 
@@ -419,12 +429,17 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                 </>
               )}
 
-              {isOutOfStock && (
+              {isUnavailable && canPreorder && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-7 z-20 flex justify-center">
+                  <span className="rounded-full bg-orange-500 px-6 py-2.5 text-sm font-extrabold tracking-widest text-white shadow-xl">PRÉ-RESERVA</span>
+                </div>
+              )}
+              {isOutOfStock && !canPreorder && (
                 <div className="pointer-events-none absolute inset-x-0 bottom-7 z-20 flex justify-center">
                   <span className="rounded-full bg-red-600 px-6 py-2.5 text-sm font-extrabold tracking-widest text-white shadow-xl">ESGOTADO</span>
                 </div>
               )}
-              {isComingSoon && (
+              {isComingSoon && !canPreorder && (
                 <div className="pointer-events-none absolute inset-x-0 bottom-7 z-20 flex justify-center">
                   <span className="rounded-full bg-violet-600 px-6 py-2.5 text-sm font-extrabold tracking-widest text-white shadow-xl">EM BREVE</span>
                 </div>
@@ -510,18 +525,19 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                     {product.variants.map(variant => {
                       const variantStock = getStock(product.id, variant.name);
                       const isSoldOut = variantStock <= 0 && variantStock !== 999;
+                      const canReserveVariant = canPreorder && isSoldOut;
                       const isSelected = selectedVariantName === variant.name;
                       return (
                         <button
                           type="button"
                           key={variant.name}
-                          onClick={() => !isSoldOut && handleVariantChange(variant)}
-                          disabled={isSoldOut}
-                          className={`flex min-h-16 items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${isSelected ? 'border-orange-500 bg-orange-50 text-orange-950 ring-4 ring-orange-500/10 dark:bg-orange-950/30 dark:text-orange-100' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'} ${isSoldOut ? 'cursor-not-allowed opacity-45' : ''}`}
+                          onClick={() => (!isSoldOut || canReserveVariant) && handleVariantChange(variant)}
+                          disabled={isSoldOut && !canReserveVariant}
+                          className={`flex min-h-16 items-center justify-between gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all ${isSelected ? 'border-orange-500 bg-orange-50 text-orange-950 ring-4 ring-orange-500/10 dark:bg-orange-950/30 dark:text-orange-100' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'} ${isSoldOut && !canReserveVariant ? 'cursor-not-allowed opacity-45' : ''}`}
                         >
                           <span>
                             <span className="block text-sm font-bold">{variant.name}</span>
-                            <span className={`mt-0.5 block text-[11px] font-semibold ${isSoldOut ? 'text-red-500' : 'text-emerald-600 dark:text-emerald-400'}`}>{isSoldOut ? 'Esgotado' : variantStock === 999 ? 'Disponível' : `${variantStock} em stock`}</span>
+                            <span className={`mt-0.5 block text-[11px] font-semibold ${isSoldOut && !canReserveVariant ? 'text-red-500' : canReserveVariant ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{canReserveVariant ? 'Pré-reserva disponível' : isSoldOut ? 'Esgotado' : variantStock === 999 ? 'Disponível' : `${variantStock} em stock`}</span>
                           </span>
                           <span className="text-right"><span className="block text-sm font-extrabold">{formatCurrency(variant.price)}</span>{Number(variant.originalPrice ?? 0) > Number(variant.price) && <span className="mt-0.5 block text-[10px] font-semibold text-slate-400 line-through">{formatCurrency(Number(variant.originalPrice))}</span>}</span>
                         </button>
@@ -533,7 +549,13 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
               )}
 
               <div className="mt-7">
-                {isUnavailable ? (
+                {isUnavailable && canPreorder && preorderOffer ? (
+                  <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5 dark:border-orange-900/60 dark:bg-orange-950/25">
+                    <h4 className="flex items-center gap-2 text-lg font-bold text-orange-950 dark:text-orange-200"><PackageCheck size={20} /> Pré-reserve já com sinal de 50%</h4>
+                    <p className="mb-3 mt-1 text-sm leading-relaxed text-orange-800 dark:text-orange-300">Garante o preço de {formatCurrency(currentPrice)} e a sua vaga. Expedição prevista para <strong>{formatPreorderDate(preorderOffer.estimatedDispatchDate)}</strong>.</p>
+                    <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">{preorderOffer.remaining} vaga{preorderOffer.remaining === 1 ? '' : 's'} disponível{preorderOffer.remaining === 1 ? '' : 'is'} · sinal confirmado até {preorderOffer.paymentDeadlineHours} horas após o pedido.</p>
+                  </div>
+                ) : isUnavailable ? (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900/60 dark:bg-amber-950/25">
                     {alertStatus === 'success' ? (
                       <div className="text-center">
@@ -698,6 +720,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           <img src={selectedImage} alt={product.name} className="max-h-[88vh] max-w-[90vw] object-contain" onClick={event => event.stopPropagation()} />
         </div>
       )}
+      {isPreorderOpen && preorderOffer && <PreorderModal product={product} selectedVariant={selectedVariant} currentUser={currentUser} offer={preorderOffer} onClose={() => setIsPreorderOpen(false)} />}
     </div>
   );
 };

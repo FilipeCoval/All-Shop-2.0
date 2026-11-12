@@ -65,6 +65,22 @@ export async function saveOrderDraft(order: any, guestToken?: string) {
   return parseResponse(response);
 }
 
+export async function createPreorder(input: {
+  idempotencyKey: string;
+  productId: number;
+  selectedVariant?: string;
+  quantity: number;
+  shippingInfo: unknown;
+  termsAccepted: true;
+}, guestToken?: string) {
+  const response = await fetch('/api/create-order-draft', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({ action: 'create_preorder', ...input, guestToken }),
+  });
+  return parseResponse(response);
+}
+
 export async function syncCurrentUser() {
   const response = await fetch('/api/sync-user', {
     method: 'POST',

@@ -8,6 +8,7 @@ import InteractiveProductCard from './InteractiveProductCard';
 import { useStoreCategories } from '../hooks/useStoreCategories';
 import { effectiveProductAvailability, type EffectiveProductAvailability } from '../src/domain/productAvailability';
 import { productStartingPrice, publicProductSummary } from '../src/domain/productPresentation';
+import { hasPreorderAvailability } from '../src/domain/preorder';
 
 interface ProductListProps {
   products: Product[];
@@ -136,8 +137,8 @@ const ProductList: React.FC<ProductListProps> = ({
               const stockB = getStock(b.id);
               
               // Define o que é "Visível/Prioritário": Tem Stock OU é infinito (999) OU está marcado como "Em Breve"
-              const isAvailableA = effectiveProductAvailability(a, stockA) !== 'OUT_OF_STOCK';
-              const isAvailableB = effectiveProductAvailability(b, stockB) !== 'OUT_OF_STOCK';
+              const isAvailableA = effectiveProductAvailability(a, stockA) !== 'OUT_OF_STOCK' || hasPreorderAvailability(a);
+              const isAvailableB = effectiveProductAvailability(b, stockB) !== 'OUT_OF_STOCK' || hasPreorderAvailability(b);
 
               // 1º Critério: Disponibilidade (Stock aparece antes de Esgotado)
               if (isAvailableA && !isAvailableB) return -1; // A sobe
@@ -180,6 +181,7 @@ const ProductList: React.FC<ProductListProps> = ({
   };
 
   const getProductBadge = (product: Product, availability: EffectiveProductAvailability) => {
+      if (availability !== 'AVAILABLE' && hasPreorderAvailability(product)) return { text: 'PRÉ-RESERVA', color: 'bg-orange-500', icon: <CalendarClock size={10} /> };
       if (availability === 'COMING_SOON') return { text: 'EM BREVE', color: 'bg-purple-600', icon: <CalendarClock size={10} /> };
       const variantPromotion = product.variants?.some((variant) => Number(variant.originalPrice ?? 0) > Number(variant.price ?? 0));
       if (variantPromotion || (!product.variants?.length && product.promoEndsAt && new Date(product.promoEndsAt) > new Date())) return { text: 'PROMOÇÃO', color: 'bg-red-600', icon: <Zap size={10} /> };
@@ -281,6 +283,7 @@ const ProductList: React.FC<ProductListProps> = ({
                 const isOutOfStock = availability === 'OUT_OF_STOCK';
                 const isComingSoon = availability === 'COMING_SOON';
                 const isUnavailable = availability !== 'AVAILABLE';
+                const preorderAvailable = isUnavailable && hasPreorderAvailability(product);
                 
                 const promoEnded = product.promoEndsAt ? new Date(product.promoEndsAt) <= new Date() : false;
                 const hasVariants = Boolean(product.variants?.length);
@@ -301,8 +304,8 @@ const ProductList: React.FC<ProductListProps> = ({
                     return (
                         <div key={product.id} className="bg-white dark:bg-[#0f172a] rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all border border-gray-100 dark:border-slate-800 flex items-stretch group animate-fade-in relative">
                             <a href={`#product/${product.id}`} onClick={handleProductClick(product.id)} className="w-32 sm:w-56 self-stretch bg-gray-50 dark:bg-slate-900 relative shrink-0 p-2 sm:p-4 flex items-center justify-center min-h-[8rem]">
-                                <img src={product.image} alt={product.name} className={`max-w-[110%] max-h-[110%] object-contain scale-110 transition-transform group-hover:scale-125 ${isOutOfStock ? 'grayscale opacity-70' : ''}`} />
-                                {isOutOfStock && <span className="absolute top-2 left-2 bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded">ESGOTADO</span>}
+                                <img src={product.image} alt={product.name} className={`max-w-[110%] max-h-[110%] object-contain scale-110 transition-transform group-hover:scale-125 ${isOutOfStock && !preorderAvailable ? 'grayscale opacity-70' : ''}`} />
+                                {isOutOfStock && !preorderAvailable && <span className="absolute top-2 left-2 bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded">ESGOTADO</span>}
                                 {badge && <span className={`absolute top-2 left-2 ${badge.color} text-white text-[10px] font-bold px-2 py-1 rounded flex items-center gap-1 shadow-sm`}>{badge.icon}{badge.text}</span>}
                             </a>
                             <div className="flex-1 p-6 flex flex-col sm:flex-row gap-4">
@@ -329,12 +332,12 @@ const ProductList: React.FC<ProductListProps> = ({
                                         {showPromo && <div className="text-sm text-gray-400 line-through font-medium">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.originalPrice!)}</div>}
                                         <div className={`text-2xl font-bold ${showPromo ? 'text-red-600' : 'text-gray-900 dark:text-white'}`}>{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(displayPrice)}</div>
                                         <div className="text-[10px] font-bold mt-1 text-gray-400 dark:text-slate-500 uppercase tracking-tight">
-                                           {isComingSoon ? 'Em breve' : isOutOfStock ? 'Esgotado' : (stock <= 3 ? 'Últimas unidades' : '')}
+                                           {preorderAvailable ? 'Pré-reserva com 50%' : isComingSoon ? 'Em breve' : isOutOfStock ? 'Esgotado' : (stock <= 3 ? 'Últimas unidades' : '')}
                                         </div>
                                     </div>
                                     {hasVariants ? (
                                         <button onClick={handleProductClick(product.id)} className="px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 bg-secondary hover:bg-primary text-white"><Eye size={16} /> Ver Opções</button>
-                                    ) : isComingSoon ? (
+                                    ) : isComingSoon || preorderAvailable ? (
                                         <button onClick={handleProductClick(product.id)} className="px-4 py-2 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 rounded-lg text-sm font-bold transition-colors">Ver Detalhes</button>
                                     ) : (
                                         <button onClick={() => onAddToCart(product)} disabled={isUnavailable || isProcessing} className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 ${isUnavailable ? 'bg-gray-200 dark:bg-slate-700 text-gray-400 cursor-not-allowed' : 'bg-secondary hover:bg-primary text-white'}`}>

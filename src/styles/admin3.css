@@ -1034,6 +1034,19 @@ img { display: block; max-width: 100%; }
 .check-row { display: flex; flex-wrap: wrap; gap: 18px; }
 .check-row label { display: flex; align-items: center; gap: 7px; color: #475569; font-size: 12px; font-weight: 700; }
 .editor-info { margin: 0; padding: 11px; border-radius: 9px; background: #eff6ff; color: #1d4ed8; font-size: 11px; }
+.editor-toggle { padding: 13px; display: flex; align-items: flex-start; gap: 11px; border: 1px solid #fed7aa; border-radius: 11px; background: #fff7ed; color: #9a3412; cursor: pointer; }
+.editor-toggle input { width: 18px; height: 18px; flex: 0 0 auto; margin: 1px 0 0; accent-color: var(--orange); }
+.editor-toggle > span { display: grid; gap: 3px; }
+.editor-toggle strong { font-size: 12px; }
+.editor-toggle small { color: #b45309; font-size: 10px; line-height: 1.45; }
+.preorder-admin-card { display: grid; gap: 12px; padding: 14px; border: 1px solid #fed7aa; border-radius: 13px; background: #fffaf5; }
+.preorder-admin-card p { margin: 8px 0 0; display: flex; align-items: center; gap: 6px; color: #7c2d12; font-size: 11px; }
+.preorder-admin-card p svg { width: 14px; }
+.preorder-payment-summary { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+.preorder-payment-summary span { padding: 10px 11px; display: grid; gap: 3px; border: 1px solid #fed7aa; border-radius: 10px; background: white; }
+.preorder-payment-summary small { color: #64748b; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+.preorder-payment-summary strong { color: #9a3412; font-size: 17px; }
+.preorder-admin-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .receipt-status-note { margin: 0; padding: 12px; border: 1px solid; border-radius: 10px; font-size: 11px; font-weight: 700; line-height: 1.5; }
 .receipt-status-note.incoming { border-color: #bfdbfe; background: #eff6ff; color: #1d4ed8; }
 .receipt-status-note.received { border-color: #a7f3d0; background: #ecfdf5; color: #047857; }

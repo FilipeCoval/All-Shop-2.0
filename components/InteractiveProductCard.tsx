@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Product } from '../types';
 import { ShoppingCart, Eye, Heart, Scale, Plus, Loader2, Star } from 'lucide-react';
 import type { EffectiveProductAvailability } from '../src/domain/productAvailability';
+import { hasPreorderAvailability } from '../src/domain/preorder';
 
 interface InteractiveProductCardProps {
   product: Product;
@@ -45,6 +46,7 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
   const isOutOfStock = availability === 'OUT_OF_STOCK';
   const isComingSoon = availability === 'COMING_SOON';
   const isUnavailable = availability !== 'AVAILABLE';
+  const preorderAvailable = isUnavailable && hasPreorderAvailability(product);
   // Determine a color based on the product category or name
   const getBrandColor = () => {
     const name = product.name.toLowerCase();
@@ -99,12 +101,17 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
         <img
           src={product.image}
           alt={product.name}
-          className={`max-w-full max-h-full object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.2)] ${isUnavailable ? 'grayscale opacity-50' : ''}`}
+          className={`max-w-full max-h-full object-contain drop-shadow-[0_20px_50px_rgba(0,0,0,0.2)] ${isUnavailable && !preorderAvailable ? 'grayscale opacity-50' : ''}`}
         />
         
-        {isOutOfStock && (
+        {isOutOfStock && !preorderAvailable && (
           <div className="absolute inset-0 flex items-center justify-center z-20">
             <span className="bg-red-600 text-white px-6 py-2 rounded-lg text-sm font-black uppercase transform -rotate-12 border-2 border-white shadow-2xl">Esgotado</span>
+          </div>
+        )}
+        {preorderAvailable && (
+          <div className="absolute inset-0 flex items-center justify-center z-20">
+            <span className="bg-orange-500 text-white px-5 py-2 rounded-lg text-sm font-black uppercase transform -rotate-6 border-2 border-white shadow-2xl">Pré-reserva</span>
           </div>
         )}
       </div>
@@ -138,7 +145,7 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
               {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(displayPrice)}
             </span>
             <span className="text-xs text-gray-500 lg:group-hover:text-white/60 font-medium mt-1 transition-colors">
-              {isComingSoon ? 'Em breve' : isOutOfStock ? 'Esgotado' : (availableStock <= 3 ? 'Últimas unidades' : '')}
+              {preorderAvailable ? 'Garanta com sinal de 50%' : isComingSoon ? 'Em breve' : isOutOfStock ? 'Esgotado' : (availableStock <= 3 ? 'Últimas unidades' : '')}
             </span>
           </div>
 
@@ -151,9 +158,10 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
               <Eye size={24} />
             </button>
             <button 
-              onClick={() => onAddToCart(product)} 
-              disabled={isUnavailable || isProcessing}
-              className={`p-3 rounded-2xl shadow-xl active:scale-95 transition-all ${isUnavailable ? 'bg-gray-200 text-gray-400' : 'bg-white text-primary hover:bg-gray-100'}`}
+              onClick={preorderAvailable ? handleProductClick(product.id) : () => onAddToCart(product)}
+              disabled={(!preorderAvailable && isUnavailable) || isProcessing}
+              title={preorderAvailable ? 'Abrir pré-reserva' : 'Adicionar ao carrinho'}
+              className={`p-3 rounded-2xl shadow-xl active:scale-95 transition-all ${!preorderAvailable && isUnavailable ? 'bg-gray-200 text-gray-400' : 'bg-white text-primary hover:bg-gray-100'}`}
             >
               {isProcessing ? <Loader2 size={24} className="animate-spin" /> : <Plus size={24} />}
             </button>
@@ -169,11 +177,11 @@ const InteractiveProductCard: React.FC<InteractiveProductCardProps> = ({
               <Eye size={20} />
           </button>
           <button 
-            onClick={() => onAddToCart(product)} 
-            disabled={isUnavailable || isProcessing}
-            className={`flex-1 flex justify-center items-center gap-2 py-3 rounded-xl font-bold transition-all ${isUnavailable ? 'bg-gray-200 text-gray-400' : 'bg-primary text-white hover:bg-primary/90'}`}
+            onClick={preorderAvailable ? handleProductClick(product.id) : () => onAddToCart(product)}
+            disabled={(!preorderAvailable && isUnavailable) || isProcessing}
+            className={`flex-1 flex justify-center items-center gap-2 py-3 rounded-xl font-bold transition-all ${!preorderAvailable && isUnavailable ? 'bg-gray-200 text-gray-400' : 'bg-primary text-white hover:bg-primary/90'}`}
           >
-            {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <><ShoppingCart size={18} /> {isComingSoon ? 'Em breve' : isOutOfStock ? 'Esgotado' : 'Adicionar'}</>}
+            {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <><ShoppingCart size={18} /> {preorderAvailable ? 'Pré-reservar' : isComingSoon ? 'Em breve' : isOutOfStock ? 'Esgotado' : 'Adicionar'}</>}
           </button>
         </div>
       </div>

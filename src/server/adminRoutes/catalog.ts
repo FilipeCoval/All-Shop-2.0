@@ -16,6 +16,37 @@ const specs = (value: unknown) => {
     .filter(([key, specValue]) => Boolean(key) && (typeof specValue === 'boolean' || Boolean(specValue))));
 };
 const normalize = (value: unknown) => text(value, 120).replace(/\s+/g, ' ').toLocaleLowerCase('pt');
+const dateOnly = (value: unknown) => {
+  const candidate = text(value, 20).slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : '';
+};
+
+/** A preorder is demand planning, never a substitute for physical inventory. */
+const preorderConfig = (value: unknown, current: Record<string, unknown>) => {
+  const input = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const currentConfig = current.preorder && typeof current.preorder === 'object' && !Array.isArray(current.preorder)
+    ? current.preorder as Record<string, unknown>
+    : {};
+  const enabled = Boolean(input.enabled);
+  const capacity = Math.max(0, Math.min(10_000, Math.floor(number(input.capacity))));
+  const reservedQuantity = Math.max(0, Math.floor(number(currentConfig.reservedQuantity)));
+  const estimatedDispatchDate = dateOnly(input.estimatedDispatchDate);
+  const paymentDeadlineHours = Math.min(72, Math.max(2, Math.floor(number(input.paymentDeadlineHours)) || 48));
+
+  if (enabled && capacity < 1) throw new ApiError(400, 'Indique pelo menos uma vaga para a pré-reserva.');
+  if (enabled && !estimatedDispatchDate) throw new ApiError(400, 'Indique a previsão de expedição da pré-reserva.');
+  if (capacity < reservedQuantity) throw new ApiError(409, `Existem ${reservedQuantity} pré-reserva(s) ativa(s). Não pode reduzir a capacidade abaixo desse número.`);
+
+  return {
+    enabled,
+    capacity,
+    reservedQuantity,
+    estimatedDispatchDate,
+    depositPercent: 50,
+    paymentDeadlineHours,
+    note: text(input.note, 500),
+  };
+};
 
 export default async function handler(request: VercelRequest, response: VercelResponse) {
   if (!requirePost(request, response)) return;
@@ -108,6 +139,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const hasWeight = Object.prototype.hasOwnProperty.call(input, 'weight');
       const hasSpecs = Object.prototype.hasOwnProperty.call(input, 'specs');
       const hasFreebie = Object.prototype.hasOwnProperty.call(input, 'isFreebie');
+      const hasPreorder = Object.prototype.hasOwnProperty.call(input, 'preorder');
       const currentVariants = Array.isArray(current.variants) ? current.variants : [];
       const variants = Array.isArray(input.variants) ? input.variants.map((variant: Record<string, unknown>) => {
         const name = text(variant.name, 120);
@@ -155,6 +187,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
         isFreebie: hasFreebie ? Boolean(input.isFreebie) : Boolean(current.isFreebie),
         weight: hasWeight ? (input.weight === '' || input.weight == null ? null : Math.max(0, number(input.weight))) : (current.weight ?? null),
         specs: hasSpecs ? specs(input.specs) : specs(current.specs),
+        preorder: hasPreorder ? preorderConfig(input.preorder, current) : (current.preorder ?? null),
         maxQuantityPerOrder: input.maxQuantityPerOrder ? Math.max(1, Math.floor(number(input.maxQuantityPerOrder))) : null,
         stock: currentSnapshot.exists ? Math.max(0, number(current.stock)) : 0,
         updatedAt: FieldValue.serverTimestamp(),

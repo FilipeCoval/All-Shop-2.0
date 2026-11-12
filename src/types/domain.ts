@@ -29,6 +29,15 @@ export interface Product {
   weight?: number;
   specs?: Record<string, string | boolean>;
   maxQuantityPerOrder?: number;
+  preorder?: {
+    enabled: boolean;
+    capacity: number;
+    reservedQuantity: number;
+    estimatedDispatchDate: string;
+    depositPercent: 50;
+    paymentDeadlineHours: number;
+    note?: string;
+  };
 }
 
 export interface ProductReview {

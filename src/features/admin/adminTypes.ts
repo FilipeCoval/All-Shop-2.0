@@ -105,6 +105,13 @@ export interface AdminOrder {
   stockDeducted?: boolean;
   awaitingCustomerConfirmation?: boolean;
   confirmationDeadlineAt?: string;
+  preorder?: {
+    kind?: 'PREORDER'; productId?: number; variantName?: string; quantity?: number;
+    status?: 'DEPOSIT_PENDING' | 'DEPOSIT_RECEIVED' | 'BALANCE_RECEIVED' | 'CANCELLED' | 'EXPIRED' | 'FULFILLED';
+    capacityHeld?: boolean; depositPercent?: number; depositDue?: number; balanceDue?: number;
+    depositDeadlineAt?: string; estimatedDispatchDate?: string; termsAcceptedAt?: string;
+    depositReceivedAt?: string; balanceReceivedAt?: string; capacityReleasedAt?: string;
+  };
   shippingInfo?: {
     name?: string; email?: string; phone?: string; street?: string; doorNumber?: string;
     zip?: string; city?: string; paymentMethod?: string; deliveryMethod?: string;
