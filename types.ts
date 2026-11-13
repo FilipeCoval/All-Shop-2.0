@@ -110,6 +110,10 @@ export interface ProductPreorderConfig {
   capacity: number;
   /** Quantidade de pré-reservas ativas que já ocupa a capacidade. */
   reservedQuantity: number;
+  /** Optional capacity buckets for products sold in distinct versions. */
+  variantCapacities?: Record<string, number>;
+  /** Active reservations in each version. Kept server-side in normal use. */
+  reservedByVariant?: Record<string, number>;
   /** Data estimada para expedição ou disponibilidade, informada pela loja. */
   estimatedDispatchDate: string;
   /** O sinal é fixo para manter a mensagem clara para o cliente. */

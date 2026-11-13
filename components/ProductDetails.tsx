@@ -12,7 +12,7 @@ import { STORE_NAME, PUBLIC_URL, SHARE_URL } from '../constants';
 import { modularDb } from '../services/firebaseConfig';
 import { doc, updateDoc, increment, arrayUnion, collection, addDoc } from 'firebase/firestore';
 import { effectiveProductAvailability } from '../src/domain/productAvailability';
-import { formatPreorderDate, getPreorderOffer } from '../src/domain/preorder';
+import { formatPreorderDate, getPreorderOffer, getPreorderRemainingForVariant } from '../src/domain/preorder';
 import PreorderModal from './PreorderModal';
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('pt-PT', {
@@ -148,7 +148,10 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   const isOutOfStock = availability === 'OUT_OF_STOCK';
   const isUnavailable = availability !== 'AVAILABLE';
   const preorderOffer = getPreorderOffer(product);
-  const canPreorder = Boolean(preorderOffer && preorderOffer.remaining > 0);
+  const selectedPreorderRemaining = hasVariants
+    ? getPreorderRemainingForVariant(preorderOffer, selectedVariant?.name)
+    : Number(preorderOffer?.remaining ?? 0);
+  const canPreorder = Boolean(preorderOffer && selectedPreorderRemaining > 0);
   const isLowStock = currentStock > 0 && currentStock <= 3 && currentStock !== 999 && availability === 'AVAILABLE';
   const isFavorite = wishlist.includes(product.id);
   
@@ -525,7 +528,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                     {product.variants.map(variant => {
                       const variantStock = getStock(product.id, variant.name);
                       const isSoldOut = variantStock <= 0 && variantStock !== 999;
-                      const canReserveVariant = canPreorder && isSoldOut;
+                      const variantPreorderRemaining = getPreorderRemainingForVariant(preorderOffer, variant.name);
+                      const canReserveVariant = isSoldOut && variantPreorderRemaining > 0;
                       const isSelected = selectedVariantName === variant.name;
                       return (
                         <button
@@ -537,7 +541,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                         >
                           <span>
                             <span className="block text-sm font-bold">{variant.name}</span>
-                            <span className={`mt-0.5 block text-[11px] font-semibold ${isSoldOut && !canReserveVariant ? 'text-red-500' : canReserveVariant ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{canReserveVariant ? 'Pré-reserva disponível' : isSoldOut ? 'Esgotado' : variantStock === 999 ? 'Disponível' : `${variantStock} em stock`}</span>
+                            <span className={`mt-0.5 block text-[11px] font-semibold ${isSoldOut && !canReserveVariant ? 'text-red-500' : canReserveVariant ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{canReserveVariant ? `Pré-reserva · ${variantPreorderRemaining} vaga${variantPreorderRemaining === 1 ? '' : 's'}` : isSoldOut ? 'Esgotado' : variantStock === 999 ? 'Disponível' : `${variantStock} em stock`}</span>
                           </span>
                           <span className="text-right"><span className="block text-sm font-extrabold">{formatCurrency(variant.price)}</span>{Number(variant.originalPrice ?? 0) > Number(variant.price) && <span className="mt-0.5 block text-[10px] font-semibold text-slate-400 line-through">{formatCurrency(Number(variant.originalPrice))}</span>}</span>
                         </button>
@@ -553,7 +557,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                   <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5 dark:border-orange-900/60 dark:bg-orange-950/25">
                     <h4 className="flex items-center gap-2 text-lg font-bold text-orange-950 dark:text-orange-200"><PackageCheck size={20} /> Pré-reserve já com sinal de 50%</h4>
                     <p className="mb-3 mt-1 text-sm leading-relaxed text-orange-800 dark:text-orange-300">Garante o preço de {formatCurrency(currentPrice)} e a sua vaga. Expedição prevista para <strong>{formatPreorderDate(preorderOffer.estimatedDispatchDate)}</strong>.</p>
-                    <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">{preorderOffer.remaining} vaga{preorderOffer.remaining === 1 ? '' : 's'} disponível{preorderOffer.remaining === 1 ? '' : 'is'} · sinal confirmado até {preorderOffer.paymentDeadlineHours} horas após o pedido.</p>
+                    <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">{selectedPreorderRemaining} vaga{selectedPreorderRemaining === 1 ? '' : 's'} disponível{selectedPreorderRemaining === 1 ? '' : 'is'} nesta versão · sinal confirmado até {preorderOffer.paymentDeadlineHours} horas após o pedido.</p>
                   </div>
                 ) : isUnavailable ? (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 dark:border-amber-900/60 dark:bg-amber-950/25">
@@ -720,7 +724,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           <img src={selectedImage} alt={product.name} className="max-h-[88vh] max-w-[90vw] object-contain" onClick={event => event.stopPropagation()} />
         </div>
       )}
-      {isPreorderOpen && preorderOffer && <PreorderModal product={product} selectedVariant={selectedVariant} currentUser={currentUser} offer={preorderOffer} onClose={() => setIsPreorderOpen(false)} />}
+      {isPreorderOpen && preorderOffer && <PreorderModal product={product} selectedVariant={selectedVariant} currentUser={currentUser} offer={preorderOffer} remaining={selectedPreorderRemaining} onClose={() => setIsPreorderOpen(false)} />}
     </div>
   );
 };

@@ -85,6 +85,8 @@ type PreorderConfig = {
   enabled?: unknown;
   capacity?: unknown;
   reservedQuantity?: unknown;
+  variantCapacities?: unknown;
+  reservedByVariant?: unknown;
   estimatedDispatchDate?: unknown;
   paymentDeadlineHours?: unknown;
   note?: unknown;
@@ -101,12 +103,24 @@ const preorderDate = (value: unknown) => {
 const preorderReservationId = (orderId: string) => `preorder_${orderId}`;
 const PREORDER_RESERVATION_END = new Date('2099-12-31T23:59:59.999Z');
 
+const preorderNumberMap = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {} as Record<string, number>;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .map(([key, quantity]) => [normaliseVariant(key), Math.max(0, Math.floor(Number(quantity) || 0))] as const)
+    .filter(([key, quantity]) => Boolean(key) && quantity > 0));
+};
+
+const preorderMapTotal = (value: Record<string, number>) => Object.values(value).reduce((total, quantity) => total + quantity, 0);
+
 const preorderOffer = (product: Record<string, unknown>) => {
   const source = product.preorder && typeof product.preorder === 'object' && !Array.isArray(product.preorder)
     ? product.preorder as PreorderConfig
     : null;
   if (!source?.enabled) return null;
-  const capacity = Math.max(0, Math.floor(Number(source.capacity) || 0));
+  const variantCapacities = preorderNumberMap(source.variantCapacities);
+  const reservedByVariant = preorderNumberMap(source.reservedByVariant);
+  const hasVariantCapacities = Object.keys(variantCapacities).length > 0;
+  const capacity = hasVariantCapacities ? preorderMapTotal(variantCapacities) : Math.max(0, Math.floor(Number(source.capacity) || 0));
   const reservedQuantity = Math.max(0, Math.floor(Number(source.reservedQuantity) || 0));
   const estimatedDispatchDate = preorderDate(source.estimatedDispatchDate);
   if (!capacity || !estimatedDispatchDate) return null;
@@ -114,6 +128,9 @@ const preorderOffer = (product: Record<string, unknown>) => {
     source,
     capacity,
     reservedQuantity,
+    variantCapacities,
+    reservedByVariant,
+    hasVariantCapacities,
     estimatedDispatchDate,
     paymentDeadlineHours: Math.min(72, Math.max(2, Math.floor(Number(source.paymentDeadlineHours) || 48))),
   };
@@ -156,29 +173,42 @@ const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) =
     if (!offer) throw new Error('A pré-reserva deste produto já não está ativa.');
     if (product.maxQuantityPerOrder && quantity > Number(product.maxQuantityPerOrder)) throw new Error(`Só pode pré-reservar até ${product.maxQuantityPerOrder} unidade(s) deste produto.`);
 
-    let released = 0;
+    let activeReserved = 0;
+    const activeReservedByVariant: Record<string, number> = {};
     for (const document of productOrders.docs) {
       const current = document.data() ?? {};
       const reservation = current.preorder && typeof current.preorder === 'object' ? current.preorder as Record<string, unknown> : {};
       const expired = reservation.status === 'DEPOSIT_PENDING' && reservation.capacityHeld === true && new Date(String(reservation.depositDeadlineAt ?? '')).getTime() <= now.getTime();
-      if (!expired) continue;
       const held = Math.max(0, Math.floor(Number(reservation.quantity) || 0));
-      released += held;
-      transaction.update(document.ref, {
-        status: 'Cancelado',
-        preorder: { ...reservation, status: 'EXPIRED', capacityHeld: false, capacityReleasedAt: now.toISOString() },
-        updatedAt: FieldValue.serverTimestamp(),
-        statusHistory: FieldValue.arrayUnion({ status: 'Cancelado', date: now.toISOString(), notes: 'Pré-reserva expirada: o sinal não foi recebido dentro do prazo.' }),
-      });
-      transaction.delete(firestore.collection('stock_reservations').doc(preorderReservationId(document.id)));
+      if (expired) {
+        transaction.update(document.ref, {
+          status: 'Cancelado',
+          preorder: { ...reservation, status: 'EXPIRED', capacityHeld: false, capacityReleasedAt: now.toISOString() },
+          updatedAt: FieldValue.serverTimestamp(),
+          statusHistory: FieldValue.arrayUnion({ status: 'Cancelado', date: now.toISOString(), notes: 'Pré-reserva expirada: o sinal não foi recebido dentro do prazo.' }),
+        });
+        transaction.delete(firestore.collection('stock_reservations').doc(preorderReservationId(document.id)));
+        continue;
+      }
+      if (reservation.capacityHeld === true && !['CANCELLED', 'EXPIRED', 'FULFILLED'].includes(String(reservation.status ?? ''))) {
+        activeReserved += held;
+        const key = normaliseVariant(reservation.variantName);
+        if (key) activeReservedByVariant[key] = (activeReservedByVariant[key] ?? 0) + held;
+      }
     }
 
-    const activeReserved = Math.max(0, offer.reservedQuantity - released);
-    if (activeReserved + quantity > offer.capacity) throw new Error('As vagas desta pré-reserva já foram preenchidas. Pode pedir um aviso caso abram novas vagas.');
     const variant = Array.isArray(product.variants)
       ? product.variants.find((item: unknown) => normaliseVariant((item as Record<string, unknown>)?.name) === normaliseVariant(selectedVariant)) as Record<string, unknown> | undefined
       : undefined;
     if (Array.isArray(product.variants) && product.variants.length > 0 && !variant) throw new Error('Escolha uma versão válida do produto.');
+    const variantKey = normaliseVariant(selectedVariant);
+    if (offer.hasVariantCapacities) {
+      const variantCapacity = Number(offer.variantCapacities[variantKey] ?? 0);
+      const availableForVariant = Math.max(0, variantCapacity - Number(activeReservedByVariant[variantKey] ?? 0));
+      if (!variantCapacity || quantity > availableForVariant) throw new Error(`Esta versão já não tem vagas suficientes. Restam ${availableForVariant} vaga${availableForVariant === 1 ? '' : 's'} para pré-reserva.`);
+    } else if (activeReserved + quantity > offer.capacity) {
+      throw new Error('As vagas desta pré-reserva já foram preenchidas. Pode pedir um aviso caso abram novas vagas.');
+    }
     const unitPrice = Number(variant?.price ?? product.price);
     if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('O preço deste produto precisa de ser atualizado antes de aceitar pré-reservas.');
     const subtotal = roundMoney(unitPrice * quantity);
@@ -239,7 +269,7 @@ const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) =
     const lotsForProjection = inventorySnapshot.docs.map((document) => ({ id: document.id, ...document.data() }));
     transaction.update(productRef, {
       ...projectPublicStock(productId, product, lotsForProjection, reservationsForProjection),
-      preorder: { ...offer.source, reservedQuantity: activeReserved + quantity, depositPercent: 50, paymentDeadlineHours: offer.paymentDeadlineHours },
+      preorder: { ...offer.source, reservedQuantity: activeReserved + quantity, ...(offer.hasVariantCapacities ? { reservedByVariant: { ...activeReservedByVariant, [variantKey]: Number(activeReservedByVariant[variantKey] ?? 0) + quantity } } : {}), depositPercent: 50, paymentDeadlineHours: offer.paymentDeadlineHours },
       stockUpdatedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     });

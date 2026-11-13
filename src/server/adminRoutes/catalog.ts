@@ -21,26 +21,54 @@ const dateOnly = (value: unknown) => {
   return /^\d{4}-\d{2}-\d{2}$/.test(candidate) ? candidate : '';
 };
 
+const preorderNumberMap = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {} as Record<string, number>;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .map(([key, quantity]) => [normalize(key), Math.max(0, Math.min(10_000, Math.floor(number(quantity))))] as const)
+    .filter(([key]) => Boolean(key)));
+};
+
+const mapTotal = (value: Record<string, number>) => Object.values(value).reduce((total, quantity) => total + quantity, 0);
+
 /** A preorder is demand planning, never a substitute for physical inventory. */
-const preorderConfig = (value: unknown, current: Record<string, unknown>) => {
+const preorderConfig = (value: unknown, current: Record<string, unknown>, variantNames: string[]) => {
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const currentConfig = current.preorder && typeof current.preorder === 'object' && !Array.isArray(current.preorder)
     ? current.preorder as Record<string, unknown>
     : {};
   const enabled = Boolean(input.enabled);
-  const capacity = Math.max(0, Math.min(10_000, Math.floor(number(input.capacity))));
+  const variantKeys = [...new Set(variantNames.map(normalize).filter(Boolean))];
+  const inputVariantCapacities = preorderNumberMap(input.variantCapacities);
+  const hasVariantCapacities = variantKeys.length > 0 && Object.prototype.hasOwnProperty.call(input, 'variantCapacities');
+  const variantCapacities = Object.fromEntries(variantKeys.map((key) => [key, inputVariantCapacities[key] ?? 0]));
+  const capacity = hasVariantCapacities
+    ? mapTotal(variantCapacities)
+    : Math.max(0, Math.min(10_000, Math.floor(number(input.capacity))));
   const reservedQuantity = Math.max(0, Math.floor(number(currentConfig.reservedQuantity)));
+  const reservedByVariant = preorderNumberMap(currentConfig.reservedByVariant);
   const estimatedDispatchDate = dateOnly(input.estimatedDispatchDate);
   const paymentDeadlineHours = Math.min(72, Math.max(2, Math.floor(number(input.paymentDeadlineHours)) || 48));
 
   if (enabled && capacity < 1) throw new ApiError(400, 'Indique pelo menos uma vaga para a pré-reserva.');
   if (enabled && !estimatedDispatchDate) throw new ApiError(400, 'Indique a previsão de expedição da pré-reserva.');
   if (capacity < reservedQuantity) throw new ApiError(409, `Existem ${reservedQuantity} pré-reserva(s) ativa(s). Não pode reduzir a capacidade abaixo desse número.`);
+  if (hasVariantCapacities) {
+    const mappedReservations = mapTotal(reservedByVariant);
+    if (reservedQuantity > mappedReservations && !Object.keys(preorderNumberMap(currentConfig.variantCapacities)).length) {
+      throw new ApiError(409, 'Este produto tem pré-reservas antigas sem versão identificada. Termine ou cancele-as antes de dividir as vagas por versão.');
+    }
+    for (const [variantKey, reserved] of Object.entries(reservedByVariant)) {
+      if ((variantCapacities[variantKey] ?? 0) < reserved) {
+        throw new ApiError(409, `A opção “${variantKey}” já tem ${reserved} pré-reserva(s) ativa(s). Não pode reduzir as vagas abaixo desse número.`);
+      }
+    }
+  }
 
   return {
     enabled,
     capacity,
     reservedQuantity,
+    ...(hasVariantCapacities ? { variantCapacities, reservedByVariant } : {}),
     estimatedDispatchDate,
     depositPercent: 50,
     paymentDeadlineHours,
@@ -187,7 +215,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
         isFreebie: hasFreebie ? Boolean(input.isFreebie) : Boolean(current.isFreebie),
         weight: hasWeight ? (input.weight === '' || input.weight == null ? null : Math.max(0, number(input.weight))) : (current.weight ?? null),
         specs: hasSpecs ? specs(input.specs) : specs(current.specs),
-        preorder: hasPreorder ? preorderConfig(input.preorder, current) : (current.preorder ?? null),
+        preorder: hasPreorder ? preorderConfig(input.preorder, current, variants.map((variant: Record<string, unknown>) => text(variant.name, 120))) : (current.preorder ?? null),
         maxQuantityPerOrder: input.maxQuantityPerOrder ? Math.max(1, Math.floor(number(input.maxQuantityPerOrder))) : null,
         stock: currentSnapshot.exists ? Math.max(0, number(current.stock)) : 0,
         updatedAt: FieldValue.serverTimestamp(),

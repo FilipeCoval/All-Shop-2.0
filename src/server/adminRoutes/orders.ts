@@ -15,6 +15,23 @@ const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g,
 const normalize = (value: unknown) => text(value).toLowerCase();
 const cleanOrderId = (value: unknown) => text(value, 100).replace(/^#+/, '');
 const preorderReservationId = (orderId: string) => `preorder_${orderId}`;
+const releasePreorderCapacity = (config: DocumentData, preorder: DocumentData) => {
+  const held = preorder.capacityHeld === true ? Math.max(0, Number(preorder.quantity ?? 0)) : 0;
+  const reservedByVariant = config.reservedByVariant && typeof config.reservedByVariant === 'object' && !Array.isArray(config.reservedByVariant)
+    ? Object.fromEntries(Object.entries(config.reservedByVariant as Record<string, unknown>).map(([key, value]) => [key, Math.max(0, Number(value) || 0)]))
+    : {} as Record<string, number>;
+  const variantKey = normalizeVariant(preorder.variantName);
+  if (variantKey && Object.prototype.hasOwnProperty.call(reservedByVariant, variantKey)) {
+    const remaining = Math.max(0, Number(reservedByVariant[variantKey] ?? 0) - held);
+    if (remaining) reservedByVariant[variantKey] = remaining;
+    else delete reservedByVariant[variantKey];
+  }
+  return {
+    ...config,
+    reservedQuantity: Math.max(0, Number(config.reservedQuantity ?? 0) - held),
+    ...(Object.keys(reservedByVariant).length || config.reservedByVariant ? { reservedByVariant } : {}),
+  };
+};
 
 const inventoryUnits = (value: unknown, lotId: string): DocumentData[] => {
   if (value === undefined) return [];
@@ -531,7 +548,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const lotsForProjection = inventorySnapshot.docs.map((document) => ({ id: document.id, ...document.data() } as LotData));
         const productUpdate = {
           ...projectPublicStock(productId, product, lotsForProjection, reservationsForProjection),
-          preorder: { ...productPreorder, reservedQuantity: Math.max(0, Number(productPreorder.reservedQuantity ?? 0) - held) },
+          preorder: releasePreorderCapacity(productPreorder, preorder),
           stockUpdatedAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         };
@@ -647,7 +664,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
           const productUpdate: DocumentData = { ...projectPublicStock(context.productId, context.product, projectedLots, reservationsForProjection), stockUpdatedAt: FieldValue.serverTimestamp() };
           if (preorder?.kind === 'PREORDER' && preorder.capacityHeld === true && Number(preorder.productId) === context.productId) {
             const productPreorder = context.product.preorder && typeof context.product.preorder === 'object' ? context.product.preorder as DocumentData : {};
-            productUpdate.preorder = { ...productPreorder, reservedQuantity: Math.max(0, Number(productPreorder.reservedQuantity ?? 0) - Math.max(0, Number(preorder.quantity ?? 0))) };
+            productUpdate.preorder = releasePreorderCapacity(productPreorder, preorder);
             transaction.delete(database.collection('stock_reservations').doc(preorderReservationId(orderId)));
           }
           transaction.update(context.productRef, productUpdate);

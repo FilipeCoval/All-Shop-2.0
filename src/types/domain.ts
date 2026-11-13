@@ -33,6 +33,8 @@ export interface Product {
     enabled: boolean;
     capacity: number;
     reservedQuantity: number;
+    variantCapacities?: Record<string, number>;
+    reservedByVariant?: Record<string, number>;
     estimatedDispatchDate: string;
     depositPercent: 50;
     paymentDeadlineHours: number;
