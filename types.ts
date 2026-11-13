@@ -54,7 +54,7 @@ export interface Order {
   id: string;
   date: string;
   total: number;
-  status: 'Pendente' | 'Processamento' | 'Pago' | 'Enviado' | 'Entregue' | 'Cancelado' | 'Reclamação' | 'Devolvido' | 'Levantamento em Loja';
+  status: 'A confirmar' | 'Pendente' | 'Processamento' | 'Pago' | 'Enviado' | 'Entregue' | 'Cancelado' | 'Reclamação' | 'Devolvido' | 'Levantamento em Loja';
   items: (OrderItem | string)[];
   userId?: string | null;
   guestToken?: string;
@@ -65,11 +65,29 @@ export interface Order {
   stockDeducted?: boolean;
   cancellationReason?: string;
   statusHistory?: StatusHistory[];
-  returnRequest?: {
-      date: string;
-      reason: string;
+  cancellationRequest?: {
       status: 'Pendente' | 'Aprovado' | 'Rejeitado';
+      type: 'TOTAL' | 'PARCIAL';
+      reason: string;
+      requestedAt: string;
+      requestedByUserId?: string;
+      reviewedAt?: string;
+      reviewedByUserId?: string;
+      reviewNote?: string;
+      items?: Array<{ productId: number; quantity: number; selectedVariant?: string }>;
   };
+  returnRequest?: {
+      status: 'Pendente' | 'Aprovado' | 'Rejeitado';
+      reason: string;
+      requestedAt?: string;
+      date?: string; // Retrocompatibilidade com pedidos antigos
+      requestedByUserId?: string;
+      reviewedAt?: string;
+      reviewedByUserId?: string;
+      reviewNote?: string;
+  };
+  stockRestoredAt?: string;
+  stockRestoredItems?: Array<{ productId: number; quantity: number; selectedVariant?: string }>;
   // Fulfillment Fields
   fulfilledAt?: string | null;
   fulfilledBy?: string | null;
@@ -79,6 +97,48 @@ export interface Order {
   discountValue?: number; // Valor total do desconto aplicado
   couponCode?: string; // Código do cupão utilizado
   totalProductCost?: number; // Custo exato dos produtos (baseado nos lotes/seriais usados)
+  /** Pedido registado após a mensagem, antes de o cliente o confirmar. */
+  awaitingCustomerConfirmation?: boolean;
+  confirmationDeadlineAt?: string;
+  /** Reserva de um artigo ainda não recebido. Não altera o stock físico nem entra como receita antes da entrega. */
+  preorder?: PreorderOrderInfo;
+}
+
+export interface ProductPreorderConfig {
+  enabled: boolean;
+  /** Quantidade máxima que pode ser aceite para esta previsão de compra. */
+  capacity: number;
+  /** Quantidade de pré-reservas ativas que já ocupa a capacidade. */
+  reservedQuantity: number;
+  /** Optional capacity buckets for products sold in distinct versions. */
+  variantCapacities?: Record<string, number>;
+  /** Active reservations in each version. Kept server-side in normal use. */
+  reservedByVariant?: Record<string, number>;
+  /** Data estimada para expedição ou disponibilidade, informada pela loja. */
+  estimatedDispatchDate: string;
+  /** O sinal é fixo para manter a mensagem clara para o cliente. */
+  depositPercent: 50;
+  /** Prazo para o cliente liquidar o sinal após criar o pedido. */
+  paymentDeadlineHours: number;
+  note?: string;
+}
+
+export interface PreorderOrderInfo {
+  kind: 'PREORDER';
+  productId: number;
+  variantName?: string;
+  quantity: number;
+  status: 'DEPOSIT_PENDING' | 'DEPOSIT_RECEIVED' | 'BALANCE_RECEIVED' | 'CANCELLED' | 'EXPIRED' | 'FULFILLED';
+  capacityHeld: boolean;
+  depositPercent: 50;
+  depositDue: number;
+  balanceDue: number;
+  depositDeadlineAt: string;
+  estimatedDispatchDate: string;
+  termsAcceptedAt: string;
+  depositReceivedAt?: string;
+  balanceReceivedAt?: string;
+  capacityReleasedAt?: string;
 }
 
 export interface StockMovement {
@@ -204,6 +264,7 @@ export interface Product {
   premiumData?: PremiumBentoData;
   cardHoverColor?: string; // NOVO: Cor do efeito hover no card do produto
   comingSoon?: boolean;
+  availabilityMode?: import('./src/domain/productAvailability').ProductAvailabilityMode;
   maxQuantityPerOrder?: number; // NOVO: Limite de quantidade por encomenda
   badges?: string[];
   images?: string[];
@@ -212,12 +273,16 @@ export interface Product {
   specs?: Record<string, string | boolean>; // Especificações técnicas para comparação
   isFreebie?: boolean; // NOVO: Produto elegível como oferta
   isPrivate?: boolean; // NOVO: Produto privado (só admin vê)
+  preorder?: ProductPreorderConfig;
 }
 
 export interface ProductVariant {
   name: string;
   price: number;
+  originalPrice?: number | null;
   image?: string;
+  description?: string;
+  features?: string[];
   stock?: number;
 }
 
@@ -259,14 +324,37 @@ export interface InventoryProduct {
   isPrivate?: boolean; // NOVO: Produto privado (só admin vê)
 }
 
+export type ProductUnitStatus =
+  | 'AVAILABLE'
+  | 'RESERVED'
+  | 'SOLD'
+  | 'RETURNED'
+  | 'DEFECTIVE'
+  | 'IN_TRANSIT';
+
 export interface ProductUnit {
+  /**
+   * Identificador estável da unidade. Nos registos antigos pode ser o próprio S/N.
+   * Nos novos registos pode ser um código interno All-Shop, mantendo o S/N em serialNumber.
+   */
   id: string;
-  status: 'AVAILABLE' | 'SOLD' | 'RESERVED';
+  status: ProductUnitStatus;
   addedAt: string;
+
+  // Rastreabilidade: mantemos compatibilidade com unidades antigas que só têm id.
+  serialNumber?: string;
+  barcode?: string;
+  internalLabel?: string;
+  notes?: string;
+
   reservedBy?: string; // sessionId ou userId
   reservedUntil?: string;
   soldAt?: string;
   soldToOrder?: string;
+  soldToCustomerName?: string;
+  soldToCustomerEmail?: string;
+  returnedAt?: string;
+  defectiveAt?: string;
 }
 
 export interface StockReservation {

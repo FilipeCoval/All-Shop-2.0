@@ -12,7 +12,7 @@ import {   db, storage, requestPushPermission, messaging , modularDb } from '../
 import { collection, doc, updateDoc, addDoc, arrayUnion, arrayRemove, deleteField, onSnapshot, query, where, getDoc, runTransaction, getFirestore, writeBatch, getDocs } from 'firebase/firestore';
 import { ref, deleteObject, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 
-import { cancelOrderItem } from '../services/returnService';
+import { redeemLoyaltyReward, requestOrderAction } from '../services/api';
 import LoyaltyPage from './LoyaltyPage';
 import RequestsTab from './RequestsTab';
 
@@ -293,162 +293,50 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
     };
   
   const handleOrderAction = async () => {
-    if (!modalState.order || !modalReason.trim()) { alert("Por favor, preencha o motivo."); return; }
+    if (!modalState.order || !modalReason.trim()) {
+      alert("Por favor, preencha o motivo.");
+      return;
+    }
+
     setIsProcessingAction(true);
     try {
-        const orderRef = doc(modularDb, 'orders', modalState.order.id);
-        const now = new Date().toISOString();
-        if (modalState.type === 'cancel') {
-            // Prepare Matching Inventory Lots to restore stock on cancellation
-            const inventoryDocsToRead: any[] = [];
-            if (modalState.order && Array.isArray(modalState.order.items)) {
-                for (const item of modalState.order.items) {
-                    if (typeof item === 'object' && item !== null && item.productId) {
-                        const q = query(
-                            collection(modularDb, 'products_inventory'),
-                            where('publicProductId', '==', Number(item.productId))
-                        );
-                        const qSnap = await getDocs(q);
-                        qSnap.forEach(d => {
-                            const invData = d.data();
-                            const orderVariant = String(item.selectedVariant || '').trim().toLowerCase();
-                            const batchVariant = String(invData.variant || '').trim().toLowerCase();
-                            if (orderVariant === batchVariant) {
-                                inventoryDocsToRead.push({ ref: d.ref, id: d.id, itemQty: item.quantity, productId: item.productId });
-                            }
-                        });
-                    }
-                }
-            }
+      const action = modalState.type === 'return' ? 'request_return' : 'cancel_order';
+      const response = await requestOrderAction({
+        action,
+        orderId: modalState.order.id,
+        reason: modalReason.trim(),
+      });
 
-            await runTransaction(modularDb, async (transaction) => {
-                // 1. First, perform all reads
-                const updates: any[] = [];
-                const invSnaps: Record<string, any> = {};
-                for (const docToRead of inventoryDocsToRead) {
-                    const snap = await transaction.get(docToRead.ref);
-                    invSnaps[docToRead.id] = snap;
-                }
-                
-                if (modalState.order && modalState.order.items) {
-                    // Repor o stock no lote de inventário correspondente (products_inventory)
-                    for (const docToRead of inventoryDocsToRead) {
-                        const invSnap = invSnaps[docToRead.id];
-                        if (invSnap && invSnap.exists()) {
-                            const invData = invSnap.data() as any;
-                            let currentQtySold = Number(invData.quantitySold || 0);
-                            let newQtySold = currentQtySold;
-
-                            if (modalState.order?.stockDeducted) {
-                                newQtySold = Math.max(0, currentQtySold - docToRead.itemQty);
-                            }
-
-                            let updatedUnits = invData.units ? [...invData.units] : null;
-                            if (updatedUnits) {
-                                updatedUnits = updatedUnits.map((unit: any) => {
-                                    if (unit.soldToOrder === modalState.order?.id) {
-                                        return {
-                                            ...unit,
-                                            status: 'AVAILABLE',
-                                            soldAt: undefined,
-                                            soldToOrder: undefined
-                                        };
-                                    }
-                                    return unit;
-                                });
-                            }
-
-                            const invUpdateData: any = {
-                                quantitySold: newQtySold,
-                                status: newQtySold >= (invData.quantityBought || 0) ? 'SOLD' : (newQtySold > 0 ? 'PARTIAL' : 'AVAILABLE')
-                            };
-                            if (updatedUnits) {
-                                invUpdateData.units = updatedUnits;
-                            }
-
-                            updates.push({
-                                ref: docToRead.ref,
-                                data: invUpdateData
-                            });
-                        }
-                    }
-
-                    // Depois, repor stock na coleção principal (products_public)
-                    for (const item of modalState.order.items) {
-                        if (typeof item !== 'object' || item === null) continue;
-                        const productDocRef = doc(modularDb, 'products_public', item.productId.toString());
-                        const productDoc = await transaction.get(productDocRef);
-                        
-                        if (productDoc.exists()) {
-                            const productData = productDoc.data() as Product;
-                            
-                            let updatedVariants = productData.variants;
-                            if (item.selectedVariant && productData.variants) {
-                                const vIndex = productData.variants.findIndex((v: any) => v.name === item.selectedVariant);
-                                if (vIndex !== -1) {
-                                    updatedVariants = [...productData.variants];
-                                    updatedVariants[vIndex] = {
-                                        ...updatedVariants[vIndex],
-                                        stock: (updatedVariants[vIndex].stock || 0) + item.quantity
-                                    };
-                                }
-                            }
-                            
-                            const updateData: any = { stock: (productData.stock || 0) + item.quantity };
-                            if (updatedVariants) updateData.variants = updatedVariants;
-                            
-                            updates.push({
-                                ref: productDoc.ref,
-                                data: Object.fromEntries(Object.entries(updateData).filter(([_,v]) => v !== undefined))
-                            });
-                        }
-                    }
-                }
-
-                // 2. Then, perform all writes
-                transaction.update(orderRef, { 
-                    status: 'Cancelado', 
-                    statusHistory: arrayUnion({ status: 'Cancelado', date: now, notes: modalReason.trim() }) 
-                });
-
-                for (const update of updates) {
-                    transaction.update(update.ref, update.data);
-                }
-            });
-        } else if (modalState.type === 'return') {
-            await updateDoc(orderRef, { 
-                returnRequest: { date: now, reason: modalReason.trim(), status: 'Pendente' },
-                statusHistory: arrayUnion({ status: 'Pendente Devolução', date: now, notes: `Pedido Devolução: ${modalReason.trim()}` })
-            });
-        }
-        setModalState({ type: 'cancel', order: null });
-        setModalReason('');
-        alert("O seu pedido foi enviado com sucesso. A nossa equipa irá analisar e entrar em contacto.");
-    } catch (e) { 
-        console.error("Erro ao processar ação:", e); 
-        alert("Ocorreu um erro. Tente novamente."); 
-    } finally { 
-        setIsProcessingAction(false); 
+      setModalState({ type: 'cancel', order: null });
+      setModalReason('');
+      alert(response?.message || "O seu pedido foi enviado para análise.");
+    } catch (error: any) {
+      console.error("Erro ao enviar pedido de encomenda:", error);
+      alert(error?.message || "Não foi possível enviar o pedido. Tente novamente.");
+    } finally {
+      setIsProcessingAction(false);
     }
   };
 
   const handleCancelItem = async (order: Order, productId: number, quantity: number) => {
-      if (!window.confirm("Tem a certeza que quer cancelar este item da encomenda?")) return;
-      setIsProcessingAction(true);
-      
-      const item = order.items.find(i => typeof i === 'object' && i.productId === productId) as OrderItem | undefined;
-      const serials = item?.serialNumbers?.slice(0, quantity) || [];
-      
-      const result = await cancelOrderItem(order.id, productId, serials, "Cancelamento pelo cliente");
+    if (!window.confirm("Tem a certeza que quer pedir o cancelamento deste artigo? O pedido será analisado pela nossa equipa.")) return;
+    setIsProcessingAction(true);
+    try {
+      const response = await requestOrderAction({
+        action: 'cancel_item',
+        orderId: order.id,
+        productId,
+        quantity,
+        reason: 'Pedido de cancelamento de artigo pelo cliente',
+      });
+      alert(response?.message || "O pedido foi enviado para análise.");
+    } catch (error: any) {
+      console.error("Erro ao pedir cancelamento do artigo:", error);
+      alert(error?.message || "Não foi possível enviar o pedido. Tente novamente.");
+    } finally {
       setIsProcessingAction(false);
-      if (result.success) {
-          alert("Item cancelado com sucesso.");
-      } else {
-          alert(result.message);
-      }
+    }
   };
-  
-  // ... (Keep existing variables and helpers) ...
 
   const handleRedeemReward = async (reward: typeof LOYALTY_REWARDS[0]) => {
       const currentPoints = user.loyaltyPoints || 0;
@@ -456,15 +344,12 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
       if (!window.confirm(`Trocar ${reward.cost} pontos por um vale de ${reward.value}€?`)) return;
       setIsRedeeming(reward.id);
       try {
-          const code = `REWARD-${user.uid?.substring(0,4).toUpperCase()}-${Date.now().toString().substring(7)}`;
-          const newCoupon: Coupon = { code, type: 'FIXED', value: reward.value, minPurchase: reward.minPurchase, isActive: true, usageCount: 0 };
-          await addDoc(collection(modularDb, 'coupons'), newCoupon);
-          const newHistoryItem: PointHistory = { id: Date.now().toString(), date: new Date().toISOString(), amount: -reward.cost, reason: `Resgate: ${reward.title}` };
-          const updatedPoints = currentPoints - reward.cost;
-          const updatedHistory = [newHistoryItem, ...(user.pointsHistory || [])];
-          await updateDoc(doc(modularDb, 'users', user.uid), { loyaltyPoints: updatedPoints, pointsHistory: updatedHistory });
-          onUpdateUser({ loyaltyPoints: updatedPoints, pointsHistory: updatedHistory });
-          alert(`Parabéns! O seu código é: ${code}\n(Pode encontrá-lo no checkout)`);
+          const result = await redeemLoyaltyReward(reward.id);
+          onUpdateUser({
+              loyaltyPoints: Number(result.loyaltyPoints || 0),
+              pointsHistory: Array.isArray(result.pointsHistory) ? result.pointsHistory : user.pointsHistory,
+          });
+          alert(`Parabéns! O seu código é: ${result.code}\n(Pode encontrá-lo no checkout)`);
       } catch (error) { 
           console.error(error); 
           alert("Erro ao resgatar recompensa. Tente novamente."); 
@@ -507,8 +392,8 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
   const highestAffordableReward = affordableRewards.length > 0 ? affordableRewards[affordableRewards.length - 1] : null;
   
   const safeOrders = orders || [];
-  const totalSpentCount = safeOrders.reduce((acc, order) => acc + (order.status !== 'Cancelado' ? (order.total || 0) : 0), 0);
-  const totalOrdersCount = safeOrders.filter(o => o.status !== 'Cancelado').length;
+  const totalSpentCount = safeOrders.reduce((acc, order) => acc + (!['Cancelado', 'A confirmar'].includes(order.status) ? (order.total || 0) : 0), 0);
+  const totalOrdersCount = safeOrders.filter(o => !['Cancelado', 'A confirmar'].includes(o.status)).length;
   
   const displayOrderId = (id: string) => { 
     if (!id) return '#???'; 
@@ -666,7 +551,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
 
   const getStatusStep = (status: string) => {
       const steps = ['Processamento', 'Pago', 'Enviado', 'Entregue'];
-      if (status === 'Reclamação' || status === 'Devolvido' || status === 'Cancelado') return -1;
+      if (status === 'A confirmar' || status === 'Reclamação' || status === 'Devolvido' || status === 'Cancelado') return -1;
       return steps.indexOf(status);
   };
 
@@ -976,7 +861,11 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                         </button>
                                     )}
                                 </div>
-                                {order.status === 'Cancelado' ? (
+                                {order.status === 'A confirmar' ? (
+                                    <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg text-center text-amber-800 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800">
+                                        O seu pedido foi registado e aguarda a confirmação de envio da mensagem. Ainda não foi efetuado qualquer pagamento nem baixa de stock.
+                                    </div>
+                                ) : order.status === 'Cancelado' ? (
                                     <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center text-red-600 dark:text-red-400 font-bold border border-red-100 dark:border-red-800 flex items-center justify-center gap-2">
                                         <XCircle size={20} /> Encomenda Cancelada
                                     </div>
@@ -1113,12 +1002,12 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                     <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                                         <button onClick={() => handlePrintOrder(order)} className="flex items-center gap-2 text-sm font-bold text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 px-4 py-2 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 shadow-sm"><Printer size={16}/> Imprimir Fatura / Garantia</button>
                                         
-                                        {order.status === 'Pendente' && (
+                                        {['Pendente', 'A confirmar'].includes(order.status) && (
                                             <button 
                                                 onClick={() => handleConfirmSentFromClientArea(order)} 
                                                 className="flex items-center gap-2 text-sm font-bold text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400 px-4 py-2 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50 shadow-sm"
                                             >
-                                                <Send size={16}/> Confirmar Envio da Mensagem
+                                                <Send size={16}/> Confirmar envio da mensagem
                                             </button>
                                         )}
 

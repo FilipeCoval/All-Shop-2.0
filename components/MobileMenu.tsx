@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Search, User, LogIn, LogOut, Sun, Moon, ShoppingBag } from 'lucide-react';
 import { STORE_NAME, LOGO_URL } from '../constants';
 import { User as UserType, Product } from '../types';
+import { productStartingPrice } from '../src/domain/productPresentation';
 
 interface MobileMenuProps {
   isOpen: boolean;
@@ -118,8 +119,8 @@ const MobileMenu: React.FC<MobileMenuProps> = ({
                             <div className="flex-1 min-w-0">
                                 <h4 className="text-sm font-bold text-gray-900 dark:text-white truncate">{product.name}</h4>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs text-primary font-bold">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.price)}</span>
-                                    {product.originalPrice && product.originalPrice > product.price && (
+                                    <span className="text-xs text-primary font-bold">{product.variants?.length ? 'Desde ' : ''}{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(productStartingPrice(product))}</span>
+                                    {!product.variants?.length && product.originalPrice && product.originalPrice > product.price && (
                                         <span className="text-[10px] text-gray-400 line-through">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.originalPrice)}</span>
                                     )}
                                 </div>

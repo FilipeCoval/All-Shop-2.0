@@ -49,3 +49,98 @@ export async function finalizeOrder(order: any, guestToken?: string) {
   });
   return parseResponse(response);
 }
+
+export async function saveOrderDraft(order: any, guestToken?: string) {
+  const response = await fetch('/api/create-order-draft', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({
+      idempotencyKey: order?.id,
+      items: order?.items,
+      shippingInfo: order?.shippingInfo,
+      guestToken,
+      order,
+    }),
+  });
+  return parseResponse(response);
+}
+
+export async function createPreorder(input: {
+  idempotencyKey: string;
+  productId: number;
+  selectedVariant?: string;
+  quantity: number;
+  shippingInfo: unknown;
+  termsAccepted: true;
+}, guestToken?: string) {
+  const response = await fetch('/api/create-order-draft', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({ action: 'create_preorder', ...input, guestToken }),
+  });
+  return parseResponse(response);
+}
+
+export async function syncCurrentUser() {
+  const response = await fetch('/api/sync-user', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({}),
+  });
+  return parseResponse(response);
+}
+
+export async function redeemLoyaltyReward(rewardId: string) {
+  const response = await fetch('/api/redeem-loyalty-reward', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({ rewardId }),
+  });
+  return parseResponse(response);
+}
+
+export async function trackOrder(orderId: string, email: string) {
+  const response = await fetch('/api/track-order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderId, email }),
+  });
+  return parseResponse(response);
+}
+export async function requestOrderAction(input: {
+  action: 'cancel_order' | 'cancel_item' | 'request_return';
+  orderId: string;
+  reason: string;
+  productId?: number;
+  quantity?: number;
+}) {
+  const response = await fetch('/api/update-order', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify(input),
+  });
+  return parseResponse(response);
+}
+
+export async function reviewOrderRequest(input: {
+  orderId: string;
+  requestKind: 'cancellation' | 'return';
+  decision: 'approve' | 'reject';
+  reviewNote?: string;
+}) {
+  const response = await fetch('/api/update-order', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({ action: 'review_request', ...input }),
+  });
+  return parseResponse(response);
+}
+
+export async function setOrderStatus(orderId: string, status: string) {
+  const response = await fetch('/api/update-order', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({ action: 'set_status', orderId, status }),
+  });
+  return parseResponse(response);
+}

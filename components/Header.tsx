@@ -2,6 +2,7 @@ import React from 'react';
 import { ShoppingCart, ShoppingBag, Menu, User as UserIcon, LogIn, LogOut, Search, X, Award, Moon, Sun, ChevronLeft, ArrowRight } from 'lucide-react';
 import { STORE_NAME, LOGO_URL, LOYALTY_TIERS } from '../constants';
 import { User, Product } from '../types';
+import { productStartingPrice } from '../src/domain/productPresentation';
 
 interface HeaderProps {
   cartCount: number;
@@ -150,7 +151,7 @@ const Header: React.FC<HeaderProps> = ({
                                 <img src={product.image} alt={product.name} className="w-12 h-12 object-contain bg-white rounded-lg p-1 border border-gray-100 dark:border-slate-700" />
                                 <div className="flex-1">
                                     <p className="font-bold text-sm text-gray-900 dark:text-white line-clamp-1">{product.name}</p>
-                                    <p className="text-primary font-bold text-sm">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.price)}</p>
+                                    <p className="text-primary font-bold text-sm">{product.variants?.length ? 'Desde ' : ''}{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(productStartingPrice(product))}</p>
                                 </div>
                                 <ChevronLeft className="rotate-180 text-gray-300" size={20} />
                             </a>
@@ -275,7 +276,7 @@ const Header: React.FC<HeaderProps> = ({
                                             <div className="flex-1 min-w-0 text-left">
                                                 <p className="font-bold text-sm text-gray-900 dark:text-white truncate group-hover/item:text-primary transition-colors">{product.name}</p>
                                                 <div className="flex items-center gap-2">
-                                                    <p className="text-xs text-primary font-bold">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.price)}</p>
+                                                    <p className="text-xs text-primary font-bold">{product.variants?.length ? 'Desde ' : ''}{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(productStartingPrice(product))}</p>
                                                     {product.stock === 0 ? (
                                                         <span className="text-[10px] text-red-500 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded-full">Esgotado</span>
                                                     ) : product.stock <= 3 ? (

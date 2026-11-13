@@ -1,6 +1,7 @@
 import React from 'react';
 import { Product } from '../types';
 import { X, Check, Minus, ShoppingCart, Trash2 } from 'lucide-react';
+import { productStartingPrice } from '../src/domain/productPresentation';
 
 interface ProductComparatorProps {
     isOpen: boolean;
@@ -61,7 +62,7 @@ const ProductComparator: React.FC<ProductComparatorProps> = ({ isOpen, onClose, 
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-lg text-gray-900 dark:text-white line-clamp-2 h-14">{product.name}</h3>
-                                    <p className="text-2xl font-bold text-primary mt-2">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.price)}</p>
+                                    <p className="text-2xl font-bold text-primary mt-2">{product.variants?.length ? 'Desde ' : ''}{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(productStartingPrice(product))}</p>
                                 </div>
                                 <button 
                                     onClick={() => onAddToCart(product)}
