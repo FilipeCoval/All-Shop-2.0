@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { CheckCircle2, CreditCard, Loader2, MapPin, PackageCheck, ShieldCheck, Store, X } from 'lucide-react';
 import type { Product, ProductVariant, User } from '../types';
@@ -41,6 +41,18 @@ export default function PreorderModal({ product, selectedVariant, currentUser, o
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [created, setCreated] = useState<{ id: string; depositDue: number } | null>(null);
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousRootOverflow;
+    };
+  }, []);
   const maxQuantity = Math.max(1, Math.min(remaining, Number(product.maxQuantityPerOrder ?? remaining), 10));
   const price = Number(selectedVariant?.price ?? product.price);
   const summary = useMemo(() => {
@@ -73,8 +85,8 @@ export default function PreorderModal({ product, selectedVariant, currentUser, o
 
   if (created) {
     const message = `Olá! Criei a pré-reserva ${created.id} para ${quantity}x ${product.name}${selectedVariant ? ` (${selectedVariant.name})` : ''}. O sinal a pagar é ${euro.format(created.depositDue)}.`;
-    return <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/65 p-0 backdrop-blur-sm sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-label="Pré-reserva criada">
-      <section className="w-full max-w-lg rounded-t-[2rem] bg-white p-6 shadow-2xl dark:bg-slate-900 sm:rounded-[2rem] sm:p-8">
+    return <div className="fixed inset-0 z-[100] flex min-h-0 items-end justify-center overflow-y-auto bg-slate-950/65 p-0 backdrop-blur-sm overscroll-contain sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-label="Pré-reserva criada">
+      <section className="my-auto w-full max-w-lg rounded-t-[2rem] bg-white p-6 shadow-2xl dark:bg-slate-900 sm:rounded-[2rem] sm:p-8">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50"><CheckCircle2 size={34} /></div>
         <h2 className="mt-5 text-center text-2xl font-black text-slate-950 dark:text-white">Pré-reserva registada</h2>
         <p className="mt-2 text-center text-sm leading-relaxed text-slate-600 dark:text-slate-300">A vaga e o preço estão guardados. Para a confirmar, envie o sinal de <strong>{euro.format(created.depositDue)}</strong> dentro de {offer.paymentDeadlineHours} horas.</p>
@@ -84,10 +96,10 @@ export default function PreorderModal({ product, selectedVariant, currentUser, o
     </div>;
   }
 
-  return <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/65 p-0 backdrop-blur-sm sm:flex sm:items-center sm:justify-center sm:p-5" role="dialog" aria-modal="true" aria-label="Fazer pré-reserva">
-    <form onSubmit={submit} className="min-h-full w-full max-w-2xl bg-white shadow-2xl dark:bg-slate-900 sm:min-h-0 sm:rounded-[2rem]">
-      <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-5 dark:border-slate-700 sm:px-7"><div><p className="text-xs font-extrabold uppercase tracking-[.16em] text-orange-600">Pré-reserva</p><h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">Garanta o preço com 50%</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Sem mexer no stock real até o artigo ser recebido.</p></div><button type="button" onClick={onClose} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Fechar"><X /></button></header>
-      <div className="grid gap-5 p-5 sm:p-7">
+  return <div className="fixed inset-0 z-[100] flex min-h-0 bg-slate-950/65 p-0 backdrop-blur-sm sm:items-center sm:justify-center sm:p-5" role="dialog" aria-modal="true" aria-label="Fazer pré-reserva">
+    <form onSubmit={submit} className="flex h-[100dvh] min-h-0 w-full max-w-2xl flex-col bg-white shadow-2xl dark:bg-slate-900 sm:h-auto sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem]">
+      <header className="shrink-0 flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-5 dark:border-slate-700 sm:px-7"><div><p className="text-xs font-extrabold uppercase tracking-[.16em] text-orange-600">Pré-reserva</p><h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">Garanta o preço com 50%</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Sem mexer no stock real até o artigo ser recebido.</p></div><button type="button" onClick={onClose} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Fechar"><X /></button></header>
+      <div className="grid min-h-0 flex-1 touch-pan-y gap-5 overflow-y-auto overscroll-contain p-5 [-webkit-overflow-scrolling:touch] sm:p-7">
         <section className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm dark:border-orange-900/70 dark:bg-orange-950/25"><div className="flex gap-3"><PackageCheck className="mt-0.5 shrink-0 text-orange-600" size={21} /><div><strong className="text-slate-950 dark:text-white">{quantity}× {product.name}{selectedVariant ? ` · ${selectedVariant.name}` : ''}</strong><p className="mt-1 text-slate-700 dark:text-slate-200">Expedição prevista: <strong>{formatPreorderDate(offer.estimatedDispatchDate)}</strong>{offer.note ? ` · ${offer.note}` : ''}</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{remaining} vaga{remaining === 1 ? '' : 's'} disponível{remaining === 1 ? '' : 'is'}{selectedVariant ? ' nesta versão' : ' nesta previsão'}.</p></div></div></section>
         <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-bold text-slate-700 dark:text-slate-200">Quantidade<select value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 font-semibold outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800">{Array.from({ length: maxQuantity }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{value} unidade{value === 1 ? '' : 's'}</option>)}</select></label><label className="text-sm font-bold text-slate-700 dark:text-slate-200">Pagamento do sinal<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as typeof paymentMethod)} className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 font-semibold outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"><option>MB Way</option><option>Transferência</option><option>Outro</option></select></label></div>
         <section className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-slate-800/80"><div className="flex justify-between gap-5"><span>Preço total garantido</span><strong>{euro.format(summary.total)}</strong></div><div className="flex justify-between gap-5 border-t border-slate-200 pt-3 text-orange-700 dark:border-slate-700 dark:text-orange-300"><span>Sinal a pagar agora (50%)</span><strong className="text-lg">{euro.format(summary.deposit)}</strong></div><div className="flex justify-between gap-5 text-slate-600 dark:text-slate-300"><span>Saldo antes da expedição</span><strong>{euro.format(summary.balance)}</strong></div>{summary.shipping > 0 && <small className="text-slate-500">Inclui {euro.format(summary.shipping)} de portes.</small>}</section>
@@ -95,7 +107,7 @@ export default function PreorderModal({ product, selectedVariant, currentUser, o
         <label className="flex gap-3 rounded-2xl border border-slate-200 p-4 text-sm leading-relaxed text-slate-600 dark:border-slate-700 dark:text-slate-300"><input required type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-orange-500"/><span><strong className="text-slate-950 dark:text-white">Confirmo as condições da pré-reserva.</strong><br/>O preço total fica garantido. Pagarei o sinal de 50% em {offer.paymentDeadlineHours} horas; o saldo é pedido antes da expedição. Se a All-Shop não puder fornecer o artigo, o sinal é reembolsado. Mantêm-se os direitos legais aplicáveis.</span></label>
         {error && <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-200">{error}</p>}
       </div>
-      <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 p-5 dark:border-slate-700 sm:flex-row sm:justify-end sm:px-7"><button type="button" onClick={onClose} className="rounded-xl px-5 py-3 font-bold text-slate-600 dark:text-slate-300">Cancelar</button><button type="submit" disabled={!accepted || busy} className="flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-6 py-3.5 font-extrabold text-white shadow-lg shadow-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50">{busy ? <Loader2 size={18} className="animate-spin"/> : <ShieldCheck size={18}/>} Criar pré-reserva</button></footer>
+      <footer className="shrink-0 flex flex-col-reverse gap-3 border-t border-slate-200 p-5 dark:border-slate-700 sm:flex-row sm:justify-end sm:px-7"><button type="button" onClick={onClose} className="rounded-xl px-5 py-3 font-bold text-slate-600 dark:text-slate-300">Cancelar</button><button type="submit" disabled={!accepted || busy} className="flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-6 py-3.5 font-extrabold text-white shadow-lg shadow-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50">{busy ? <Loader2 size={18} className="animate-spin"/> : <ShieldCheck size={18}/>} Criar pré-reserva</button></footer>
     </form>
   </div>;
 }
