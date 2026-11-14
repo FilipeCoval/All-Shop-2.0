@@ -902,6 +902,13 @@ img { display: block; max-width: 100%; }
 .contact-list { display: grid; gap: 10px; }
 .contact-list > span { display: flex; align-items: center; gap: 9px; color: #475569; font-size: 12px; line-height: 1.5; }
 .contact-list svg { width: 16px; flex: 0 0 auto; color: #94a3b8; }
+.shipping-label-actions { margin-top: 14px; padding-top: 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); }
+.shipping-label-actions > div { min-width: 0; display: grid; gap: 3px; }
+.shipping-label-actions strong { color: var(--navy); font-size: 12px; }
+.shipping-label-actions small { color: #64748b; font-size: 10px; line-height: 1.4; }
+.shipping-label-actions > p { width: 100%; margin: 0; color: #b45309; font-size: 10px; font-weight: 750; }
+.shipping-label-actions .save-button { flex: 0 0 auto; white-space: nowrap; }
+@media (max-width: 620px) { .shipping-label-actions { align-items: stretch; flex-direction: column; }.shipping-label-actions .save-button { width: 100%; justify-content: center; } }
 .account-link-panel { display: grid; gap: 12px; margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--line); }
 .account-link-panel strong { color: var(--navy); font-size: 12px; }
 .account-link-panel p { margin: 4px 0 0; color: #64748b; font-size: 11px; line-height: 1.45; }

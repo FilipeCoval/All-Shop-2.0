@@ -114,7 +114,7 @@ export interface AdminOrder {
   };
   shippingInfo?: {
     name?: string; email?: string; phone?: string; street?: string; doorNumber?: string;
-    zip?: string; city?: string; paymentMethod?: string; deliveryMethod?: string;
+    addressExtra?: string; zip?: string; city?: string; paymentMethod?: string; deliveryMethod?: string;
   };
   items?: AdminOrderItem[];
   packages?: AdminOrderPackage[];

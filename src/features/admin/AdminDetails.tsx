@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarDays, CheckCircle2, CreditCard, Mail, MapPin, Package, Phone, RefreshCw, Save, Truck, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, CreditCard, Mail, MapPin, Package, Phone, Printer, RefreshCw, Save, Truck, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { AdminOrder, InventoryLot, OrderStatus, StockGroup } from './adminTypes';
 import type { Product } from '../../types/domain';
@@ -6,6 +6,8 @@ import { adminMutationsAvailable, cancelPreorder, classifyLegacyInventoryLots, c
 import { OrderFulfillmentPanel } from './OrderFulfillmentPanel';
 import { inventoryLotIncomingQuantity, inventoryLotPhysicalQuantity, inventoryLotSoldQuantity, isInventoryLotInTransit } from '../../domain/inventoryReceipt';
 import { unitMatchesCode } from './unitIdentity';
+import { buildShippingLabelDocument } from './shippingLabel';
+import { LOGO_URL, STORE_ADDRESS, STORE_NAME } from '../../../constants';
 
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const date = new Intl.DateTimeFormat('pt-PT', { dateStyle: 'medium', timeStyle: 'short' });
@@ -20,7 +22,7 @@ export function AdminDetails({ order, stock, lots, products, onClose, onChanged,
     <button className={`drawer-backdrop ${open ? 'visible' : ''}`} onClick={onClose} aria-label="Fechar detalhes" />
     <aside className={`admin-detail-drawer ${open ? 'open' : ''}`} aria-hidden={!open}>
       <header><div><p className="eyebrow">Detalhes</p><h2>{order ? `Encomenda #${order.id.replace(/^#/, '')}` : stock?.name}</h2></div><button className="icon-button" onClick={onClose}><X /></button></header>
-      {order && <OrderDetail order={order} lots={lots} onChanged={onChanged} />}
+      {order && <OrderDetail order={order} lots={lots} products={products} onChanged={onChanged} />}
       {stock && <StockDetail group={stock} product={products.find((product) => product.id === Number(stock.productId))} onChanged={onChanged} onEditLot={onEditLot} />}
     </aside>
   </>;
@@ -28,7 +30,7 @@ export function AdminDetails({ order, stock, lots, products, onClose, onChanged,
 
 const ORDER_STATUSES: OrderStatus[] = ['A confirmar', 'Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue', 'Cancelado', 'Reclamação', 'Devolvido', 'Levantamento em Loja'];
 
-function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: InventoryLot[]; onChanged: () => Promise<void> }) {
+function OrderDetail({ order, lots, products, onChanged }: { order: AdminOrder; lots: InventoryLot[]; products: Product[]; onChanged: () => Promise<void> }) {
   const customer = order.shippingInfo;
   const fulfillmentComplete = order.fulfillmentStatus === 'COMPLETED' || ['Enviado', 'Entregue'].includes(order.status);
   const terminal = ['Cancelado', 'Devolvido'].includes(order.status);
@@ -46,6 +48,11 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
   }, 0);
   const netProductCost = recordedCost == null ? null : Math.max(0, recordedCost - cashbackReceived);
   const pickup = customer?.deliveryMethod === 'Pickup' || order.status === 'Levantamento em Loja';
+  const shippingLabelReady = !pickup && Boolean(customer?.name && customer?.street && customer?.zip && customer?.city);
+  const estimatedWeight = (order.items ?? []).reduce((sum, item) => {
+    const product = products.find((candidate) => candidate.id === Number(item.productId));
+    return sum + Math.max(0, Number(product?.weight ?? 0)) * Math.max(0, Number(item.quantity ?? 0));
+  }, 0);
   const customerShipping = pickup ? 0 : Math.max(0, Number(order.shippingCost ?? Math.max(0, Number(order.total ?? 0) - productRevenue)));
   const storeShipping = pickup ? 0 : Math.max(0, Number(order.storeShippingCost ?? 5.4));
   const shippingExpense = Math.max(0, storeShipping - customerShipping);
@@ -91,6 +98,22 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
     void run(() => cancelPreorder(order.id), 'Pré-reserva cancelada e vaga libertada.');
   };
 
+  const printShippingLabel = () => {
+    if (!shippingLabelReady) {
+      setError('Faltam os dados de envio do destinatário para imprimir a etiqueta.');
+      return;
+    }
+    const printWindow = window.open('', '_blank', 'width=900,height=720');
+    if (!printWindow) {
+      setError('O navegador bloqueou a janela de impressão. Autorize pop-ups para a All-Shop e tente novamente.');
+      return;
+    }
+    const label = buildShippingLabelDocument(order, { storeName: STORE_NAME, senderName: STORE_ADDRESS.senderName, street: STORE_ADDRESS.street, zip: STORE_ADDRESS.zip, city: STORE_ADDRESS.city, country: STORE_ADDRESS.country, logoUrl: LOGO_URL }, estimatedWeight);
+    printWindow.document.open();
+    printWindow.document.write(label);
+    printWindow.document.close();
+  };
+
   return <div className="detail-body">
     <div className="detail-status"><span className={`status status-${order.status.toLocaleLowerCase('pt').replace(/\s/g, '-')}`}>{order.status}</span><strong>{euro.format(Number(order.total ?? 0))}</strong></div>
     <DetailSection title={order.status === 'Entregue' ? 'Resultado desta encomenda' : 'Resultado previsto'}>
@@ -108,7 +131,7 @@ function OrderDetail({ order, lots, onChanged }: { order: AdminOrder; lots: Inve
     </DetailSection>
     <DetailSection title="Cliente"><div className="contact-list"><span><Mail />{customer?.email ?? '—'}</span><span><Phone />{customer?.phone ?? '—'}</span><span><MapPin />{customer?.deliveryMethod === 'Pickup' ? 'Levantamento em loja' : [customer?.street, customer?.doorNumber, customer?.zip, customer?.city].filter(Boolean).join(', ') || '—'}</span></div>{accountLinked ? <p className="account-link-status"><CheckCircle2 /> Compra associada a uma conta de cliente.</p> : <div className="account-link-panel"><div><strong>Associar à conta do cliente</strong><p>Use o e-mail com que o cliente inicia sessão. Isto apenas liga a encomenda; não mexe no stock, valor ou estado.</p></div><div className="admin-form-row"><label>E-mail da conta<input type="email" value={accountEmail} onChange={(event) => setAccountEmail(event.target.value)} disabled={!adminMutationsAvailable || busy} placeholder="cliente@email.pt" /></label><button className="save-button secondary" type="button" onClick={linkCustomerAccount} disabled={!adminMutationsAvailable || busy || !accountEmail.trim()}><Save /> Associar conta</button></div></div>}</DetailSection>
     <DetailSection title={`Artigos (${displayedQuantity})`}><div className="detail-items">{displayedItems.map(({ item, packageIndex }, index) => <article key={`${packageIndex}:${item.productId}:${item.selectedVariant}:${index}`}><div>{item.image ? <img src={item.image} alt="" /> : <span className="item-placeholder"><Package /></span>}</div><span><strong>{item.quantity ?? 0}× {item.name ?? `Produto ${item.productId ?? ''}`}</strong><small>{packageIndex >= 0 ? `Volume ${packageIndex + 1} · ` : ''}{item.selectedVariant || 'Sem variante'}</small></span><b>{euro.format(Number(item.price ?? 0) * Number(item.quantity ?? 0))}</b></article>)}</div></DetailSection>
-    <DetailSection title="Entrega e pagamento"><div className="contact-list"><span><Truck />{customer?.deliveryMethod === 'Pickup' ? 'Levantamento' : 'Envio'} · {customer?.paymentMethod ?? '—'}</span>{order.packages?.length ? order.packages.map((pkg, index) => <span key={pkg.id || index}><Package />Volume {index + 1}: {pkg.trackingNumber || 'rastreio por indicar'}</span>) : order.trackingNumber && <span><Package />Rastreio: {order.trackingNumber}</span>}</div></DetailSection>
+    <DetailSection title="Entrega e pagamento"><div className="contact-list"><span><Truck />{customer?.deliveryMethod === 'Pickup' ? 'Levantamento' : 'Envio'} · {customer?.paymentMethod ?? '—'}</span>{order.packages?.length ? order.packages.map((pkg, index) => <span key={pkg.id || index}><Package />Volume {index + 1}: {pkg.trackingNumber || 'rastreio por indicar'}</span>) : order.trackingNumber && <span><Package />Rastreio: {order.trackingNumber}</span>}</div>{!pickup && <div className="shipping-label-actions"><div><strong>Etiqueta de envio All-Shop</strong><small>{order.packages?.length ? `Serão impressas ${order.packages.length} etiquetas, uma por volume.` : 'Inclui remetente, destinatário, referência e rastreio.'}</small></div><button className="save-button secondary" type="button" onClick={printShippingLabel} disabled={!shippingLabelReady}><Printer /> Imprimir etiqueta</button>{!shippingLabelReady && <p>Faltam dados de morada para criar a etiqueta.</p>}</div>}</DetailSection>
     <DetailSection title="Histórico"><div className="timeline">{(order.statusHistory ?? []).slice().reverse().map((entry, index) => <div key={`${entry.date}:${index}`}><i /><span><strong>{entry.status ?? 'Atualização'}</strong><small>{formatDate(entry.date)}{entry.notes ? ` · ${entry.notes}` : ''}</small></span></div>)}</div></DetailSection>
     {!adminMutationsAvailable && <div className="safe-action-note">Os botões ficam disponíveis na versão Vercel de testes, onde existe um servidor protegido.</div>}
   </div>;
