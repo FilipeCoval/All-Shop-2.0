@@ -3,6 +3,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { allowedAdminEmails, ApiError, handleApiError, requireAdmin, requirePost } from '../adminAuth.js';
 import { getAdminDb } from '../firebaseAdmin.js';
+import { adminAuditEntry, adminRequestId } from '../adminAudit.js';
 
 const clean = (value: unknown, max: number) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const chunks = <T,>(items: T[], size: number) => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
@@ -54,6 +55,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const admin = await requireAdmin(request);
     const database = getAdminDb();
     const action = clean(request.body?.action, 80);
+    const requestId = adminRequestId(request.headers);
 
     if (action === 'close_stock_waitlist') {
       const alertIds = alertIdsFrom(request.body?.alertIds);
@@ -63,11 +65,21 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const batch = database.batch(); let closedCount = 0;
       snapshots.forEach((snapshot) => {
         if (!snapshot.exists || snapshot.data()?.status === 'NOTIFIED') return;
+        const current = snapshot.data() ?? {};
         batch.update(snapshot.ref, { status: 'NOTIFIED', notifiedAt: FieldValue.serverTimestamp(), notifiedBy: admin.email });
+        batch.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
+          action,
+          actor: { uid: admin.uid, email: admin.email },
+          target: { type: 'Alerta de stock', id: snapshot.id, label: String(current.productName || current.productId || 'Produto em lista de espera') },
+          before: current,
+          after: { ...current, status: 'NOTIFIED' },
+          summary: 'Pedido da lista de espera marcado como avisado.',
+          requestId,
+        }));
         closedCount += 1;
       });
       if (closedCount) await batch.commit();
-      await database.collection('admin_audit_log').add({ action: 'close_stock_waitlist', targetId: `${closedCount} alertas`, adminId: admin.uid, adminEmail: admin.email, createdAt: FieldValue.serverTimestamp() });
+      await database.collection('admin_audit_log').add(adminAuditEntry({ action: 'close_stock_waitlist', actor: { uid: admin.uid, email: admin.email }, target: { type: 'Lista de espera', id: `${closedCount}`, label: 'Alertas de stock' }, before: null, after: { closedCount }, summary: 'Pedidos da lista de espera fechados.', requestId }));
       return response.status(200).json({ success: true, closedCount });
     }
 
@@ -88,7 +100,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const usersSnapshot = await database.collection('users').get();
       const targetUsers = usersSnapshot.docs.filter((document) => emails.has(clean(document.data()?.email, 180).toLowerCase()));
       const result = await sendPush(database, targetUsers, title, body, '', link);
-      await database.collection('admin_audit_log').add({ action: 'notify_stock_waitlist_push', targetId: `${emails.size} alertas`, adminId: admin.uid, adminEmail: admin.email, ...result, createdAt: FieldValue.serverTimestamp() });
+      await database.collection('admin_audit_log').add(adminAuditEntry({ action: 'notify_stock_waitlist_push', actor: { uid: admin.uid, email: admin.email }, target: { type: 'Lista de espera', id: `${emails.size}`, label: 'Aviso de reposição' }, before: null, after: result, summary: 'Aviso de reposição enviado aos clientes selecionados.', details: { matchedCustomers: targetUsers.length }, requestId }));
       return response.status(200).json({ success: true, ...result, matchedCustomers: targetUsers.length, bcc: [...emails].join(', ') });
     }
 
@@ -108,7 +120,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     });
     const result = await sendPush(database, targetUsers, title, body, image, link);
     if (!result.devices) return response.status(200).json({ success: true, ...result, message: 'Não existem dispositivos registados para este público.' });
-    await database.collection('admin_audit_log').add({ action: 'send_marketing_push', targetId: target, adminId: admin.uid, adminEmail: admin.email, ...result, createdAt: FieldValue.serverTimestamp() });
+    await database.collection('admin_audit_log').add(adminAuditEntry({ action: 'send_marketing_push', actor: { uid: admin.uid, email: admin.email }, target: { type: 'Campanha', id: target, label: target === 'admins' ? 'Administradores' : 'Clientes' }, before: null, after: result, summary: 'Notificação de marketing enviada.', details: { title, link, target }, requestId }));
     return response.status(200).json({ success: true, ...result });
   } catch (error) { return handleApiError(response, error); }
 }

@@ -6,6 +6,7 @@ import { inventoryLotSoldQuantity, normalizeInventoryReceiptStatus } from '../..
 import { getAdminDb } from '../firebaseAdmin.js';
 import { inventoryUnitCodeDocumentId } from '../inventoryIdentity.js';
 import { projectPublicStock, type LotData, type ReservationData } from '../stockProjection.js';
+import { adminAuditEntry, adminRequestId } from '../adminAudit.js';
 
 const text = (value: unknown, max = 300) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -64,6 +65,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const database = getAdminDb();
     const action = text(request.body?.action, 40);
     const lotId = text(request.body?.lotId, 100);
+    const requestId = adminRequestId(request.headers);
 
     if (action === 'confirm_cashback_received') {
       if (!lotId || lotId.includes('/')) throw new ApiError(400, 'O lote não foi indicado corretamente.');
@@ -84,19 +86,16 @@ export default async function handler(request: VercelRequest, response: VercelRe
           return { lotId, alreadyReceived: true, paidDate: receipt.paidDate };
         }
 
-        transaction.update(lotRef, cashbackReceiptUpdate(receipt.paidDate, FieldValue.serverTimestamp(), admin.uid));
+        const current = snapshot.data() ?? {};
+        const update = cashbackReceiptUpdate(receipt.paidDate, FieldValue.serverTimestamp(), admin.uid);
+        transaction.update(lotRef, update);
         const auditRef = database.collection('admin_audit_log').doc();
-        transaction.set(auditRef, {
-          action: 'confirm_cashback_received',
-          targetId: lotId,
-          lotId,
-          publicProductId: Number(snapshot.data()?.publicProductId) || null,
-          cashbackValue: receipt.value,
-          cashbackPaidDate: receipt.paidDate,
-          adminId: admin.uid,
-          adminEmail: admin.email,
-          createdAt: FieldValue.serverTimestamp(),
-        });
+        transaction.set(auditRef, adminAuditEntry({
+          action: 'confirm_cashback_received', actor: admin, requestId,
+          target: { type: 'Lote', id: lotId, label: `${text(current.name, 180) || 'Lote'}${text(current.variant, 120) ? ` · ${text(current.variant, 120)}` : ''}` },
+          before: current, after: { ...current, ...update },
+          summary: `Cashback de ${receipt.value} € confirmado em ${receipt.paidDate}.`,
+        }));
         return { lotId, alreadyReceived: false, paidDate: receipt.paidDate };
       });
       return response.status(200).json({ success: true, ...result });
@@ -143,6 +142,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
       ].map((document) => [document.id, document]));
       let lots: LotData[] = [...productLotDocuments.values()]
         .map((document) => ({ id: document.id, ...document.data() }));
+      const lotsBefore = lots.map((lot) => ({ ...lot, units: Array.isArray(lot.units) ? lot.units.map((unit) => ({ ...unit })) : lot.units }));
       let classifiedLotCount = 0;
       let classifiedVariant = '';
       let reconciledLotCount = 0;
@@ -378,17 +378,23 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const reservations = reservationSnapshot.docs.map((document) => document.data() as ReservationData);
       const projection = projectPublicStock(publicProductId, productSnapshot.data() ?? {}, lots, reservations);
       transaction.update(productRef, { ...projection, stockUpdatedAt: FieldValue.serverTimestamp() });
-      const auditRef = database.collection('admin_audit_log').doc();
-      transaction.set(auditRef, {
-        action,
-        adminId: admin.uid,
-        adminEmail: admin.email,
-        publicProductId,
-        lotId: lotRef?.id ?? null,
-        ...(action === 'classify_legacy_lots' ? { variant: classifiedVariant, updatedLots: classifiedLotCount } : {}),
-        ...(action === 'sync_product' ? { reconciledLots: reconciledLotCount } : {}),
-        createdAt: FieldValue.serverTimestamp(),
-      });
+      const previousLot = lotRef ? lotsBefore.find((lot) => lot.id === lotRef.id) ?? null : null;
+      const savedLot = lotRef ? lots.find((lot) => lot.id === lotRef.id) ?? null : null;
+      const productName = text(productSnapshot.data()?.name, 180) || `Produto ${publicProductId}`;
+      const target = ['sync_product', 'classify_legacy_lots'].includes(action)
+        ? { type: 'Produto', id: publicProductId, label: productName }
+        : { type: 'Lote', id: lotRef?.id ?? null, label: `${text((savedLot as Record<string, unknown> | null)?.name ?? (previousLot as Record<string, unknown> | null)?.name, 180) || productName}${text(savedLot?.variant ?? previousLot?.variant, 120) ? ` · ${text(savedLot?.variant ?? previousLot?.variant, 120)}` : ''}` };
+      const before = ['sync_product', 'classify_legacy_lots'].includes(action) ? { lots: lotsBefore } : previousLot;
+      const after = ['sync_product', 'classify_legacy_lots'].includes(action) ? { lots } : savedLot;
+      const summary = action === 'classify_legacy_lots'
+        ? `${classifiedLotCount} lote(s) classificado(s) como “${classifiedVariant}”.`
+        : action === 'sync_product'
+          ? `${reconciledLotCount} lote(s) reconciliado(s) com os S/N.`
+          : undefined;
+      transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
+        action, actor: admin, requestId, target, before, after, summary,
+        details: { publicProductId, lotId: lotRef?.id ?? null, classifiedLotCount, reconciledLotCount },
+      }));
       return {
         lotId: lotRef?.id,
         projection,

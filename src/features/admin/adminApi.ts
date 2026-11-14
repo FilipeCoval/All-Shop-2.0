@@ -70,7 +70,9 @@ export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
     imports,
     requests,
     categories: categories.sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0)),
-    audit: audit.sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt)).slice(0, 100),
+    // O histórico é um registo, não uma lista de alertas: não descartamos os
+    // eventos antigos. A secção própria permite filtrá-los e pesquisá-los.
+    audit: audit.sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt)),
     stockAlerts: stockAlerts
       .map((alert) => ({ ...alert, productId: alert.productId == null ? undefined : Number(alert.productId) }))
       .filter((alert) => Boolean(alert.email) && Number.isFinite(alert.productId))

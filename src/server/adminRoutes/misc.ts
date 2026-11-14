@@ -6,6 +6,7 @@ import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAut
 import { getAdminDb } from '../firebaseAdmin.js';
 import { isCommercialOrder, orderBelongsToClient, tierForTotal } from '../../features/admin/clientInsights.js';
 import type { AdminOrder, AdminPointHistory } from '../../features/admin/adminTypes.js';
+import { adminAuditEntry, adminRequestId } from '../adminAudit.js';
 
 const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -58,11 +59,19 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const admin = await requireAdmin(request);
     const database = getAdminDb();
     const action = text(request.body?.action, 50);
+    const requestId = adminRequestId(request.headers);
     let targetId = '';
+    let auditTargetType = 'Administração';
+    let auditTargetLabel = '';
+    let auditBefore: unknown = null;
+    let auditAfter: unknown = null;
+    let auditSummary = '';
 
     if (action === 'register_admin_push') {
       const token = text(request.body?.token, 500);
       if (token.length < 20) throw new ApiError(400, 'Token de notificações inválido.');
+      const adminRef = database.collection('users').doc(admin.uid);
+      const current = await adminRef.get();
       await database.collection('users').doc(admin.uid).set({
         email: admin.email,
         normalizedEmail: admin.email,
@@ -71,6 +80,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
         adminNotificationsEnabled: true,
         adminPushUpdatedAt: FieldValue.serverTimestamp(),
       }, { merge: true });
+      await database.collection('admin_audit_log').add(adminAuditEntry({
+        action,
+        actor: { uid: admin.uid, email: admin.email },
+        target: { type: 'Notificações administrativas', id: admin.uid, label: 'Dispositivo de administrador' },
+        before: current.data() ?? null,
+        after: { ...(current.data() ?? {}), adminNotificationsEnabled: true },
+        summary: 'Dispositivo autorizado para receber alertas administrativos.',
+        requestId,
+      }));
       return response.status(200).json({ success: true, id: admin.uid });
     } else if (action === 'save_coupon') {
       const input = request.body?.coupon ?? {};
@@ -81,7 +99,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
       if (type === 'PERCENTAGE' && number(input.value) > 100) throw new ApiError(400, 'A percentagem não pode ultrapassar 100%.');
       const ref = database.collection('coupons').doc(targetId);
       const current = await ref.get();
-      await ref.set({ code, type, value: number(input.value), minPurchase: Math.max(0, number(input.minPurchase)), maxDiscount: input.maxDiscount ? Math.max(0, number(input.maxDiscount)) : null, maxUsages: input.maxUsages ? Math.max(1, Math.floor(number(input.maxUsages))) : null, validProductId: input.validProductId ? Number(input.validProductId) : null, isActive: input.isActive !== false, usageCount: current.exists ? Math.max(0, number(current.data()?.usageCount)) : 0, updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid }, { merge: true });
+      const savedCoupon = { code, type, value: number(input.value), minPurchase: Math.max(0, number(input.minPurchase)), maxDiscount: input.maxDiscount ? Math.max(0, number(input.maxDiscount)) : null, maxUsages: input.maxUsages ? Math.max(1, Math.floor(number(input.maxUsages))) : null, validProductId: input.validProductId ? Number(input.validProductId) : null, isActive: input.isActive !== false, usageCount: current.exists ? Math.max(0, number(current.data()?.usageCount)) : 0 };
+      await ref.set({ ...savedCoupon, updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid }, { merge: true });
+      auditTargetType = 'Cupão'; auditTargetLabel = code; auditBefore = current.data() ?? null; auditAfter = { ...(current.data() ?? {}), ...savedCoupon }; auditSummary = current.exists ? 'Cupão atualizado.' : 'Novo cupão criado.';
     } else if (action === 'update_ticket') {
       targetId = text(request.body?.ticketId, 100);
       if (!targetId) throw new ApiError(400, 'Ticket inválido.');
@@ -100,18 +120,26 @@ export default async function handler(request: VercelRequest, response: VercelRe
       }
       await ticketRef.update(update);
       if (message) await notifySupportReply(database, text(ticket.userId, 100), text(ticket.subject, 180));
+      auditTargetType = 'Ticket de suporte'; auditTargetLabel = text(ticket.subject, 180) || targetId; auditBefore = ticket; auditAfter = { ...ticket, status, priority, unreadAdmin: false, ...(message ? { unreadUser: true } : {}) }; auditSummary = message ? 'Ticket atualizado com nova resposta.' : 'Estado ou prioridade do ticket atualizados.';
     } else if (action === 'mark_ticket_read') {
       targetId = text(request.body?.ticketId, 100);
       if (!targetId) throw new ApiError(400, 'Ticket inválido.');
       const ticketRef = database.collection('support_tickets').doc(targetId);
-      if (!(await ticketRef.get()).exists) throw new ApiError(404, 'Pedido de suporte não encontrado.');
+      const ticketSnapshot = await ticketRef.get();
+      if (!ticketSnapshot.exists) throw new ApiError(404, 'Pedido de suporte não encontrado.');
       await ticketRef.update({ unreadAdmin: false, readByAdminAt: new Date().toISOString(), readByAdmin: admin.uid });
+      await database.collection('admin_audit_log').add(adminAuditEntry({ action, actor: { uid: admin.uid, email: admin.email }, target: { type: 'Ticket de suporte', id: targetId, label: text(ticketSnapshot.data()?.subject, 180) || targetId }, before: ticketSnapshot.data() ?? {}, after: { ...(ticketSnapshot.data() ?? {}), unreadAdmin: false }, summary: 'Ticket marcado como lido pela administração.', requestId }));
       return response.status(200).json({ success: true, id: targetId });
     } else if (action === 'update_request') {
       targetId = text(request.body?.requestId, 100);
       const status = text(request.body?.status, 30);
       if (!targetId || !['Análise', 'Concluído', 'Anulado'].includes(status)) throw new ApiError(400, 'Pedido ou estado inválido.');
-      await database.collection('product_requests').doc(targetId).update({ status, adminComment: text(request.body?.adminComment, 2000), updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid });
+      const requestRef = database.collection('product_requests').doc(targetId);
+      const current = await requestRef.get();
+      if (!current.exists) throw new ApiError(404, 'Pedido de produto não encontrado.');
+      const update = { status, adminComment: text(request.body?.adminComment, 2000) };
+      await requestRef.update({ ...update, updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid });
+      auditTargetType = 'Pedido de produto'; auditTargetLabel = text(current.data()?.productName, 180) || targetId; auditBefore = current.data() ?? {}; auditAfter = { ...(current.data() ?? {}), ...update }; auditSummary = 'Pedido de produto atualizado.';
     } else if (action === 'save_import') {
       const input = request.body?.shipment ?? {};
       targetId = text(input.id, 100) || database.collection('import_shipments').doc().id;
@@ -142,18 +170,26 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const ref = database.collection('import_shipments').doc(targetId);
       const current = await ref.get();
       const purchaseCurrency = ['EUR', 'USD', 'GBP', 'CNY'].includes(text(input.purchaseCurrency, 10)) ? text(input.purchaseCurrency, 10) : 'OTHER';
-      await ref.set({ name, status, distributionMethod, purchaseCurrency, actualPaidEur: Math.max(0, number(input.actualPaidEur)), exchangeRate: Math.max(0.0001, number(input.exchangeRate) || 1), agentShippingCost: Math.max(0, number(input.agentShippingCost)), customsCost: Math.max(0, number(input.customsCost)), trackingNumber: text(input.trackingNumber, 180), estimatedArrival: text(input.estimatedArrival, 30), notes: text(input.notes, 3000), orders, createdAt: current.exists ? current.data()?.createdAt ?? new Date().toISOString() : new Date().toISOString(), updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid }, { merge: true });
+      const savedImport = { name, status, distributionMethod, purchaseCurrency, actualPaidEur: Math.max(0, number(input.actualPaidEur)), exchangeRate: Math.max(0.0001, number(input.exchangeRate) || 1), agentShippingCost: Math.max(0, number(input.agentShippingCost)), customsCost: Math.max(0, number(input.customsCost)), trackingNumber: text(input.trackingNumber, 180), estimatedArrival: text(input.estimatedArrival, 30), notes: text(input.notes, 3000), orders, createdAt: current.exists ? current.data()?.createdAt ?? new Date().toISOString() : new Date().toISOString() };
+      await ref.set({ ...savedImport, updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid }, { merge: true });
+      auditTargetType = 'Importação'; auditTargetLabel = name; auditBefore = current.data() ?? null; auditAfter = { ...(current.data() ?? {}), ...savedImport }; auditSummary = current.exists ? 'Importação atualizada.' : 'Nova importação criada.';
     } else if (action === 'delete_import') {
       targetId = text(request.body?.shipmentId, 100);
       if (!targetId) throw new ApiError(400, 'Importação inválida.');
       const ref = database.collection('import_shipments').doc(targetId);
-      if (!(await ref.get()).exists) throw new ApiError(404, 'Importação não encontrada.');
+      const current = await ref.get();
+      if (!current.exists) throw new ApiError(404, 'Importação não encontrada.');
       await ref.delete();
+      auditTargetType = 'Importação'; auditTargetLabel = text(current.data()?.name, 180) || targetId; auditBefore = current.data() ?? {}; auditAfter = null; auditSummary = 'Importação apagada.';
     } else if (action === 'update_import_status') {
       targetId = text(request.body?.shipmentId, 100);
       const status = text(request.body?.status, 30);
       if (!targetId || !['GATHERING', 'SHIPPED', 'RECEIVED'].includes(status)) throw new ApiError(400, 'Importação ou estado inválido.');
-      await database.collection('import_shipments').doc(targetId).update({ status, updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid });
+      const importRef = database.collection('import_shipments').doc(targetId);
+      const current = await importRef.get();
+      if (!current.exists) throw new ApiError(404, 'Importação não encontrada.');
+      await importRef.update({ status, updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid });
+      auditTargetType = 'Importação'; auditTargetLabel = text(current.data()?.name, 180) || targetId; auditBefore = current.data() ?? {}; auditAfter = { ...(current.data() ?? {}), status }; auditSummary = 'Estado da importação atualizado.';
     } else if (action === 'adjust_points') {
       targetId = text(request.body?.userId, 100);
       const amount = Math.trunc(number(request.body?.amount));
@@ -164,8 +200,11 @@ export default async function handler(request: VercelRequest, response: VercelRe
         const snapshot = await transaction.get(userRef);
         if (!snapshot.exists) throw new ApiError(404, 'Cliente não encontrado.');
         const current = snapshot.data() ?? {};
-        transaction.update(userRef, { loyaltyPoints: Math.max(0, number(current.loyaltyPoints) + amount), pointsHistory: FieldValue.arrayUnion({ id: `admin-${Date.now()}`, date: new Date().toISOString(), amount, reason, adjustedBy: admin.uid }) });
+        const loyaltyPoints = Math.max(0, number(current.loyaltyPoints) + amount);
+        transaction.update(userRef, { loyaltyPoints, pointsHistory: FieldValue.arrayUnion({ id: `admin-${Date.now()}`, date: new Date().toISOString(), amount, reason, adjustedBy: admin.uid }) });
+        transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({ action, actor: { uid: admin.uid, email: admin.email }, target: { type: 'Cliente', id: targetId, label: text(current.name, 180) || 'Cliente' }, before: current, after: { ...current, loyaltyPoints }, summary: 'Saldo AllPoints ajustado manualmente.', details: { amount, reason }, requestId }));
       });
+      return response.status(200).json({ success: true, id: targetId });
     } else if (action === 'update_client_quota') {
       targetId = text(request.body?.userId, 100);
       const freebieQuota = Math.trunc(number(request.body?.freebieQuota));
@@ -174,8 +213,11 @@ export default async function handler(request: VercelRequest, response: VercelRe
       await database.runTransaction(async (transaction) => {
         const snapshot = await transaction.get(userRef);
         if (!snapshot.exists || snapshot.data()?.isMerged) throw new ApiError(404, 'Cliente não encontrado.');
+        const current = snapshot.data() ?? {};
         transaction.update(userRef, { freebieQuota, updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid });
+        transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({ action, actor: { uid: admin.uid, email: admin.email }, target: { type: 'Cliente', id: targetId, label: text(current.name, 180) || 'Cliente' }, before: current, after: { ...current, freebieQuota }, summary: 'Quota de ofertas atualizada.', requestId }));
       });
+      return response.status(200).json({ success: true, id: targetId });
     } else if (action === 'recalculate_client_loyalty') {
       targetId = text(request.body?.userId, 100);
       if (!targetId) throw new ApiError(400, 'Cliente inválido.');
@@ -191,6 +233,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const totalSpent = commercialOrders.reduce((sum, order) => sum + Math.max(0, number(order.total)), 0);
       const tier = tierForTotal(totalSpent);
       await userRef.update({ totalSpent, tier, loyaltySyncedAt: FieldValue.serverTimestamp(), loyaltySyncedBy: admin.uid });
+      auditTargetType = 'Cliente'; auditTargetLabel = text(user.name, 180) || 'Cliente'; auditBefore = user; auditAfter = { ...user, totalSpent, tier }; auditSummary = 'Fidelização recalculada a partir das encomendas.';
     } else if (action === 'merge_client_accounts') {
       const primaryUserId = text(request.body?.primaryUserId, 100);
       const duplicateUserId = text(request.body?.duplicateUserId, 100);
@@ -243,7 +286,17 @@ export default async function handler(request: VercelRequest, response: VercelRe
         fcmToken: FieldValue.delete(),
         updatedBy: admin.uid,
       });
+      batch.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
+        action,
+        actor: { uid: admin.uid, email: admin.email },
+        target: { type: 'Contas de cliente', id: primaryUserId, label: `${text(primary.name, 120) || 'Conta principal'} ← ${text(duplicate.name, 120) || 'conta duplicada'}` },
+        before: { principal: primary, duplicada: duplicate, encomendasAssociadas: duplicateOrders.length },
+        after: { principal: { ...primary, totalSpent: mergedTotalSpent, loyaltyPoints: Math.max(0, number(primary.loyaltyPoints) + number(duplicate.loyaltyPoints)) }, duplicada: { ...duplicate, isMerged: true, mergedInto: primaryUserId, loyaltyPoints: 0, freebieQuota: 0 }, encomendasAssociadas: duplicateOrders.length },
+        summary: 'Contas de cliente fundidas.',
+        requestId,
+      }));
       await batch.commit();
+      return response.status(200).json({ success: true, id: targetId });
     } else if (action === 'save_category') {
       const input = request.body?.category ?? {};
       targetId = text(input.id, 100) || database.collection('store_categories').doc().id;
@@ -251,7 +304,11 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const image = text(input.image, 2000);
       const order = Math.max(0, Math.trunc(number(input.order)));
       if (!name || !image || !/^https?:\/\//i.test(image)) throw new ApiError(400, 'Indique o nome e um endereço válido para a imagem.');
-      await database.collection('store_categories').doc(targetId).set({ name, image, order, updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid }, { merge: true });
+      const categoryRef = database.collection('store_categories').doc(targetId);
+      const current = await categoryRef.get();
+      const savedCategory = { name, image, order };
+      await categoryRef.set({ ...savedCategory, updatedAt: FieldValue.serverTimestamp(), updatedBy: admin.uid }, { merge: true });
+      auditTargetType = 'Categoria'; auditTargetLabel = name; auditBefore = current.data() ?? null; auditAfter = { ...(current.data() ?? {}), ...savedCategory }; auditSummary = current.exists ? 'Categoria atualizada.' : 'Categoria criada.';
     } else if (action === 'delete_category') {
       targetId = text(request.body?.categoryId, 100);
       if (!targetId) throw new ApiError(400, 'Categoria inválida.');
@@ -262,11 +319,20 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const products = categoryName ? await database.collection('products_public').where('category', '==', categoryName).limit(1).get() : null;
       if (products && !products.empty) throw new ApiError(409, 'Esta categoria ainda tem produtos. Mova-os antes de a apagar.');
       await categoryRef.delete();
+      auditTargetType = 'Categoria'; auditTargetLabel = categoryName || targetId; auditBefore = categorySnapshot.data() ?? {}; auditAfter = null; auditSummary = 'Categoria apagada.';
     } else {
       throw new ApiError(400, 'Ação administrativa inválida.');
     }
 
-    await database.collection('admin_audit_log').add({ action, targetId, adminId: admin.uid, adminEmail: admin.email, createdAt: FieldValue.serverTimestamp() });
+    await database.collection('admin_audit_log').add(adminAuditEntry({
+      action,
+      actor: { uid: admin.uid, email: admin.email },
+      target: { type: auditTargetType, id: targetId, label: auditTargetLabel || targetId },
+      before: auditBefore,
+      after: auditAfter,
+      summary: auditSummary || 'Ação administrativa registada.',
+      requestId,
+    }));
     return response.status(200).json({ success: true, id: targetId });
   } catch (error) {
     return handleApiError(response, error);

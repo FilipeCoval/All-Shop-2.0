@@ -10,6 +10,7 @@ import {
   syncPublicProductStock,
   toReservationRecord,
 } from '../services/server/stock-utils.js';
+import { adminAuditEntry } from '../src/server/adminAudit.js';
 
 type ClientAction = 'cancel_order' | 'cancel_item' | 'request_return';
 type ReviewDecision = 'approve' | 'reject';
@@ -326,6 +327,14 @@ export default async function handler(req: Request, res: Response) {
         }
 
         transaction.update(orderRef, update);
+        transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({
+          action: 'set_status',
+          actor: { uid: identity.userId, email: identity.email, kind: 'ADMIN' },
+          target: { type: 'Encomenda', id: orderId, label: `#${orderId}` },
+          before: order,
+          after: { ...order, ...update, statusHistory: order.statusHistory },
+          summary: 'Estado da encomenda alterado pelo administrador.',
+        }));
         return safeOrderForOwner(orderSnapshot.id, { ...order, ...update, status: newStatus });
       });
 
@@ -384,6 +393,7 @@ export default async function handler(req: Request, res: Response) {
         // the physical item is received and checked, avoiding false stock increases.
         if (requestKind === 'return' || decision === 'reject') {
           transaction.update(orderRef, update);
+          transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({ action: 'review_request', actor: { uid: identity.userId, email: identity.email, kind: 'ADMIN' }, target: { type: 'Encomenda', id: orderId, label: `#${orderId}` }, before: order, after: { ...order, ...update, statusHistory: order.statusHistory }, summary: 'Pedido de cliente analisado pelo administrador.' }));
           return safeOrderForOwner(orderSnapshot.id, { ...order, ...update });
         }
 
@@ -423,6 +433,7 @@ export default async function handler(req: Request, res: Response) {
         update.stockRestoredItems = order.stockDeducted === true ? restocked : [];
 
         transaction.update(orderRef, update);
+        transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({ action: 'review_request', actor: { uid: identity.userId, email: identity.email, kind: 'ADMIN' }, target: { type: 'Encomenda', id: orderId, label: `#${orderId}` }, before: order, after: { ...order, ...update, statusHistory: order.statusHistory }, summary: 'Pedido de cancelamento analisado e stock reconciliado.' }));
         return safeOrderForOwner(orderSnapshot.id, { ...order, ...update });
       });
 
@@ -523,6 +534,14 @@ export default async function handler(req: Request, res: Response) {
       }
 
       transaction.update(orderRef, baseUpdate);
+      transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({
+        action: clientAction,
+        actor: { uid: identity.userId, email: identity.email, kind: 'CLIENT' },
+        target: { type: 'Encomenda', id: orderId, label: `#${orderId}` },
+        before: order,
+        after: { ...order, ...baseUpdate, statusHistory: order.statusHistory },
+        summary: clientAction === 'request_return' ? 'Pedido de devolução criado pelo cliente.' : 'Pedido de cancelamento criado pelo cliente.',
+      }));
       return safeOrderForOwner(orderSnapshot.id, { ...order, ...baseUpdate });
     });
 

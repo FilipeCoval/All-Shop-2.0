@@ -17,6 +17,7 @@ import {
 } from '../services/server/stock-utils.js';
 import { normalizeProductAvailabilityMode } from '../src/domain/productAvailability.js';
 import { notifyAdminsOfNewOrder } from '../services/server/admin-push.js';
+import { adminAuditEntry } from '../src/server/adminAudit.js';
 
 type RequestedItem = {
   productId: number;
@@ -279,7 +280,18 @@ export default async function handler(req: Request, res: Response) {
         for (const batch of context.inventorySnapshot.docs) {
           const soldNow = plan.saleByBatch.get(batch.id) || 0;
           if (soldNow > 0) {
-            transaction.update(batch.ref, { quantitySold: getBatchPhysical(batch.data()).sold + soldNow });
+            const beforeLot = batch.data();
+            const quantitySold = getBatchPhysical(beforeLot).sold + soldNow;
+            transaction.update(batch.ref, { quantitySold });
+            transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({
+              action: 'checkout_stock_deducted',
+              actor: { uid: identity.userId, kind: 'CLIENT' },
+              target: { type: 'Lote', id: batch.id, label: String(beforeLot.name || `Lote ${batch.id}`) },
+              before: beforeLot,
+              after: { ...beforeLot, quantitySold },
+              summary: `Stock abatido automaticamente pela encomenda #${orderId}.`,
+              details: { orderId, productId, quantity: soldNow },
+            }));
           }
         }
         for (const reservationId of [...new Set(plan.reservationIdsToDelete)]) {
@@ -313,6 +325,14 @@ export default async function handler(req: Request, res: Response) {
         createdAt: existingDraft?.createdAt ?? FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
+      transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({
+        action: 'checkout_order_confirmed',
+        actor: { uid: identity.userId, kind: 'CLIENT' },
+        target: { type: 'Encomenda', id: orderId, label: `#${orderId}` },
+        before: existingDraft,
+        after: responseOrder,
+        summary: 'Encomenda confirmada pelo cliente e stock reservado abatido.',
+      }));
       return { order: responseOrder, alreadyFinalized: false };
     });
 

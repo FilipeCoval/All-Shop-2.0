@@ -5,6 +5,7 @@ import { getRequestIdentity } from '../services/server/request-identity.js';
 import { asPositiveInt, normaliseEmail, normaliseVariant } from '../services/server/stock-utils.js';
 import { notifyAdminsOfNewOrder } from '../services/server/admin-push.js';
 import { projectPublicStock } from '../src/server/stockProjection.js';
+import { adminAuditEntry } from '../src/server/adminAudit.js';
 
 type DraftItem = {
   productId: number;
@@ -275,7 +276,15 @@ const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) =
     });
     transaction.set(reservationRef, reservation);
     transaction.set(orderRef, { ...order, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
-    transaction.set(firestore.collection('admin_audit_log').doc(), { action: 'create_preorder', productId, orderId, quantity, adminId: null, createdAt: FieldValue.serverTimestamp() });
+    transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({
+      action: 'create_preorder',
+      actor: { uid: identity.userId, kind: 'CLIENT' },
+      target: { type: 'Pré-reserva', id: orderId, label: `#${orderId}` },
+      before: null,
+      after: order,
+      summary: 'Pré-reserva criada pelo cliente; aguarda o sinal de 50%.',
+      details: { productId, quantity, selectedVariant: selectedVariant || 'Sem variante' },
+    }));
     return { order, alreadyExists: false };
   });
   if (!result.alreadyExists) {
@@ -350,6 +359,14 @@ export default async function handler(req: Request, res: Response) {
         schemaVersion: 2,
       };
       transaction.set(orderRef, { ...order, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+      transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({
+        action: 'create_order_draft',
+        actor: { uid: identity.userId, kind: 'CLIENT' },
+        target: { type: 'Encomenda', id: orderId, label: `#${orderId}` },
+        before: null,
+        after: order,
+        summary: 'Pedido iniciado pelo cliente; aguarda confirmação final.',
+      }));
       return { order, alreadyExists: false };
     });
 

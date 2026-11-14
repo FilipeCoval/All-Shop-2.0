@@ -10,6 +10,7 @@ import { applyPartialCancellation, calculateCancellationRefund, validateCancella
 import { activeReservedQuantity, allocateSale, normalizeVariant, toMillis } from '../checkoutCore.js';
 import { applyFulfillmentToPackages, FulfillmentError, fulfillmentItemsFromPackages, fulfillmentUnitSerial, isOrderFulfillmentComplete, planStoredOrderFulfillment, type FulfillmentLot, type FulfillmentPackage } from '../orderFulfillment.js';
 import { cancelledOrderDeletionIssue } from '../cancelledOrderDeletion.js';
+import { adminAuditEntry, adminRequestId } from '../adminAudit.js';
 
 const STATUSES = new Set(['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue', 'Cancelado', 'Reclamação', 'Devolvido', 'Levantamento em Loja']);
 const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -193,6 +194,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const admin = await requireAdmin(request);
     const database = getAdminDb();
     const action = text(request.body?.action, 40);
+    const requestId = adminRequestId(request.headers);
     const orderId = cleanOrderId(request.body?.orderId);
     if (!orderId) throw new ApiError(400, 'A encomenda não foi indicada.');
     if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'create_manual_order', 'fulfill_order', 'link_customer_account', 'confirm_preorder_deposit', 'confirm_preorder_balance', 'cancel_preorder', 'delete_cancelled_order'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
@@ -444,7 +446,16 @@ export default async function handler(request: VercelRequest, response: VercelRe
           items: canonicalItems, statusHistory: [{ status: initialStatus, date: now, notes: stockDeducted ? (manualSource ? 'Encomenda criada manualmente na administração com stock abatido' : 'Pedido recuperado manualmente a partir da mensagem do Telegram') : (manualSource ? 'Encomenda manual criada sem abatimento; inventário requer acerto manual' : 'Pedido recuperado do Telegram sem abatimento de stock; inventário requer acerto manual') }], createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
         };
         transaction.set(orderRef, order);
-        transaction.set(database.collection('admin_audit_log').doc(), { action, adminId: admin.uid, adminEmail: admin.email, orderId, changes: { source: manualSource ? 'manual' : 'telegram', stockDeducted, stockReconciliationRequired }, createdAt: FieldValue.serverTimestamp() });
+        transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
+          action,
+          actor: { uid: admin.uid, email: admin.email },
+          target: { type: 'Encomenda', id: orderId, label: `#${orderId}` },
+          before: null,
+          after: order,
+          summary: manualSource ? 'Encomenda manual criada na administração.' : 'Pedido do Telegram recuperado para a administração.',
+          details: { origem: manualSource ? 'manual' : 'telegram', stockDeducted, stockReconciliationRequired },
+          requestId,
+        }));
         return withDocument({ ...order, id: orderId });
       }
 
@@ -487,14 +498,16 @@ export default async function handler(request: VercelRequest, response: VercelRe
         }
 
         transaction.update(orderRef, update);
-        transaction.set(database.collection('admin_audit_log').doc(), {
+        transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
           action,
-          adminId: admin.uid,
-          adminEmail: admin.email,
-          orderId,
-          changes: { linkedUserId: account.uid, linkedAccountEmail: account.email },
-          createdAt: FieldValue.serverTimestamp(),
-        });
+          actor: { uid: admin.uid, email: admin.email },
+          target: { type: 'Encomenda', id: orderId, label: `#${orderId}` },
+          before: order,
+          after: { ...order, ...update },
+          summary: 'Encomenda associada à conta de cliente indicada.',
+          details: { accountLinked: true },
+          requestId,
+        }));
         return withDocument({ ...order, ...update, id: orderId });
       }
 
@@ -515,14 +528,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
         transaction.delete(orderRef);
         // The order disappears completely from the dashboard and customer area.
         // We retain only this administrative audit trace, not the order itself.
-        transaction.set(database.collection('admin_audit_log').doc(), {
+        transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
           action,
-          adminId: admin.uid,
-          adminEmail: admin.email,
-          orderId,
-          changes: { deleted: true, previousStatus: 'Cancelado' },
-          createdAt: FieldValue.serverTimestamp(),
-        });
+          actor: { uid: admin.uid, email: admin.email },
+          target: { type: 'Encomenda', id: orderId, label: `#${orderId}` },
+          before: order,
+          after: null,
+          summary: 'Encomenda cancelada eliminada da área administrativa.',
+          requestId,
+        }));
         return withDocument({ id: orderId, status: 'Cancelado' }, true);
       }
 
@@ -538,7 +552,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
           const updatedPreorder = { ...preorder, status: 'DEPOSIT_RECEIVED', depositReceivedAt: now };
           const update = { status: 'Processamento', preorder: updatedPreorder, updatedAt: FieldValue.serverTimestamp(), statusHistory: FieldValue.arrayUnion({ status: 'Sinal recebido', date: now, notes: 'Sinal de 50% confirmado pela administração.' }) };
           transaction.update(orderRef, update);
-          transaction.set(database.collection('admin_audit_log').doc(), { action, adminId: admin.uid, adminEmail: admin.email, orderId, changes: { preorderStatus: 'DEPOSIT_RECEIVED' }, createdAt: FieldValue.serverTimestamp() });
+          transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({ action, actor: { uid: admin.uid, email: admin.email }, target: { type: 'Pré-reserva', id: orderId, label: `#${orderId}` }, before: order, after: { ...order, status: 'Processamento', preorder: updatedPreorder }, summary: 'Sinal de 50% confirmado.', requestId }));
           return withDocument({ ...order, ...update, id: orderId });
         }
 
@@ -548,7 +562,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
           const updatedPreorder = { ...preorder, status: 'BALANCE_RECEIVED', balanceReceivedAt: now };
           const update = { status: 'Pago', preorder: updatedPreorder, updatedAt: FieldValue.serverTimestamp(), statusHistory: FieldValue.arrayUnion({ status: 'Saldo recebido', date: now, notes: 'Saldo da pré-reserva confirmado. Pode preparar a expedição quando houver stock físico.' }) };
           transaction.update(orderRef, update);
-          transaction.set(database.collection('admin_audit_log').doc(), { action, adminId: admin.uid, adminEmail: admin.email, orderId, changes: { preorderStatus: 'BALANCE_RECEIVED' }, createdAt: FieldValue.serverTimestamp() });
+          transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({ action, actor: { uid: admin.uid, email: admin.email }, target: { type: 'Pré-reserva', id: orderId, label: `#${orderId}` }, before: order, after: { ...order, status: 'Pago', preorder: updatedPreorder }, summary: 'Saldo da pré-reserva confirmado.', requestId }));
           return withDocument({ ...order, ...update, id: orderId });
         }
 
@@ -582,7 +596,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
         transaction.update(productRef, productUpdate);
         transaction.delete(database.collection('stock_reservations').doc(reservationId));
         transaction.update(orderRef, update);
-        transaction.set(database.collection('admin_audit_log').doc(), { action, adminId: admin.uid, adminEmail: admin.email, orderId, changes: { preorderStatus: 'CANCELLED', capacityReleased: held }, createdAt: FieldValue.serverTimestamp() });
+        transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({ action, actor: { uid: admin.uid, email: admin.email }, target: { type: 'Pré-reserva', id: orderId, label: `#${orderId}` }, before: order, after: { ...order, status: 'Cancelado', preorder: updatedPreorder }, summary: 'Pré-reserva cancelada e vaga libertada.', details: { capacityReleased: held }, requestId }));
         return withDocument({ ...order, ...update, id: orderId });
       }
 
@@ -681,6 +695,19 @@ export default async function handler(request: VercelRequest, response: VercelRe
             const ref = context.lotRefs.get(lot.id);
             if (!ref) continue;
             transaction.update(ref, { quantitySold: Number(lot.quantitySold ?? 0), status: lot.status, units: lot.units ?? [] });
+            const originalLot = context.lots.find((item) => item.id === lot.id);
+            if (originalLot && updatedById.has(lot.id)) {
+              transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
+                action: 'fulfill_order_stock',
+                actor: { uid: admin.uid, email: admin.email },
+                target: { type: 'Lote', id: lot.id, label: String(lot.name || `Lote ${lot.id}`) },
+                before: originalLot,
+                after: lot,
+                summary: `Stock abatido ao preparar a encomenda #${orderId}.`,
+                details: { orderId, productId: context.productId },
+                requestId,
+              }));
+            }
           }
           const releaseReservation = preorder?.kind === 'PREORDER' && preorder.capacityHeld === true && Number(preorder.productId) === context.productId;
           const reservationsForProjection = releaseReservation
@@ -740,7 +767,16 @@ export default async function handler(request: VercelRequest, response: VercelRe
         }
         transaction.update(orderRef, update);
         if (inventoryItems.length) transaction.set(database.collection('stock_movements').doc(), { type: 'SALE', orderId, items: updatedItems.filter((item: DocumentData) => item.isCustom !== true).map((item: DocumentData) => ({ productId: item.productId, quantity: item.quantity, unitIds: item.unitIds, serialNumbers: item.serialNumbers })), totalValue: Number(order.total ?? 0), createdAt: now, createdBy: admin.email });
-        transaction.set(database.collection('admin_audit_log').doc(), { action, adminId: admin.uid, adminEmail: admin.email, orderId, changes: { status, trackingNumber: trackingNumber || null, serialNumbers: plan.serialNumbers }, createdAt: FieldValue.serverTimestamp() });
+        transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
+          action,
+          actor: { uid: admin.uid, email: admin.email },
+          target: { type: 'Encomenda', id: orderId, label: `#${orderId}` },
+          before: order,
+          after: { ...order, ...update, statusHistory: order.statusHistory },
+          summary: isPickup ? 'Levantamento validado.' : 'Expedição confirmada.',
+          details: { serialNumbers: plan.serialNumbers.join(', ') || 'Sem S/N', trackingNumber: trackingNumber || '—' },
+          requestId,
+        }));
         return withDocument({ ...order, ...update, id: orderId });
       }
 
@@ -854,7 +890,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
 
       applyRestock(transaction, restockContexts);
       transaction.update(orderRef, update);
-      transaction.set(database.collection('admin_audit_log').doc(), { action, adminId: admin.uid, adminEmail: admin.email, orderId, changes: { status: update.status ?? null, trackingNumber: update.trackingNumber ?? null }, createdAt: FieldValue.serverTimestamp() });
+      transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
+        action,
+        actor: { uid: admin.uid, email: admin.email },
+        target: { type: 'Encomenda', id: orderId, label: `#${orderId}` },
+        before: order,
+        after: { ...order, ...update, statusHistory: order.statusHistory },
+        summary: action === 'set_status' ? 'Estado da encomenda alterado.' : action === 'update_tracking' ? 'Rastreio atualizado.' : 'Pedido do cliente revisto.',
+        requestId,
+      }));
       return withDocument({ ...order, ...update, id: orderId });
     });
     const result = transactionResult.order;

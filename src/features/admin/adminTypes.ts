@@ -181,6 +181,14 @@ export interface AdminAuditEntry {
   id: string;
   action?: string;
   targetId?: string;
+  targetType?: string;
+  targetLabel?: string;
+  operation?: 'CRIADO' | 'ALTERADO' | 'APAGADO' | string;
+  summary?: string;
+  changedFields?: string[];
+  changes?: Array<{ field?: string; before?: string; after?: string }>;
+  details?: Record<string, unknown>;
+  actorType?: 'ADMIN' | 'CLIENT' | 'SYSTEM' | string;
   adminEmail?: string;
   createdAt?: string | { seconds?: number; toDate?: () => Date };
 }

@@ -456,7 +456,11 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
 }
 
 function EditorFrame({ open, title, subtitle, className = '', onClose, children }: { open: boolean; title: string; subtitle: string; className?: string; onClose: () => void; children: React.ReactNode }) {
-  return <>{open && <button className="editor-backdrop" onClick={onClose} aria-label="Fechar editor" />}<aside className={`editor-drawer ${className} ${open ? 'open' : ''}`.trim()} aria-hidden={!open}><header><div><p className="eyebrow">{subtitle}</p><h2>{title}</h2></div><button className="icon-button" onClick={onClose}><X /></button></header>{children}</aside></>;
+  const preventNumberWheel = (event: React.WheelEvent<HTMLElement>) => {
+    const target = event.target as HTMLInputElement;
+    if (target?.tagName === 'INPUT' && target.type === 'number') target.blur();
+  };
+  return <>{open && <button className="editor-backdrop" onClick={onClose} aria-label="Fechar editor" />}<aside className={`editor-drawer ${className} ${open ? 'open' : ''}`.trim()} aria-hidden={!open} onWheelCapture={preventNumberWheel}><header><div><p className="eyebrow">{subtitle}</p><h2>{title}</h2></div><button className="icon-button" onClick={onClose}><X /></button></header>{children}</aside></>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label className="editor-field"><span>{label}</span>{children}</label>; }

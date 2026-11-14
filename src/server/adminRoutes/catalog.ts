@@ -4,6 +4,7 @@ import { ApiError, handleApiError, requireAdmin, requirePost } from '../adminAut
 import { getAdminDb } from '../firebaseAdmin.js';
 import { normalizeProductAvailabilityMode } from '../../domain/productAvailability.js';
 import { CATALOG_COPY_REVIEW, CATALOG_COPY_REVIEW_VERSION } from '../catalogCopyReview.js';
+import { adminAuditEntry, adminRequestId } from '../adminAudit.js';
 
 const text = (value: unknown, max = 2000) => String(value ?? '').trim().slice(0, max);
 const number = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -82,6 +83,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const admin = await requireAdmin(request);
     const action = text(request.body?.action, 40);
     const database = getAdminDb();
+    const requestId = adminRequestId(request.headers);
     if (action === 'delete_review') {
       const reviewId = text(request.body?.reviewId, 200);
       const productId = Number(request.body?.productId);
@@ -92,8 +94,13 @@ export default async function handler(request: VercelRequest, response: VercelRe
         if (!reviewSnapshot.exists) throw new ApiError(404, 'A avaliação já não existe.');
         const savedProductId = Number(reviewSnapshot.data()?.productId);
         if (Number.isFinite(productId) && productId > 0 && savedProductId !== productId) throw new ApiError(409, 'A avaliação não pertence a este produto.');
+        const review = reviewSnapshot.data() ?? {};
         transaction.delete(reviewRef);
-        transaction.set(database.collection('admin_audit_log').doc(), { action: 'delete_review', adminId: admin.uid, adminEmail: admin.email, reviewId, productId: savedProductId, createdAt: FieldValue.serverTimestamp() });
+        transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
+          action: 'delete_review', actor: admin, requestId,
+          target: { type: 'Avaliação', id: reviewId, label: `Avaliação do produto ${savedProductId}` },
+          before: review, after: null,
+        }));
       });
       return response.status(200).json({ success: true, reviewId });
     }
@@ -128,19 +135,22 @@ export default async function handler(request: VercelRequest, response: VercelRe
           updatedBy: admin.uid,
         };
         batch.set(snapshot.ref, reviewedProduct, { merge: true });
+        batch.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
+          action: 'review_catalog_content', actor: admin, requestId,
+          target: { type: 'Produto', id: snapshot.id, label: text(current.name, 250) || `Produto ${snapshot.id}` },
+          before: current,
+          after: { ...current, ...reviewedProduct },
+          summary: `Ficha revista automaticamente (versão ${CATALOG_COPY_REVIEW_VERSION}).`,
+        }));
         updated += 1;
       });
 
-      batch.set(database.collection('admin_audit_log').doc(), {
-        action: 'review_catalog_content',
-        adminId: admin.uid,
-        adminEmail: admin.email,
-        reviewVersion: CATALOG_COPY_REVIEW_VERSION,
-        updated,
-        skipped,
-        missing,
-        createdAt: FieldValue.serverTimestamp(),
-      });
+      batch.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
+        action: 'review_catalog_content', actor: admin, requestId,
+        target: { type: 'Catálogo', id: CATALOG_COPY_REVIEW_VERSION, label: 'Revisão de fichas de produto' },
+        before: null, after: { updated, skipped, missing },
+        summary: `Revisão automática ${CATALOG_COPY_REVIEW_VERSION}.`,
+      }));
       await batch.commit();
       return response.status(200).json({ success: true, updated, skipped, missing, reviewVersion: CATALOG_COPY_REVIEW_VERSION });
     }
@@ -222,7 +232,12 @@ export default async function handler(request: VercelRequest, response: VercelRe
         updatedBy: admin.uid,
       };
       transaction.set(productRef, product, { merge: true });
-      transaction.set(database.collection('admin_audit_log').doc(), { action: 'save_product', adminId: admin.uid, adminEmail: admin.email, productId: id, createdAt: FieldValue.serverTimestamp() });
+      transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
+        action: 'save_product', actor: admin, requestId,
+        target: { type: 'Produto', id, label: product.name },
+        before: currentSnapshot.exists ? current : null,
+        after: product,
+      }));
       return product;
     });
     return response.status(200).json({ success: true, product: saved });
