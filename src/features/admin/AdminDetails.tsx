@@ -1,8 +1,8 @@
-import { AlertTriangle, CalendarDays, CheckCircle2, CreditCard, Mail, MapPin, Package, Phone, Printer, RefreshCw, Save, Truck, X } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, CreditCard, Mail, MapPin, Package, Phone, Printer, RefreshCw, Save, Trash2, Truck, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { AdminOrder, InventoryLot, OrderStatus, StockGroup } from './adminTypes';
 import type { Product } from '../../types/domain';
-import { adminMutationsAvailable, cancelPreorder, classifyLegacyInventoryLots, confirmInventoryLotReceived, confirmPreorderBalance, confirmPreorderDeposit, linkOrderToCustomerAccount, reviewOrderRequest, setOrderStatus, syncProductStock, updateOrderTracking } from './adminMutations';
+import { adminMutationsAvailable, cancelPreorder, classifyLegacyInventoryLots, confirmInventoryLotReceived, confirmPreorderBalance, confirmPreorderDeposit, deleteCancelledOrder, linkOrderToCustomerAccount, reviewOrderRequest, setOrderStatus, syncProductStock, updateOrderTracking } from './adminMutations';
 import { OrderFulfillmentPanel } from './OrderFulfillmentPanel';
 import { inventoryLotIncomingQuantity, inventoryLotPhysicalQuantity, inventoryLotSoldQuantity, isInventoryLotInTransit } from '../../domain/inventoryReceipt';
 import { unitMatchesCode } from './unitIdentity';
@@ -22,7 +22,7 @@ export function AdminDetails({ order, stock, lots, products, onClose, onChanged,
     <button className={`drawer-backdrop ${open ? 'visible' : ''}`} onClick={onClose} aria-label="Fechar detalhes" />
     <aside className={`admin-detail-drawer ${open ? 'open' : ''}`} aria-hidden={!open}>
       <header><div><p className="eyebrow">Detalhes</p><h2>{order ? `Encomenda #${order.id.replace(/^#/, '')}` : stock?.name}</h2></div><button className="icon-button" onClick={onClose}><X /></button></header>
-      {order && <OrderDetail order={order} lots={lots} products={products} onChanged={onChanged} />}
+      {order && <OrderDetail order={order} lots={lots} products={products} onChanged={onChanged} onDeleted={onClose} />}
       {stock && <StockDetail group={stock} product={products.find((product) => product.id === Number(stock.productId))} onChanged={onChanged} onEditLot={onEditLot} />}
     </aside>
   </>;
@@ -30,7 +30,7 @@ export function AdminDetails({ order, stock, lots, products, onClose, onChanged,
 
 const ORDER_STATUSES: OrderStatus[] = ['A confirmar', 'Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue', 'Cancelado', 'Reclamação', 'Devolvido', 'Levantamento em Loja'];
 
-function OrderDetail({ order, lots, products, onChanged }: { order: AdminOrder; lots: InventoryLot[]; products: Product[]; onChanged: () => Promise<void> }) {
+function OrderDetail({ order, lots, products, onChanged, onDeleted }: { order: AdminOrder; lots: InventoryLot[]; products: Product[]; onChanged: () => Promise<void>; onDeleted: () => void }) {
   const customer = order.shippingInfo;
   const fulfillmentComplete = order.fulfillmentStatus === 'COMPLETED' || ['Enviado', 'Entregue'].includes(order.status);
   const terminal = ['Cancelado', 'Devolvido'].includes(order.status);
@@ -71,9 +71,9 @@ function OrderDetail({ order, lots, products, onChanged }: { order: AdminOrder; 
 
   useEffect(() => { setStatus(order.status); setTracking(order.trackingNumber ?? ''); setPackageTrackings((order.packages ?? []).map((pkg) => pkg.trackingNumber ?? '')); setAccountEmail(customer?.email ?? ''); setAccountLinked(Boolean(order.userId)); setMessage(null); setError(null); }, [order, customer?.email]);
 
-  const run = async (operation: () => Promise<unknown>, success: string) => {
+  const run = async (operation: () => Promise<unknown>, success: string, afterSuccess?: () => void) => {
     setBusy(true); setError(null); setMessage(null);
-    try { await operation(); setMessage(success); await onChanged(); }
+    try { await operation(); setMessage(success); await onChanged(); afterSuccess?.(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível guardar.'); }
     finally { setBusy(false); }
   };
@@ -96,6 +96,13 @@ function OrderDetail({ order, lots, products, onChanged }: { order: AdminOrder; 
   const cancelCurrentPreorder = () => {
     if (!window.confirm('Cancelar esta pré-reserva e libertar a vaga? Confirme o reembolso com o cliente, se o sinal já tiver sido recebido.')) return;
     void run(() => cancelPreorder(order.id), 'Pré-reserva cancelada e vaga libertada.');
+  };
+
+  const deleteCurrentCancelledOrder = () => {
+    if (order.status !== 'Cancelado') return;
+    const reference = order.id.replace(/^#/, '');
+    if (!window.confirm(`Apagar definitivamente a encomenda #${reference}? Esta ação não pode ser anulada.`)) return;
+    void run(() => deleteCancelledOrder(order.id), 'Encomenda cancelada apagada definitivamente.', onDeleted);
   };
 
   const printShippingLabel = () => {
@@ -127,6 +134,7 @@ function OrderDetail({ order, lots, products, onChanged }: { order: AdminOrder; 
       <div className="admin-form-row"><label>Estado<select value={status} onChange={(event) => setStatus(event.target.value as OrderStatus)} disabled={!adminMutationsAvailable || busy || terminal || awaitingConfirmation || Boolean(preorder)}>{ORDER_STATUSES.map((item) => <option key={item} disabled={!fulfillmentComplete && (item === 'Enviado' || item === 'Entregue')}>{item}</option>)}</select></label><button className="save-button" onClick={changeStatus} disabled={!adminMutationsAvailable || busy || terminal || awaitingConfirmation || Boolean(preorder) || status === order.status}><Save /> Guardar estado</button>{preorder && <small className="field-help">O estado é atualizado pelos controlos da pré-reserva e pela expedição validada.</small>}</div>
       {order.packages?.length ? <div className="admin-form-row"><div className="package-tracking-fields">{order.packages.map((pkg, index) => <label key={pkg.id || index}>Rastreio do volume {index + 1}<input value={packageTrackings[index] ?? ''} onChange={(event) => setPackageTrackings((current) => current.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} disabled={!adminMutationsAvailable || busy || terminal || awaitingConfirmation} placeholder="Código de rastreio" /></label>)}</div><button className="save-button secondary" onClick={() => void run(() => updateOrderTracking(order.id, '', packageTrackings), 'Rastreios atualizados.')} disabled={!adminMutationsAvailable || busy || terminal || awaitingConfirmation || packageTrackings.every((value, index) => value === (order.packages?.[index]?.trackingNumber ?? ''))}><Save /> Guardar rastreios</button></div> : <div className="admin-form-row"><label>Rastreio<input value={tracking} onChange={(event) => setTracking(event.target.value)} disabled={!adminMutationsAvailable || busy || terminal || awaitingConfirmation} placeholder="Código de rastreio" /></label><button className="save-button secondary" onClick={() => void run(() => updateOrderTracking(order.id, tracking), 'Rastreio atualizado.')} disabled={!adminMutationsAvailable || busy || terminal || awaitingConfirmation || tracking === (order.trackingNumber ?? '')}><Save /> Guardar rastreio</button></div>}
       {pendingRequest && <div className="review-actions"><button disabled={!adminMutationsAvailable || busy} onClick={() => void run(() => reviewOrderRequest(order.id, pendingRequest.label === 'Cancelamento' ? 'cancellation' : 'return', 'approve'), 'Pedido aprovado.')}>Aprovar pedido</button><button disabled={!adminMutationsAvailable || busy} onClick={() => void run(() => reviewOrderRequest(order.id, pendingRequest.label === 'Cancelamento' ? 'cancellation' : 'return', 'reject'), 'Pedido recusado.')}>Recusar</button></div>}
+      {order.status === 'Cancelado' && <div className="cancelled-order-delete"><div><strong>Apagar encomenda cancelada</strong><p>Use apenas para testes ou pedidos criados por engano. A encomenda será removida da dashboard e da Área de Cliente; o stock não será alterado.</p></div><button className="danger-button" type="button" disabled={!adminMutationsAvailable || busy} onClick={deleteCurrentCancelledOrder}><Trash2 /> Apagar definitivamente</button></div>}
       {message && <p className="form-success">{message}</p>}{error && <p className="form-error">{error}</p>}
     </DetailSection>
     <DetailSection title="Cliente"><div className="contact-list"><span><Mail />{customer?.email ?? '—'}</span><span><Phone />{customer?.phone ?? '—'}</span><span><MapPin />{customer?.deliveryMethod === 'Pickup' ? 'Levantamento em loja' : [customer?.street, customer?.doorNumber, customer?.zip, customer?.city].filter(Boolean).join(', ') || '—'}</span></div>{accountLinked ? <p className="account-link-status"><CheckCircle2 /> Compra associada a uma conta de cliente.</p> : <div className="account-link-panel"><div><strong>Associar à conta do cliente</strong><p>Use o e-mail com que o cliente inicia sessão. Isto apenas liga a encomenda; não mexe no stock, valor ou estado.</p></div><div className="admin-form-row"><label>E-mail da conta<input type="email" value={accountEmail} onChange={(event) => setAccountEmail(event.target.value)} disabled={!adminMutationsAvailable || busy} placeholder="cliente@email.pt" /></label><button className="save-button secondary" type="button" onClick={linkCustomerAccount} disabled={!adminMutationsAvailable || busy || !accountEmail.trim()}><Save /> Associar conta</button></div></div>}</DetailSection>

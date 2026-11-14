@@ -9,6 +9,7 @@ import { projectPublicStock, type LotData, type ReservationData } from '../stock
 import { applyPartialCancellation, calculateCancellationRefund, validateCancellationItems } from '../orderCancellation.js';
 import { activeReservedQuantity, allocateSale, normalizeVariant, toMillis } from '../checkoutCore.js';
 import { applyFulfillmentToPackages, FulfillmentError, fulfillmentItemsFromPackages, fulfillmentUnitSerial, isOrderFulfillmentComplete, planStoredOrderFulfillment, type FulfillmentLot, type FulfillmentPackage } from '../orderFulfillment.js';
+import { cancelledOrderDeletionIssue } from '../cancelledOrderDeletion.js';
 
 const STATUSES = new Set(['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue', 'Cancelado', 'Reclamação', 'Devolvido', 'Levantamento em Loja']);
 const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -194,7 +195,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const action = text(request.body?.action, 40);
     const orderId = cleanOrderId(request.body?.orderId);
     if (!orderId) throw new ApiError(400, 'A encomenda não foi indicada.');
-    if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'create_manual_order', 'fulfill_order', 'link_customer_account', 'confirm_preorder_deposit', 'confirm_preorder_balance', 'cancel_preorder'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
+    if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'create_manual_order', 'fulfill_order', 'link_customer_account', 'confirm_preorder_deposit', 'confirm_preorder_balance', 'cancel_preorder', 'delete_cancelled_order'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
     const creatingOrder = action === 'recover_telegram_order' || action === 'create_manual_order';
 
     // Uma compra feita como convidado pode ter um e-mail de entrega diferente
@@ -500,6 +501,30 @@ export default async function handler(request: VercelRequest, response: VercelRe
       const preorder = order.preorder && typeof order.preorder === 'object' && !Array.isArray(order.preorder)
         ? order.preorder as DocumentData
         : null;
+
+      if (action === 'delete_cancelled_order') {
+        const issue = cancelledOrderDeletionIssue({
+          status: order.status,
+          stockDeducted: order.stockDeducted,
+          stockRestoredAt: order.stockRestoredAt,
+          hasInventoryItems: cleanItems(order).length > 0,
+          preorder,
+        });
+        if (issue) throw new ApiError(409, issue);
+
+        transaction.delete(orderRef);
+        // The order disappears completely from the dashboard and customer area.
+        // We retain only this administrative audit trace, not the order itself.
+        transaction.set(database.collection('admin_audit_log').doc(), {
+          action,
+          adminId: admin.uid,
+          adminEmail: admin.email,
+          orderId,
+          changes: { deleted: true, previousStatus: 'Cancelado' },
+          createdAt: FieldValue.serverTimestamp(),
+        });
+        return withDocument({ id: orderId, status: 'Cancelado' }, true);
+      }
 
       if (action === 'confirm_preorder_deposit' || action === 'confirm_preorder_balance' || action === 'cancel_preorder') {
         if (!preorder || preorder.kind !== 'PREORDER') throw new ApiError(409, 'Esta encomenda não é uma pré-reserva.');

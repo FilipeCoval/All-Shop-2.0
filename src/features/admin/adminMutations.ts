@@ -52,6 +52,7 @@ export const fulfillOrder = (orderId: string, selections: Array<{ serialNumber: 
 export const confirmPreorderDeposit = (orderId: string) => callAdminApi(adminApiPath('orders'), { action: 'confirm_preorder_deposit', orderId });
 export const confirmPreorderBalance = (orderId: string) => callAdminApi(adminApiPath('orders'), { action: 'confirm_preorder_balance', orderId });
 export const cancelPreorder = (orderId: string) => callAdminApi(adminApiPath('orders'), { action: 'cancel_preorder', orderId });
+export const deleteCancelledOrder = (orderId: string) => callAdminApi(adminApiPath('orders'), { action: 'delete_cancelled_order', orderId });
 export const reviewOrderRequest = (orderId: string, requestKind: 'cancellation' | 'return', decision: 'approve' | 'reject', reviewNote = '') => callAdminApi(adminApiPath('orders'), { action: 'review_request', orderId, requestKind, decision, reviewNote });
 export const saveCatalogProduct = (product: Record<string, unknown>) => callAdminApi(adminApiPath('catalog'), { action: 'save_product', product });
 export const reviewCatalogContent = () => callAdminApi(adminApiPath('catalog'), { action: 'review_catalog_content' }, { retryTransient: true });

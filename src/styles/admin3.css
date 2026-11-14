@@ -1164,6 +1164,10 @@ img { display: block; max-width: 100%; }
 .danger-button { height: 41px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #fecaca; border-radius: 9px; background: #fff1f2; color: #be123c; font-size: 11px; font-weight: 800; cursor: pointer; }
 .danger-button svg { width: 14px; }
 .danger-button:disabled { opacity: .4; cursor: not-allowed; }
+.cancelled-order-delete { margin-top: 14px; padding: 13px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid #fecaca; border-radius: 11px; background: #fff7f7; }
+.cancelled-order-delete > div { display: grid; gap: 4px; }
+.cancelled-order-delete strong { color: #9f1239; font-size: 12px; }
+.cancelled-order-delete p { margin: 0; color: #9f1239; font-size: 10px; line-height: 1.5; }
 .imports-workspace { display: grid; gap: 18px; }
 .imports-summary-row { display: grid; grid-template-columns: repeat(3,minmax(140px,1fr)) minmax(250px,1.25fr); gap: 12px; }
 .imports-summary-row > article, .imports-summary-row > button { min-height: 108px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: white; }
@@ -1758,7 +1762,7 @@ html.dark .recovery-item.manual-custom-item,.dark .recovery-item.manual-custom-i
 .request-photos { padding: 14px; display: grid; gap: 12px; border: 1px solid var(--line); border-radius: 11px; background: white; }
 .request-photos > div { display: grid; grid-template-columns: repeat(4,1fr); gap: 9px; }.request-photos a { overflow: hidden; border-radius: 9px; background: #f1f5f9; aspect-ratio: 1; }.request-photos img { width: 100%; height: 100%; object-fit: cover; transition: transform .2s ease; }.request-photos a:hover img { transform: scale(1.04); }
 @media (max-width: 900px) { .manual-order-total { grid-template-columns: auto 1fr; }.manual-order-total span,.manual-order-total label { grid-column: 2; }.request-details-grid { grid-template-columns: 1fr 1fr; }.request-photos > div { grid-template-columns: repeat(3,1fr); } }
-@media (max-width: 620px) { .order-create-actions { width: 100%; }.order-create-actions > button { flex: 1 1 0; min-width: 0; padding-inline: 9px; }.recovery-item.manual-custom-item { grid-template-columns: 1fr; }.manual-custom-item > .danger-button { grid-column: 1; justify-self: stretch; }.manual-order-total,.coupon-calculator-result,.request-details-grid { grid-template-columns: 1fr; }.manual-order-total > svg,.manual-order-total span,.manual-order-total label { grid-column: 1; }.manual-order-total .manual-order-final { padding-left: 0; border-left: 0; border-top: 1px solid #dbe4ef; padding-top: 12px; }.request-overview { align-items: flex-start; flex-direction: column; }.request-photos > div { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 620px) { .order-create-actions { width: 100%; }.order-create-actions > button { flex: 1 1 0; min-width: 0; padding-inline: 9px; }.recovery-item.manual-custom-item { grid-template-columns: 1fr; }.manual-custom-item > .danger-button { grid-column: 1; justify-self: stretch; }.manual-order-total,.coupon-calculator-result,.request-details-grid { grid-template-columns: 1fr; }.manual-order-total > svg,.manual-order-total span,.manual-order-total label { grid-column: 1; }.manual-order-total .manual-order-final { padding-left: 0; border-left: 0; border-top: 1px solid #dbe4ef; padding-top: 12px; }.request-overview { align-items: flex-start; flex-direction: column; }.request-photos > div { grid-template-columns: repeat(2,1fr); }.cancelled-order-delete { align-items: stretch; flex-direction: column; }.cancelled-order-delete .danger-button { width: 100%; justify-content: center; } }
 
 /* Logótipo oficial reconstruído em vetor, sem o fundo preto do JPG antigo. */
 .allshop-logo { width: 86px; height: 68px; display: grid; grid-template-rows: 39px 23px; justify-items: center; align-content: center; gap: 0; border-radius: 0; background: transparent; }
@@ -2112,6 +2116,8 @@ html.dark .status-cancelado,
 html.dark .status-devolvido,
 html.dark .warning-pill { background: rgba(136,19,55,.28); color: #fda4af; }
 html.dark .danger-button { border-color: #881337; background: rgba(136,19,55,.22); color: #fda4af; }
+html.dark .cancelled-order-delete { border-color: #881337; background: rgba(136,19,55,.16); }
+html.dark .cancelled-order-delete strong,html.dark .cancelled-order-delete p { color: #fda4af; }
 
 /* Gestor financeiro de cashback — usa os lotes como fonte oficial. */
 .cashback-manager { display: grid; gap: 20px; }
