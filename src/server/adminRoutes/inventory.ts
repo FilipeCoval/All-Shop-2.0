@@ -104,9 +104,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const publicProductId = Number(request.body?.lot?.publicProductId ?? request.body?.publicProductId);
     if (!Number.isInteger(publicProductId) || publicProductId <= 0) throw new ApiError(400, 'Escolha um produto válido do catálogo.');
 
-    if (!['save_lot', 'delete_lot', 'sync_product', 'confirm_lot_received', 'classify_legacy_lots'].includes(action)) throw new ApiError(400, 'Ação de inventário inválida.');
+    if (!['save_lot', 'delete_lot', 'sync_product', 'confirm_lot_received', 'classify_legacy_lots', 'correct_legacy_sale'].includes(action)) throw new ApiError(400, 'Ação de inventário inválida.');
     if (action === 'save_lot' && !lotId) throw new ApiError(400, 'A página precisa de ser atualizada antes de criar este lote. O rascunho fica guardado neste dispositivo.');
-    if (['delete_lot', 'confirm_lot_received'].includes(action) && !lotId) throw new ApiError(400, 'O lote não foi indicado.');
+    if (['delete_lot', 'confirm_lot_received', 'correct_legacy_sale'].includes(action) && !lotId) throw new ApiError(400, 'O lote não foi indicado.');
     if (lotId.includes('/')) throw new ApiError(400, 'O identificador do lote é inválido. Atualize a dashboard e tente novamente.');
 
     const inventoryCollection = database.collection('products_inventory');
@@ -146,6 +146,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
       let classifiedLotCount = 0;
       let classifiedVariant = '';
       let reconciledLotCount = 0;
+      let restoredLegacySaleCount = 0;
+      let legacySaleCountBeforeCorrection = 0;
+      let legacySaleCorrectionReason = '';
       if (action === 'sync_product') {
         lots = lots.map((lot) => {
           const recordedSold = Math.max(0, number(lot.quantitySold));
@@ -207,6 +210,37 @@ export default async function handler(request: VercelRequest, response: VercelRe
           lots = [...lots.filter((lot) => lot.id !== lotRef.id), { id: lotRef.id, ...received } as LotData];
           transaction.update(lotRef, received);
         }
+      } else if (action === 'correct_legacy_sale' && lotRef) {
+        if (!currentLotSnapshot?.exists) throw new ApiError(404, 'O lote já não existe.');
+        const current = currentLotSnapshot.data() ?? {};
+        if (Number(current.publicProductId) !== publicProductId) throw new ApiError(400, 'O lote não pertence a este produto.');
+        const quantityToRestore = number(request.body?.quantity);
+        const reason = text(request.body?.reason, 500);
+        if (!Number.isInteger(quantityToRestore) || quantityToRestore < 1) throw new ApiError(400, 'Indique pelo menos uma unidade a repor.');
+        if (reason.length < 8) throw new ApiError(400, 'Indique um motivo com pelo menos 8 caracteres para esta correção.');
+
+        const rawUnits: unknown[] = Array.isArray(current.units) ? current.units : [];
+        if (!rawUnits.every(isUnitRecord)) throw new ApiError(409, 'Este lote contém uma unidade inválida. Atualize a página antes de corrigir o histórico.');
+        const identifiedSales = rawUnits.filter((unit) =>
+          text(unit.status, 30).toUpperCase() === 'SOLD' || Boolean(text(unit.soldToOrder, 100)),
+        ).length;
+        const registeredSales = inventoryLotSoldQuantity({ quantitySold: current.quantitySold, units: rawUnits });
+        const legacySales = Math.max(0, registeredSales - identifiedSales);
+        if (legacySales === 0) throw new ApiError(409, 'Este lote não tem vendas históricas sem encomenda ou S/N para corrigir.');
+        if (quantityToRestore > legacySales) throw new ApiError(409, `Só pode repor até ${legacySales} unidade(s) sem referência neste lote.`);
+
+        const correctedQuantitySold = Math.max(identifiedSales, registeredSales - quantityToRestore);
+        const corrected = {
+          ...current,
+          quantitySold: correctedQuantitySold,
+          updatedAt: FieldValue.serverTimestamp(),
+          updatedBy: admin.uid,
+        };
+        restoredLegacySaleCount = quantityToRestore;
+        legacySaleCountBeforeCorrection = legacySales;
+        legacySaleCorrectionReason = reason;
+        lots = [...lots.filter((lot) => lot.id !== lotRef.id), { id: lotRef.id, ...corrected } as LotData];
+        transaction.update(lotRef, corrected);
       } else if (action === 'save_lot' && lotRef) {
         const input = request.body?.lot ?? {};
         const quantityBought = number(input.quantityBought);
@@ -396,16 +430,29 @@ export default async function handler(request: VercelRequest, response: VercelRe
         ? `${classifiedLotCount} lote(s) classificado(s) como “${classifiedVariant}”.`
         : action === 'sync_product'
           ? `${reconciledLotCount} lote(s) reconciliado(s) com os S/N.`
+          : action === 'correct_legacy_sale'
+            ? `${restoredLegacySaleCount} unidade(s) histórica(s) reposta(s) no stock após conferência física.`
           : undefined;
       transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
         action, actor: admin, requestId, target, before, after, summary,
-        details: { publicProductId, lotId: lotRef?.id ?? null, classifiedLotCount, reconciledLotCount },
+        details: {
+          publicProductId,
+          lotId: lotRef?.id ?? null,
+          classifiedLotCount,
+          reconciledLotCount,
+          ...(action === 'correct_legacy_sale' ? {
+            unidadesRepostas: restoredLegacySaleCount,
+            vendasHistoricasSemReferenciaAntes: legacySaleCountBeforeCorrection,
+            motivo: legacySaleCorrectionReason,
+          } : {}),
+        },
       }));
       return {
         lotId: lotRef?.id,
         projection,
         ...(action === 'classify_legacy_lots' ? { variant: classifiedVariant, updatedLots: classifiedLotCount } : {}),
         ...(action === 'sync_product' ? { reconciledLots: reconciledLotCount } : {}),
+        ...(action === 'correct_legacy_sale' ? { restoredLegacySaleCount } : {}),
       };
     });
 

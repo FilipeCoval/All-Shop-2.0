@@ -1132,6 +1132,14 @@ img { display: block; max-width: 100%; }
 .lot-sales-readonly strong { color: #0f3b83; font-size: 13px; text-align: right; }
 .lot-sales-readonly small { grid-column: 1 / -1; color: #64748b; font-size: 9px; line-height: 1.4; }
 .lot-sales-legacy { margin: 10px 0 0; padding: 10px 11px; border: 1px solid #fed7aa; border-radius: 9px; background: #fff7ed; color: #9a3412; font-size: 10px; line-height: 1.55; }
+.lot-sales-legacy > p { margin: 0; }
+.legacy-sale-correction { margin-top: 11px; padding: 12px; display: grid; gap: 10px; border: 1px solid #fdba74; border-radius: 10px; background: rgba(255,255,255,.72); }
+.legacy-sale-correction > div:first-child { display: grid; gap: 2px; }
+.legacy-sale-correction > div:first-child strong { color: #7c2d12; font-size: 10px; }
+.legacy-sale-correction > div:first-child small { color: #9a3412; font-size: 9px; line-height: 1.45; }
+.legacy-sale-correction-button { width: fit-content; min-height: 37px; padding: 0 12px; border: 1px solid #ea580c; border-radius: 9px; background: #fff; color: #c2410c; font-size: 10px; font-weight: 850; cursor: pointer; }
+.legacy-sale-correction-button:hover:not(:disabled) { background: #fff7ed; }
+.legacy-sale-correction-button:disabled { opacity: .55; cursor: not-allowed; }
 .serial-management > header { align-items: center; }
 .serial-management > header > b { margin-left: auto; padding: 6px 9px; border-radius: 8px; background: #dbeafe; color: #1d4ed8; font-size: 11px; }
 .serial-quick-entry { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; }
@@ -2117,6 +2125,10 @@ html.dark .lot-sales-readonly span,
 html.dark .lot-sales-readonly small { color: #a7bfe5; }
 html.dark .lot-sales-readonly strong { color: #bfdbfe; }
 html.dark .lot-sales-legacy { border-color: #9a3412; background: rgba(124,45,18,.22); color: #fed7aa; }
+html.dark .legacy-sale-correction { border-color: #9a3412; background: rgba(10,21,38,.55); }
+html.dark .legacy-sale-correction > div:first-child strong { color: #fdba74; }
+html.dark .legacy-sale-correction > div:first-child small { color: #fed7aa; }
+html.dark .legacy-sale-correction-button { border-color: #c2410c; background: #172033; color: #fdba74; }
 html.dark .editor-info { background: rgba(30,64,175,.25); color: #bfdbfe; }
 html.dark .receipt-status-note.incoming { border-color: #1e40af; background: rgba(30,64,175,.22); color: #bfdbfe; }
 html.dark .receipt-status-note.received { border-color: #065f46; background: rgba(6,78,59,.25); color: #6ee7b7; }
