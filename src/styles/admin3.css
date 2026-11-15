@@ -1133,6 +1133,12 @@ img { display: block; max-width: 100%; }
 .lot-sales-readonly small { grid-column: 1 / -1; color: #64748b; font-size: 9px; line-height: 1.4; }
 .lot-sales-legacy { margin: 10px 0 0; padding: 10px 11px; border: 1px solid #fed7aa; border-radius: 9px; background: #fff7ed; color: #9a3412; font-size: 10px; line-height: 1.55; }
 .lot-sales-legacy > p { margin: 0; }
+.lot-quantity-correction { margin-top: 10px; padding: 11px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #bfdbfe; border-radius: 10px; background: #eff6ff; }
+.lot-quantity-correction > div { display: grid; gap: 2px; }
+.lot-quantity-correction strong { color: #1d4ed8; font-size: 10px; }
+.lot-quantity-correction small { color: #475569; font-size: 9px; line-height: 1.45; }
+.lot-quantity-correction button { min-height: 36px; flex: 0 0 auto; padding: 0 11px; border: 1px solid #60a5fa; border-radius: 9px; background: white; color: #1d4ed8; font-size: 9px; font-weight: 850; cursor: pointer; }
+.lot-quantity-correction button:hover { background: #dbeafe; }
 .legacy-sale-correction { margin-top: 11px; padding: 12px; display: grid; gap: 10px; border: 1px solid #fdba74; border-radius: 10px; background: rgba(255,255,255,.72); }
 .legacy-sale-correction > div:first-child { display: grid; gap: 2px; }
 .legacy-sale-correction > div:first-child strong { color: #7c2d12; font-size: 10px; }
@@ -2125,6 +2131,10 @@ html.dark .lot-sales-readonly span,
 html.dark .lot-sales-readonly small { color: #a7bfe5; }
 html.dark .lot-sales-readonly strong { color: #bfdbfe; }
 html.dark .lot-sales-legacy { border-color: #9a3412; background: rgba(124,45,18,.22); color: #fed7aa; }
+html.dark .lot-quantity-correction { border-color: #1e40af; background: rgba(30,64,175,.18); }
+html.dark .lot-quantity-correction strong { color: #93c5fd; }
+html.dark .lot-quantity-correction small { color: #bfdbfe; }
+html.dark .lot-quantity-correction button { border-color: #2563eb; background: #111c2e; color: #bfdbfe; }
 html.dark .legacy-sale-correction { border-color: #9a3412; background: rgba(10,21,38,.55); }
 html.dark .legacy-sale-correction > div:first-child strong { color: #fdba74; }
 html.dark .legacy-sale-correction > div:first-child small { color: #fed7aa; }
@@ -2636,6 +2646,8 @@ html.dark .audit-legacy-note { border-color: #1e40af; background: rgba(30,64,175
 html.dark .audit-details { border-color: #33445b; background: #0b1627; color: #cbd5e1; }
 
 @media (max-width: 760px) {
+  .lot-quantity-correction { align-items: stretch; flex-direction: column; }
+  .lot-quantity-correction button { width: 100%; }
   .client-details-body { height: calc(100dvh - 72px); padding: 12px 11px 94px; gap: 10px; }
   .client-identity-card { padding: 13px; }
   .client-avatar { width: 48px; height: 48px; border-radius: 14px; font-size: 19px; }

@@ -335,6 +335,12 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
   const editableUnitStatus = form.receiptStatus === 'IN_TRANSIT' ? 'IN_TRANSIT' : 'AVAILABLE';
   const visibleUnits = Array.from({ length: Math.max(quantityForUnits, units.length) }, (_, index) => units[index] ?? { id: '', status: editableUnitStatus });
   const registeredUnits = visibleUnits.slice(0, quantityForUnits).filter((unit) => displayUnitCode(unit)).length;
+  const identifiedUnitCount = units.filter((unit) => displayUnitCode(unit)).length;
+  const hasProtectedUnitWithoutCode = units.some((unit) => !displayUnitCode(unit) && unit.status && !['AVAILABLE', 'IN_TRANSIT'].includes(unit.status));
+  const canReduceToIdentifiedUnits = Boolean(lot
+    && quantityForUnits > identifiedUnitCount
+    && identifiedUnitCount >= salesRecorded
+    && !hasProtectedUnitWithoutCode);
   const setUnitSerial = (index: number, value: string) => setUnits((previous) => {
     const next = [...previous];
     while (next.length <= index) next.push({ id: '', status: editableUnitStatus });
@@ -403,6 +409,12 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível confirmar a receção do lote.'); }
     finally { setBusy(false); }
   };
+  const useIdentifiedUnitsOnly = () => {
+    if (!canReduceToIdentifiedUnits) return;
+    setForm((current) => ({ ...current, quantityBought: String(identifiedUnitCount) }));
+    setUnits((current) => current.filter((unit) => displayUnitCode(unit)));
+    setError(null);
+  };
   const correctLegacySale = async () => {
     if (!lot?.id || !lot.publicProductId) return;
     const quantity = Number(legacyCorrectionQuantity);
@@ -435,6 +447,7 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     </section>
     <section className="editor-section"><header><span>3</span><div><strong>Quantidade e custo da compra</strong><small>Indique os totais; as vendas são registadas exclusivamente pelas encomendas.</small></div></header>
       <div className="form-grid"><Field label="Quantidade comprada"><input type="number" min={salesRecorded} value={form.quantityBought} onChange={(event) => setForm({ ...form, quantityBought: event.target.value })} required /></Field><div className="lot-sales-readonly"><span>Vendas registadas</span><strong>{salesRecorded} unidade{salesRecorded === 1 ? '' : 's'}</strong><small>Este número é atualizado pelas encomendas e não pode ser alterado aqui.</small></div></div>
+      {canReduceToIdentifiedUnits && <div className="lot-quantity-correction"><div><strong>Foram encontrados apenas {identifiedUnitCount} S/N registados</strong><small>O lote está marcado com {quantityForUnits} unidades, por isso aparecem campos vazios. Se confirmou que nunca existiram mais unidades, use esta correção antes de guardar.</small></div><button type="button" onClick={useIdentifiedUnitsOnly}>Usar só as {identifiedUnitCount} unidades com S/N</button></div>}
       {salesWithoutUnitReference > 0 && <div className="lot-sales-legacy"><p><strong>{salesWithoutUnitReference} venda{salesWithoutUnitReference === 1 ? '' : 's'} anterior(es) sem referência.</strong> A quantidade foi abatida no passado, mas falta associar a encomenda e o S/N.</p><div className="legacy-sale-correction"><div><strong>Corrigir apenas se os S/N ainda estão fisicamente consigo</strong><small>Esta ação repõe no stock somente vendas antigas sem encomenda nem S/N. As vendas normais continuam protegidas e só podem nascer numa encomenda.</small></div><div className="form-grid"><Field label="Unidades a repor"><input type="number" min="1" max={salesWithoutUnitReference} value={legacyCorrectionQuantity} onChange={(event) => setLegacyCorrectionQuantity(event.target.value)} /></Field><Field label="Motivo obrigatório"><input value={legacyCorrectionReason} onChange={(event) => setLegacyCorrectionReason(event.target.value)} placeholder="Ex.: os 2 S/N foram conferidos fisicamente" /></Field></div><button type="button" className="legacy-sale-correction-button" disabled={!adminMutationsAvailable || busy} onClick={() => void correctLegacySale()}>Repor no stock e registar correção</button></div></div>}
       <Field label="Total pago pelos produtos"><input type="number" min="0" step="0.01" value={form.grossPurchaseTotal} onChange={(event) => setForm({ ...form, grossPurchaseTotal: event.target.value })} placeholder="Total das unidades, antes do cashback" required /></Field>
       <div className="form-grid"><Field label="Portes do fornecedor"><input type="number" min="0" step="0.01" value={form.supplierShippingCost} onChange={(event) => setForm({ ...form, supplierShippingCost: event.target.value })} /></Field><Field label="Alfândega / outros custos"><input type="number" min="0" step="0.01" value={form.customsCost} onChange={(event) => setForm({ ...form, customsCost: event.target.value })} /></Field></div>
