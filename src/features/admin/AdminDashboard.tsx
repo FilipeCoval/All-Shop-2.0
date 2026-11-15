@@ -78,7 +78,10 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
   const [telegramRecoveryOpen, setTelegramRecoveryOpen] = useState(false);
   const [manualOrderOpen, setManualOrderOpen] = useState(false);
   const [catalogReviewBusy, setCatalogReviewBusy] = useState(false);
-  const refreshInFlight = useRef(false);
+  // Todas as ações da dashboard que alteram dados aguardam por esta atualização.
+  // Se coincidir com a atualização automática ao voltar à janela, reutilizamos a
+  // mesma promessa em vez de terminar mais cedo e deixar o painel com dados antigos.
+  const refreshInFlight = useRef<Promise<void> | null>(null);
   const automaticRefreshPaused = useRef(false);
   const requestedOrderId = useRef(typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('order') || '');
   automaticRefreshPaused.current = Boolean(
@@ -91,24 +94,27 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
     || manualOrderOpen,
   );
 
-  const refresh = useCallback(async (silent = false) => {
-    if (refreshInFlight.current) return;
-    refreshInFlight.current = true;
-    if (!silent) setLoading(true);
-    setError(null);
-    try {
-      const snapshot = await loadAdminSnapshot();
-      setData(snapshot);
-      setSelectedOrder((current) => current ? snapshot.orders.find((order) => order.id === current.id) ?? current : null);
-      setActionTarget((current) => current?.kind === 'client'
-        ? { kind: 'client', value: snapshot.users.find((user) => user.id === current.value.id) ?? current.value }
-        : current);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível carregar a dashboard.');
-    } finally {
-      setLoading(false);
-      refreshInFlight.current = false;
-    }
+  const refresh = useCallback((silent = false): Promise<void> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const refreshPromise = (async () => {
+      if (!silent) setLoading(true);
+      setError(null);
+      try {
+        const snapshot = await loadAdminSnapshot();
+        setData(snapshot);
+        setSelectedOrder((current) => current ? snapshot.orders.find((order) => order.id === current.id) ?? current : null);
+        setActionTarget((current) => current?.kind === 'client'
+          ? { kind: 'client', value: snapshot.users.find((user) => user.id === current.value.id) ?? current.value }
+          : current);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Não foi possível carregar a dashboard.');
+      } finally {
+        setLoading(false);
+        refreshInFlight.current = null;
+      }
+    })();
+    refreshInFlight.current = refreshPromise;
+    return refreshPromise;
   }, []);
 
   const reviewCatalog = async () => {
