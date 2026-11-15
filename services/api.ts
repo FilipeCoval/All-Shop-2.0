@@ -72,6 +72,9 @@ export async function createPreorder(input: {
   quantity: number;
   shippingInfo: unknown;
   termsAccepted: true;
+  /** Confirmed only after the client has gone through the message step. */
+  messagePlatform: 'WHATSAPP' | 'TELEGRAM';
+  messageConfirmedAt: string;
 }, guestToken?: string) {
   const response = await fetch('/api/create-order-draft', {
     method: 'POST',

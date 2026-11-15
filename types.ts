@@ -136,6 +136,9 @@ export interface PreorderOrderInfo {
   depositDeadlineAt: string;
   estimatedDispatchDate: string;
   termsAcceptedAt: string;
+  /** Registo da confirmação explícita do envio da mensagem do pedido. */
+  messagePlatform?: 'WHATSAPP' | 'TELEGRAM';
+  messageConfirmedAt?: string;
   depositReceivedAt?: string;
   balanceReceivedAt?: string;
   capacityReleasedAt?: string;

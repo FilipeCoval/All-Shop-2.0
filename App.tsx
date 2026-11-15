@@ -346,7 +346,12 @@ const App: React.FC = () => {
                 const ordersRefreshInterval = window.setInterval(() => {
                     refreshOrders();
                 }, 60_000);
-                ordersUnsubscribe = () => window.clearInterval(ordersRefreshInterval);
+                const refreshAfterOrderChange = () => { void refreshOrders(); };
+                window.addEventListener('allshop:orders-changed', refreshAfterOrderChange);
+                ordersUnsubscribe = () => {
+                    window.clearInterval(ordersRefreshInterval);
+                    window.removeEventListener('allshop:orders-changed', refreshAfterOrderChange);
+                };
 
                 userUnsubscribe = onSnapshot(userDocRef, (docSnap) => {
                     if (docSnap.exists()) {
@@ -694,7 +699,7 @@ const App: React.FC = () => {
         return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 size={42} className="animate-spin text-primary" /></div>;
     }
     
-    if (route === '#account') {
+    if (route.startsWith('#account')) {
       if (!user) { setTimeout(() => { window.location.hash = '/'; setIsLoginOpen(true); }, 0); return null; }
       return <ClientArea user={user} orders={orders} onLogout={handleLogout} onUpdateUser={handleUpdateUser} wishlist={wishlist} onToggleWishlist={toggleWishlist} onAddToCart={addToCart} publicProducts={dbProducts} onOpenSupportChat={() => setIsAIChatOpen(true)} onCheckout={handleCheckout} />;
     }

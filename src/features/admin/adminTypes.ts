@@ -110,6 +110,7 @@ export interface AdminOrder {
     status?: 'DEPOSIT_PENDING' | 'DEPOSIT_RECEIVED' | 'BALANCE_RECEIVED' | 'CANCELLED' | 'EXPIRED' | 'FULFILLED';
     capacityHeld?: boolean; depositPercent?: number; depositDue?: number; balanceDue?: number;
     depositDeadlineAt?: string; estimatedDispatchDate?: string; termsAcceptedAt?: string;
+    messagePlatform?: 'WHATSAPP' | 'TELEGRAM'; messageConfirmedAt?: string;
     depositReceivedAt?: string; balanceReceivedAt?: string; capacityReleasedAt?: string;
   };
   shippingInfo?: {

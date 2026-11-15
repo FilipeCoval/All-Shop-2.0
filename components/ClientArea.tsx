@@ -37,6 +37,16 @@ type ActiveTab = 'overview' | 'orders' | 'profile' | 'addresses' | 'wishlist' | 
 const formatCurrency = (value: number) => 
   new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
 
+const isPreorderOrder = (order: Order) => order.preorder?.kind === 'PREORDER';
+const preorderLabel = (order: Order) => {
+  const status = order.preorder?.status;
+  if (status === 'DEPOSIT_RECEIVED') return 'Sinal recebido';
+  if (status === 'BALANCE_RECEIVED') return 'Pronta a expedir';
+  if (status === 'FULFILLED') return 'Pré-reserva concluída';
+  if (status === 'CANCELLED' || status === 'EXPIRED') return 'Pré-reserva cancelada';
+  return 'Aguarda sinal';
+};
+
 const CircularProgress: React.FC<{ progress: number; size: number; strokeWidth: number }> = ({ progress, size, strokeWidth }) => {
     const radius = (size - strokeWidth) / 2;
     const circumference = 2 * Math.PI * radius;
@@ -71,7 +81,7 @@ const CircularProgress: React.FC<{ progress: number; size: number; strokeWidth: 
 };
 
 const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdateUser, wishlist, onToggleWishlist, onAddToCart, publicProducts, onOpenSupportChat, onCheckout }) => {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => window.location.hash.includes('tab=orders') ? 'orders' : 'overview');
   
   const [profileForm, setProfileForm] = useState({ 
     name: user?.name || '', 
@@ -392,8 +402,8 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
   const highestAffordableReward = affordableRewards.length > 0 ? affordableRewards[affordableRewards.length - 1] : null;
   
   const safeOrders = orders || [];
-  const totalSpentCount = safeOrders.reduce((acc, order) => acc + (!['Cancelado', 'A confirmar'].includes(order.status) ? (order.total || 0) : 0), 0);
-  const totalOrdersCount = safeOrders.filter(o => !['Cancelado', 'A confirmar'].includes(o.status)).length;
+  const totalSpentCount = safeOrders.reduce((acc, order) => acc + (!isPreorderOrder(order) && !['Cancelado', 'A confirmar'].includes(order.status) ? (order.total || 0) : 0), 0);
+  const totalOrdersCount = safeOrders.filter(o => !isPreorderOrder(o) && !['Cancelado', 'A confirmar'].includes(o.status)).length;
   
   const displayOrderId = (id: string) => { 
     if (!id) return '#???'; 
@@ -824,6 +834,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                   orders.map(order => {
                     const isExpanded = expandedOrderId === order.id;
                     const currentStep = getStatusStep(order.status);
+                    const preorder = isPreorderOrder(order) ? order.preorder : null;
 
                     return (
                       <div key={order.id} className="bg-white dark:bg-[#0f172a] rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-all duration-300">
@@ -843,7 +854,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                             </div>
                             <div className="flex items-center gap-4">
                                 <span className="font-bold text-lg text-gray-900 dark:text-white">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(order.total || 0)}</span>
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${order.status === 'Entregue' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : order.status === 'Enviado' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : order.status === 'Pago' ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400' : order.status === 'Cancelado' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>{order.status}</span>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${preorder ? (['CANCELLED', 'EXPIRED'].includes(preorder.status) ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : preorder.status === 'BALANCE_RECEIVED' || preorder.status === 'FULFILLED' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300') : order.status === 'Entregue' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : order.status === 'Enviado' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : order.status === 'Pago' ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400' : order.status === 'Cancelado' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>{preorder ? preorderLabel(order) : order.status}</span>
                                 {isExpanded ? <ChevronUp className="text-gray-500" /> : <ChevronDown className="text-gray-500" />}
                             </div>
                         </div>
@@ -855,13 +866,19 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                             <div className="mb-10 bg-white dark:bg-[#0f172a] p-6 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm">
                                 <div className="flex justify-between items-center mb-6">
                                     <h4 className="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2"><Truck size={16} className="text-primary"/> Rastreio da Encomenda</h4>
-                                    {order.status !== 'Cancelado' && (
+                                    {!preorder && order.status !== 'Cancelado' && (
                                         <button onClick={() => { setSelectedOrderForReturn(order); setIsReturnModalOpen(true); }} className="text-primary font-bold text-xs hover:underline flex items-center gap-1">
                                             <Undo2 size={14} /> Devolução/Cancelamento
                                         </button>
                                     )}
                                 </div>
-                                {order.status === 'A confirmar' ? (
+                                {preorder ? (
+                                    <div className="rounded-xl border border-orange-200 bg-orange-50 p-5 dark:border-orange-900/70 dark:bg-orange-950/25">
+                                        <div className="flex items-start gap-3"><Clock className="mt-0.5 shrink-0 text-orange-600" size={21}/><div><p className="font-bold text-orange-950 dark:text-orange-100">Pré-reserva confirmada</p><p className="mt-1 text-sm text-orange-800 dark:text-orange-200">A equipa recebeu o seu pedido. O preço e a vaga ficam reservados enquanto o sinal for pago dentro do prazo.</p></div></div>
+                                        <div className="mt-4 grid gap-3 border-t border-orange-200 pt-4 text-sm sm:grid-cols-3 dark:border-orange-900/70"><span><small className="block text-orange-700/80 dark:text-orange-300/80">Estado</small><strong className="text-orange-950 dark:text-orange-100">{preorderLabel(order)}</strong></span><span><small className="block text-orange-700/80 dark:text-orange-300/80">Sinal (50%)</small><strong className="text-orange-950 dark:text-orange-100">{formatCurrency(Number(preorder.depositDue || 0))}</strong></span><span><small className="block text-orange-700/80 dark:text-orange-300/80">Expedição prevista</small><strong className="text-orange-950 dark:text-orange-100">{preorder.estimatedDispatchDate ? new Date(preorder.estimatedDispatchDate).toLocaleDateString('pt-PT') : 'A confirmar'}</strong></span></div>
+                                        {preorder.status === 'DEPOSIT_PENDING' && preorder.depositDeadlineAt && <p className="mt-4 text-xs font-semibold text-orange-800 dark:text-orange-200">Sinal a confirmar até {new Date(preorder.depositDeadlineAt).toLocaleString('pt-PT')}. Se precisar de ajuda com o pagamento ou cancelamento, contacte-nos indicando esta referência.</p>}
+                                    </div>
+                                ) : order.status === 'A confirmar' ? (
                                     <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg text-center text-amber-800 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800">
                                         O seu pedido foi registado e aguarda a confirmação de envio da mensagem. Ainda não foi efetuado qualquer pagamento nem baixa de stock.
                                     </div>
@@ -991,7 +1008,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                                 <div className="text-right">
                                                     <p className="font-bold text-sm text-gray-900 dark:text-white">{typeof item === 'object' ? formatCurrency(item.price * item.quantity) : ''}</p>
                                                     <p className="text-xs text-gray-500 dark:text-gray-400">Qtd: {typeof item === 'object' ? item.quantity : 1}</p>
-                                                    {['Pendente', 'Processamento', 'Pago'].includes(order.status) && typeof item === 'object' && (
+                                                    {!preorder && ['Pendente', 'Processamento', 'Pago'].includes(order.status) && typeof item === 'object' && (
                                                        <button onClick={() => handleCancelItem(order, item.productId, item.quantity)} className="text-red-500 hover:text-red-700 text-xs font-bold mt-1">Cancelar Item</button>
                                                     )}
                                                 </div>
@@ -1002,7 +1019,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                     <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                                         <button onClick={() => handlePrintOrder(order)} className="flex items-center gap-2 text-sm font-bold text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 px-4 py-2 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 shadow-sm"><Printer size={16}/> Imprimir Fatura / Garantia</button>
                                         
-                                        {['Pendente', 'A confirmar'].includes(order.status) && (
+                                        {!preorder && ['Pendente', 'A confirmar'].includes(order.status) && (
                                             <button 
                                                 onClick={() => handleConfirmSentFromClientArea(order)} 
                                                 className="flex items-center gap-2 text-sm font-bold text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400 px-4 py-2 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50 shadow-sm"
@@ -1011,7 +1028,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                             </button>
                                         )}
 
-                                        {['Pendente', 'Processamento', 'Pago'].includes(order.status) && <button onClick={() => setModalState({ type: 'cancel', order })} className="flex items-center gap-2 text-sm font-bold text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400 px-4 py-2 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50"><XCircle size={16}/> Cancelar Encomenda</button>}
+                                        {!preorder && ['Pendente', 'Processamento', 'Pago'].includes(order.status) && <button onClick={() => setModalState({ type: 'cancel', order })} className="flex items-center gap-2 text-sm font-bold text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400 px-4 py-2 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50"><XCircle size={16}/> Cancelar Encomenda</button>}
                                         
                                         {order.status === 'Entregue' && <button onClick={onOpenSupportChat} className="flex items-center gap-2 text-sm font-bold text-purple-700 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 border border-purple-200 dark:border-purple-800 px-4 py-2 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 shadow-sm"><Sparkles size={16} /> Ajuda / Garantia (IA)</button>}
                                     </div>

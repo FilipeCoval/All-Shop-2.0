@@ -32,14 +32,16 @@ export async function notifyAdminsOfNewOrder(database: Firestore, order: Record<
   const orderId = clean(order.id, 80).replace(/^#/, '');
   const customer = clean(order.shippingInfo?.name || order.shippingInfo?.email, 120) || 'Novo cliente';
   const total = Number(order.total || 0).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' });
+  const preorder = order.preorder?.kind === 'PREORDER' ? order.preorder : null;
+  const deposit = Number(preorder?.depositDue || 0).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' });
   const link = adminPwaLink(orderId);
   const result = await getMessaging(getApp()).sendEachForMulticast({
     tokens: uniqueTokens,
     notification: {
-      title: `Nova encomenda #${orderId}`,
-      body: `${customer} · ${total}`,
+      title: preorder ? `Nova pré-reserva #${orderId}` : `Nova encomenda #${orderId}`,
+      body: preorder ? `${customer} · sinal de ${deposit} · total ${total}` : `${customer} · ${total}`,
     },
-    data: { type: 'new_order', orderId, link },
+    data: { type: preorder ? 'new_preorder' : 'new_order', orderId, link },
     webpush: {
       notification: {
         icon: 'https://i.imgur.com/nSiZKBf.png',

@@ -4,6 +4,7 @@ import { db } from '../services/firebase-admin.js';
 import { getRequestIdentity } from '../services/server/request-identity.js';
 import { asPositiveInt, normaliseEmail, normaliseVariant } from '../services/server/stock-utils.js';
 import { notifyAdminsOfNewOrder } from '../services/server/admin-push.js';
+import { notifyTelegramOfConfirmedPreorder } from '../services/server/preorder-telegram.js';
 import { projectPublicStock } from '../src/server/stockProjection.js';
 import { adminAuditEntry } from '../src/server/adminAudit.js';
 
@@ -141,6 +142,12 @@ const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) =
   const orderId = validateOrderId(req.body?.idempotencyKey);
   if (!orderId) throw new Error('Não foi possível criar a referência da pré-reserva. Tente novamente.');
   if (req.body?.termsAccepted !== true) throw new Error('Confirme que leu as condições da pré-reserva.');
+  const messagePlatform = req.body?.messagePlatform === 'TELEGRAM' ? 'TELEGRAM' : req.body?.messagePlatform === 'WHATSAPP' ? 'WHATSAPP' : null;
+  const messageConfirmationDate = new Date(String(req.body?.messageConfirmedAt ?? ''));
+  if (!messagePlatform || Number.isNaN(messageConfirmationDate.getTime())) {
+    throw new Error('Envie a mensagem do pedido e confirme o respetivo envio antes de concluir a pré-reserva.');
+  }
+  const messageConfirmedAt = messageConfirmationDate.toISOString();
   const productId = Number(req.body?.productId);
   const quantity = asPositiveInt(req.body?.quantity, 10);
   const selectedVariant = String(req.body?.selectedVariant ?? '').trim().slice(0, 120);
@@ -224,7 +231,7 @@ const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) =
       subtotal,
       shippingCost,
       status: 'Pendente',
-      statusHistory: [{ status: 'Pendente', date: createdAt, notes: 'Pré-reserva criada. Aguarda o sinal de 50%.' }],
+      statusHistory: [{ status: 'Pendente', date: createdAt, notes: `Pré-reserva confirmada pelo cliente após o envio da mensagem via ${messagePlatform === 'WHATSAPP' ? 'WhatsApp' : 'Telegram'}. Aguarda o sinal de 50%.` }],
       items: [{ productId, name: String(product.name ?? 'Produto').trim().slice(0, 250) || 'Produto', price: roundMoney(unitPrice), image: String(variant?.image ?? product.image ?? '').trim().slice(0, 1000), description: String(variant?.description ?? product.description ?? '').trim().slice(0, 5000), quantity, selectedVariant, addedAt: createdAt }],
       userId: identity.userId,
       ownerKey: identity.ownerKey,
@@ -237,6 +244,7 @@ const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) =
         depositDue, balanceDue: roundMoney(total - depositDue),
         depositDeadlineAt: new Date(now.getTime() + offer.paymentDeadlineHours * 60 * 60 * 1000).toISOString(),
         estimatedDispatchDate: offer.estimatedDispatchDate, termsAcceptedAt: createdAt,
+        messagePlatform, messageConfirmedAt,
       },
       schemaVersion: 3,
     };
@@ -282,13 +290,14 @@ const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) =
       target: { type: 'Pré-reserva', id: orderId, label: `#${orderId}` },
       before: null,
       after: order,
-      summary: 'Pré-reserva criada pelo cliente; aguarda o sinal de 50%.',
-      details: { productId, quantity, selectedVariant: selectedVariant || 'Sem variante' },
+      summary: 'Pré-reserva confirmada pelo cliente; aguarda o sinal de 50%.',
+      details: { productId, quantity, selectedVariant: selectedVariant || 'Sem variante', messagePlatform, messageConfirmedAt },
     }));
     return { order, alreadyExists: false };
   });
   if (!result.alreadyExists) {
     try { await notifyAdminsOfNewOrder(firestore, result.order); } catch (error) { console.warn('[preorder-admin-push]', error); }
+    await notifyTelegramOfConfirmedPreorder(result.order);
   }
   return result;
 };
