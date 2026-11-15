@@ -16,14 +16,14 @@ const formatDate = (value?: string) => {
   return parsed && Number.isFinite(parsed.getTime()) ? date.format(parsed) : '—';
 };
 
-export function AdminDetails({ order, stock, lots, products, onClose, onChanged, onEditLot }: { order: AdminOrder | null; stock: StockGroup | null; lots: InventoryLot[]; products: Product[]; onClose: () => void; onChanged: () => Promise<void>; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
+export function AdminDetails({ order, stock, lots, orders, products, onClose, onChanged, onOpenOrder, onEditLot }: { order: AdminOrder | null; stock: StockGroup | null; lots: InventoryLot[]; orders: AdminOrder[]; products: Product[]; onClose: () => void; onChanged: () => Promise<void>; onOpenOrder: (order: AdminOrder) => void; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
   const open = Boolean(order || stock);
   return <>
     <button className={`drawer-backdrop ${open ? 'visible' : ''}`} onClick={onClose} aria-label="Fechar detalhes" />
     <aside className={`admin-detail-drawer ${open ? 'open' : ''}`} aria-hidden={!open}>
       <header><div><p className="eyebrow">Detalhes</p><h2>{order ? `Encomenda #${order.id.replace(/^#/, '')}` : stock?.name}</h2></div><button className="icon-button" onClick={onClose}><X /></button></header>
       {order && <OrderDetail order={order} lots={lots} products={products} onChanged={onChanged} onDeleted={onClose} />}
-      {stock && <StockDetail group={stock} product={products.find((product) => product.id === Number(stock.productId))} onChanged={onChanged} onEditLot={onEditLot} />}
+      {stock && <StockDetail group={stock} product={products.find((product) => product.id === Number(stock.productId))} orders={orders} onChanged={onChanged} onOpenOrder={onOpenOrder} onEditLot={onEditLot} />}
     </aside>
   </>;
 }
@@ -147,7 +147,7 @@ function OrderDetail({ order, lots, products, onChanged, onDeleted }: { order: A
 
 type StockLotFilter = 'all' | 'available' | 'incoming' | 'sold' | 'empty';
 
-function StockDetail({ group, product, onChanged, onEditLot }: { group: StockGroup; product?: Product; onChanged: () => Promise<void>; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
+function StockDetail({ group, product, orders, onChanged, onOpenOrder, onEditLot }: { group: StockGroup; product?: Product; orders: AdminOrder[]; onChanged: () => Promise<void>; onOpenOrder: (order: AdminOrder) => void; onEditLot: (lot: StockGroup['lotItems'][number]) => void }) {
   const [syncing, setSyncing] = useState(false);
   const [classifying, setClassifying] = useState(false);
   const [legacyVariant, setLegacyVariant] = useState('');
@@ -247,7 +247,11 @@ function StockDetail({ group, product, onChanged, onEditLot }: { group: StockGro
       {filteredLotItems.length === 0 && <p className="lot-filter-empty">Não existem lotes neste estado.</p>}
       <div className="lot-list">{filteredLotItems.map((lot) => {
       const inTransit = isInventoryLotInTransit(lot);
-      return <article key={lot.id} className={inTransit ? 'lot-in-transit' : ''}><header><span><strong>{lot.variant || 'Sem variante'}</strong><small>{lot.supplierName || 'Fornecedor não indicado'}</small></span><div className="lot-heading-actions"><b className={inTransit ? 'incoming' : ''}>{inTransit ? `${inventoryLotIncomingQuantity(lot)} a caminho` : `${inventoryLotPhysicalQuantity(lot)} disponíveis fisicamente`}</b>{inTransit && <button className="receive-lot-button compact" onClick={() => void receiveLot(lot)} disabled={!adminMutationsAvailable || receivingLotId !== null}><CheckCircle2 /> {receivingLotId === lot.id ? 'A confirmar…' : 'Confirmar receção'}</button>}<button className="table-action" onClick={() => onEditLot(lot)}>Editar</button></div></header><div><span><CalendarDays />Compra: {lot.purchaseDate ? formatDate(lot.purchaseDate) : 'sem data'}</span>{inTransit && <span><Truck />Previsão: {lot.expectedArrivalDate ? formatDate(lot.expectedArrivalDate) : 'não indicada'}</span>}<span>Comprado: {lot.quantityBought}</span><span>Vendido: {inventoryLotSoldQuantity(lot)}</span><span>Unidades: {lot.units?.length ?? 0}</span></div><small className="lot-id">Lote {lot.id}</small></article>;
+      const soldQuantity = inventoryLotSoldQuantity(lot);
+      const linkedSales = (lot.units ?? []).filter((unit) => String(unit.status ?? '').toUpperCase() === 'SOLD' && String(unit.soldToOrder ?? '').trim());
+      const salesWithoutReference = Math.max(0, soldQuantity - linkedSales.length);
+      const orderFor = (value: unknown) => orders.find((item) => item.id.replace(/^#/, '') === String(value ?? '').replace(/^#/, '').trim());
+      return <article key={lot.id} className={inTransit ? 'lot-in-transit' : ''}><header><span><strong>{lot.variant || 'Sem variante'}</strong><small>{lot.supplierName || 'Fornecedor não indicado'}</small></span><div className="lot-heading-actions"><b className={inTransit ? 'incoming' : ''}>{inTransit ? `${inventoryLotIncomingQuantity(lot)} a caminho` : `${inventoryLotPhysicalQuantity(lot)} disponíveis fisicamente`}</b>{inTransit && <button className="receive-lot-button compact" onClick={() => void receiveLot(lot)} disabled={!adminMutationsAvailable || receivingLotId !== null}><CheckCircle2 /> {receivingLotId === lot.id ? 'A confirmar…' : 'Confirmar receção'}</button>}<button className="table-action" onClick={() => onEditLot(lot)}>Editar</button></div></header><div><span><CalendarDays />Compra: {lot.purchaseDate ? formatDate(lot.purchaseDate) : 'sem data'}</span>{inTransit && <span><Truck />Previsão: {lot.expectedArrivalDate ? formatDate(lot.expectedArrivalDate) : 'não indicada'}</span>}<span>Comprado: {lot.quantityBought}</span><span>Em encomendas: {soldQuantity}</span><span>Unidades: {lot.units?.length ?? 0}</span></div>{soldQuantity > 0 && <div className="lot-sale-trace"><strong>Rasto das vendas</strong>{linkedSales.map((unit, index) => { const saleOrder = orderFor(unit.soldToOrder); const reference = String(unit.soldToOrder ?? '').replace(/^#/, '').trim(); return saleOrder ? <button type="button" key={`${reference}:${index}`} onClick={() => onOpenOrder(saleOrder)}>S/N {String(unit.serialNumber || unit.internalLabel || unit.id || 'por indicar')} · #{reference} · {saleOrder.shippingInfo?.deliveryMethod === 'Pickup' ? 'Levantamento' : 'Envio'} · {saleOrder.status}</button> : <span key={`${reference}:${index}`}>S/N {String(unit.serialNumber || unit.internalLabel || unit.id || 'por indicar')} · encomenda #{reference}</span>; })}{salesWithoutReference > 0 && <p>{salesWithoutReference} venda{salesWithoutReference === 1 ? '' : 's'} antiga(s) sem encomenda/S/N associado. Esta quantidade já estava abatida antes deste controlo; não pode ser alterada no lote.</p>}</div>}<small className="lot-id">Lote {lot.id}</small></article>;
     })}</div></DetailSection>
     <div className="safe-action-note">Criar, editar e apagar lotes será feito pelo servidor com sincronização automática da loja.</div>
   </div>;

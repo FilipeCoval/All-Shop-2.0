@@ -210,12 +210,18 @@ export default async function handler(request: VercelRequest, response: VercelRe
       } else if (action === 'save_lot' && lotRef) {
         const input = request.body?.lot ?? {};
         const quantityBought = number(input.quantityBought);
-        const quantitySold = number(input.quantitySold);
         if (!text(input.name)) throw new ApiError(400, 'Indique o nome do lote.');
-        if (!Number.isInteger(quantityBought) || quantityBought < 0 || !Number.isInteger(quantitySold) || quantitySold < 0 || quantitySold > quantityBought) {
-          throw new ApiError(400, 'As quantidades do lote são inválidas.');
-        }
         const existing = currentLotSnapshot?.exists ? (currentLotSnapshot.data() ?? {}) : {};
+        const registeredSales = inventoryLotSoldQuantity(existing);
+        // As baixas de stock têm de nascer de uma encomenda. Nunca aceitamos que
+        // o formulário de lote altere este contador, mesmo que alguém tente
+        // manipular o pedido no navegador.
+        if (input.quantitySold !== undefined && number(input.quantitySold) !== registeredSales) {
+          throw new ApiError(409, 'As unidades vendidas são registadas apenas através de encomendas. Não podem ser alteradas no lote.');
+        }
+        if (!Number.isInteger(quantityBought) || quantityBought < registeredSales) {
+          throw new ApiError(400, `A quantidade comprada não pode ser inferior às ${registeredSales} unidade(s) já registadas em encomendas.`);
+        }
         if (currentLotSnapshot?.exists && Number(existing?.publicProductId) !== publicProductId) {
           throw new ApiError(409, 'Um lote existente não pode ser mudado para outro produto. Crie um novo lote no produto correto.');
         }
@@ -305,7 +311,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
             throw new ApiError(409, `O código ${code} já está registado noutro lote.`);
           }
         }
-        const effectiveQuantitySold = inventoryLotSoldQuantity({ quantitySold, units });
+        const effectiveQuantitySold = inventoryLotSoldQuantity({ quantitySold: registeredSales, units });
         let cashback;
         try {
           cashback = prepareCashbackForLotSave(input);

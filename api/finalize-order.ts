@@ -149,6 +149,7 @@ export default async function handler(req: Request, res: Response) {
       }
 
       const now = Date.now();
+      const checkoutAt = new Date().toISOString();
       const canonicalItems: any[] = [];
       type SalePlan = { saleByBatch: Map<string, number>; remainingReservations: ReservationRecord[]; reservationIdsToDelete: string[] };
       const salePlans = new Map<number, SalePlan>();
@@ -282,13 +283,34 @@ export default async function handler(req: Request, res: Response) {
           if (soldNow > 0) {
             const beforeLot = batch.data();
             const quantitySold = getBatchPhysical(beforeLot).sold + soldNow;
-            transaction.update(batch.ref, { quantitySold });
+            // A venda fica ligada à unidade concreta logo no checkout. Assim o
+            // inventário mostra a encomenda que lhe deu baixa, em vez de deixar
+            // S/N aparentemente disponíveis apesar de o stock já ter sido vendido.
+            let remainingUnitsToAssign = soldNow;
+            const units = Array.isArray(beforeLot.units)
+              ? beforeLot.units.map((unit: any) => {
+                if (remainingUnitsToAssign > 0 && String(unit?.status ?? '').trim().toUpperCase() === 'AVAILABLE') {
+                  remainingUnitsToAssign -= 1;
+                  return {
+                    ...unit,
+                    status: 'SOLD',
+                    soldAt: checkoutAt,
+                    soldToOrder: orderId,
+                    soldToCustomerName: shippingInfo.name,
+                    soldToCustomerEmail: shippingInfo.email,
+                  };
+                }
+                return unit;
+              })
+              : undefined;
+            const lotUpdate = { quantitySold, ...(units ? { units } : {}) };
+            transaction.update(batch.ref, lotUpdate);
             transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({
               action: 'checkout_stock_deducted',
               actor: { uid: identity.userId, kind: 'CLIENT' },
               target: { type: 'Lote', id: batch.id, label: String(beforeLot.name || `Lote ${batch.id}`) },
               before: beforeLot,
-              after: { ...beforeLot, quantitySold },
+              after: { ...beforeLot, ...lotUpdate },
               summary: `Stock abatido automaticamente pela encomenda #${orderId}.`,
               details: { orderId, productId, quantity: soldNow },
             }));

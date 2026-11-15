@@ -128,10 +128,10 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
       return <article key={`${item.productId}:${item.selectedVariant}:${index}`}>
         <div className="fulfillment-item-heading"><strong>{item.quantity ?? 0}× {item.name ?? `Produto ${item.productId}`}</strong><small>{packageIndex >= 0 ? `Volume ${packageIndex + 1} · ` : ''}{item.selectedVariant || 'Sem variante'} · {entries.length}/{item.quantity ?? 0} validados</small></div>
         <label className="fulfillment-unit-picker">
-          <span>Selecionar S/N disponível</span>
+          <span>Selecionar S/N para expedição</span>
           <select value="" disabled={busy || !adminMutationsAvailable || itemComplete || !selectableUnits.length} onChange={(event) => addSerial(event.target.value, index)}>
             <option value="">{itemComplete ? 'Todas as unidades validadas' : selectableUnits.length ? 'Escolher uma unidade…' : 'Sem S/N disponíveis'}</option>
-            {selectableUnits.map((unit) => <option key={`${unit.lotId}:${unit.unitId}`} value={unit.serial}>{unit.serial}{unit.assignedToOrder ? ' · reservado para esta encomenda' : unit.generatedInternal ? ' · etiqueta interna' : ''}</option>)}
+            {selectableUnits.map((unit) => <option key={`${unit.lotId}:${unit.unitId}`} value={unit.serial}>{unit.serial}{unit.assignedToOrder ? ' · afeto a esta encomenda' : unit.generatedInternal ? ' · etiqueta interna' : ''}</option>)}
           </select>
         </label>
         <div className="fulfillment-serials">{entries.map((entry) => <span key={`${entry.lotId}:${entry.unitId}`}>{entry.serial}<button type="button" onClick={() => setScanned((previous) => previous.filter((unit) => unit.lotId !== entry.lotId || unit.unitId !== entry.unitId))} aria-label={`Remover ${entry.serial}`}><Trash2 /></button></span>)}</div>
