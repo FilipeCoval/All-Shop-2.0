@@ -354,6 +354,13 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
     };
     return next;
   });
+  const removeUnitSerial = (index: number) => setUnits((previous) => {
+    const current = previous[index];
+    if (!current || (current.status && !['AVAILABLE', 'IN_TRANSIT'].includes(current.status))) return previous;
+    const next = [...previous];
+    next[index] = { id: '', status: editableUnitStatus };
+    return next;
+  });
   const addSerial = (value: string) => {
     const serial = normalizeUnitCode(value);
     setError(null);
@@ -470,7 +477,8 @@ export function LotEditor({ open, lot, initialProductId, products, onClose, onSa
       <div className="serial-unit-list">{visibleUnits.map((unit, index) => {
         const locked = Boolean(unit.status && !['AVAILABLE', 'IN_TRANSIT'].includes(unit.status));
         const orderReference = String(unit.soldToOrder ?? '').replace(/^#/, '').trim();
-        return <label key={stableUnitId(unit) || index} className={index >= quantityForUnits ? 'outside-quantity' : ''}><span><b>Unidade {index + 1}</b><small>{locked ? unit.status === 'SOLD' ? orderReference ? `Vendida — encomenda #${orderReference}` : 'Venda antiga — referência em falta' : 'Reservada — S/N protegido' : index >= quantityForUnits ? 'Fora da quantidade indicada' : displayUnitCode(unit) ? form.receiptStatus === 'IN_TRANSIT' ? 'Identificada · a caminho' : 'Pronta' : 'S/N por registar'}</small></span><input value={displayUnitCode(unit)} disabled={locked || index >= quantityForUnits} onChange={(event) => setUnitSerial(index, event.target.value)} placeholder="Número de série" /></label>;
+        const code = displayUnitCode(unit);
+        return <div key={stableUnitId(unit) || index} className={`serial-unit-row ${index >= quantityForUnits ? 'outside-quantity' : ''}`}><span><b>Unidade {index + 1}</b><small>{locked ? unit.status === 'SOLD' ? orderReference ? `Vendida — encomenda #${orderReference}` : 'Venda antiga — referência em falta' : 'Reservada — S/N protegido' : index >= quantityForUnits ? 'Fora da quantidade indicada' : code ? form.receiptStatus === 'IN_TRANSIT' ? 'Identificada · a caminho' : 'Pronta' : 'S/N por registar'}</small></span><div><input value={code} disabled={locked || index >= quantityForUnits} onChange={(event) => setUnitSerial(index, event.target.value)} placeholder="Número de série" />{code && !locked && index < quantityForUnits && <button type="button" className="remove-serial-button" onClick={() => { if (window.confirm(`Retirar o S/N “${code}” deste lote? Use apenas se confirmou que esta unidade não existe fisicamente.`)) removeUnitSerial(index); }} title="Retirar este S/N"><Trash2 /> <span>Retirar</span></button>}</div></div>;
       })}</div>
       <div className="serial-management-footer"><p>{registeredUnits === quantityForUnits ? 'Todas as unidades têm identificação.' : `Faltam registar ${quantityForUnits - registeredUnits} unidade(s). Pode guardar e continuar mais tarde.`}</p><button type="button" onClick={generateInternalSerials} disabled={!quantityForUnits || registeredUnits === quantityForUnits}><Sparkles /> Gerar códigos internos</button></div>
     </section>

@@ -1159,14 +1159,25 @@ img { display: block; max-width: 100%; }
 .serial-quick-entry button.camera-button { border: 1px solid #bfdbfe; background: white; color: #1d4ed8; }
 .serial-quick-entry button:disabled, .serial-management-footer button:disabled { opacity: .4; cursor: not-allowed; }
 .serial-unit-list { display: grid; gap: 7px; }
-.serial-unit-list > label { min-height: 51px; padding: 7px 8px 7px 11px; display: grid; grid-template-columns: minmax(130px,.65fr) 1fr; align-items: center; gap: 10px; border: 1px solid #dbeafe; border-radius: 10px; background: white; }
-.serial-unit-list > label > span { display: grid; gap: 2px; }
+.serial-unit-row { min-height: 51px; padding: 7px 8px 7px 11px; display: grid; grid-template-columns: minmax(130px,.65fr) 1fr; align-items: center; gap: 10px; border: 1px solid #dbeafe; border-radius: 10px; background: white; }
+.serial-unit-row > span { display: grid; gap: 2px; }
+.serial-unit-row > div { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .serial-unit-list b { font-size: 11px; }
 .serial-unit-list small { color: #64748b; font-size: 9px; }
 .serial-unit-list input { min-width: 0; height: 36px; padding: 0 10px; border: 1px solid #cbd5e1; border-radius: 8px; outline: 0; color: var(--navy); font-family: monospace; font-size: 11px; text-transform: uppercase; }
 .serial-unit-list input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px #dbeafe; }
 .serial-unit-list input:disabled { background: #f1f5f9; color: #64748b; }
-.serial-unit-list > label.outside-quantity { opacity: .55; }
+.serial-unit-row.outside-quantity { opacity: .55; }
+.remove-serial-button { min-height: 36px; padding: 0 9px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; flex: 0 0 auto; border: 1px solid #fecaca; border-radius: 8px; background: #fff; color: #dc2626; font-size: 9px; font-weight: 850; cursor: pointer; }
+.remove-serial-button:hover { background: #fff1f2; }
+.remove-serial-button svg { width: 13px; }
+.stock-warning-lot-actions { margin-top: 10px; display: grid; gap: 7px; }
+.stock-warning-lot-actions button { width: 100%; padding: 9px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid #fdba74; border-radius: 9px; background: rgba(255,255,255,.66); color: #9a3412; text-align: left; cursor: pointer; }
+.stock-warning-lot-actions button:hover { background: white; }
+.stock-warning-lot-actions button > span { min-width: 0; display: grid; gap: 2px; }
+.stock-warning-lot-actions strong { font-size: 10px; }
+.stock-warning-lot-actions small { font-size: 9px; line-height: 1.4; }
+.stock-warning-lot-actions b { flex: 0 0 auto; color: #c2410c; font-size: 9px; white-space: nowrap; }
 .serial-management-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .serial-management-footer p { margin: 0; color: #475569; font-size: 10px; line-height: 1.5; }
 .serial-management-footer button { min-height: 36px; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; background: white; border: 1px solid #bfdbfe; color: #1d4ed8; }
@@ -1679,7 +1690,10 @@ html.dark .review-images a { border-color: #405169; background: #101e31; }
   .preorder-variant-capacities label small { grid-column: 1 / -1; margin-top: -5px; }
   .variant-card .variant-row { grid-template-columns: minmax(0,1fr) minmax(0,1fr) 34px; }
   .variant-card .variant-row input:first-child { grid-column: 1 / -1; }
-  .serial-unit-list > label { grid-template-columns: 1fr; }
+  .serial-unit-row { grid-template-columns: 1fr; }
+  .serial-unit-row > div { align-items: stretch; flex-wrap: wrap; }
+  .serial-unit-row > div input { flex: 1 1 180px; }
+  .remove-serial-button { flex: 0 0 auto; }
   .serial-quick-entry { grid-template-columns: 1fr 1fr; }
   .serial-quick-entry label { grid-column: 1 / -1; }
   .serial-management-footer { align-items: stretch; flex-direction: column; }
@@ -1927,7 +1941,7 @@ html.dark .marketing-form,
 html.dark .marketing-help,
 html.dark .calculator-results article,
 html.dark .profit-preview,
-html.dark .serial-unit-list > label,
+html.dark .serial-unit-row,
 html.dark .serial-scanner-overlay > section,
 html.dark .recovery-item,
 html.dark .support-ticket-summary > div,

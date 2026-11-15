@@ -157,6 +157,11 @@ function StockDetail({ group, product, orders, onChanged, onOpenOrder, onEditLot
   const [error, setError] = useState<string | null>(null);
   const publicProductId = Number(group.productId);
   const storeNeedsSync = Number.isInteger(publicProductId) && publicProductId > 0 && group.published !== group.available;
+  const availableUnitMismatches = group.lotItems.map((lot) => {
+    const availableUnits = (lot.units ?? []).filter((unit) => String(unit.status ?? '').toUpperCase() === 'AVAILABLE').length;
+    const physical = inventoryLotPhysicalQuantity(lot);
+    return { lot, availableUnits, physical, excess: Math.max(0, availableUnits - physical) };
+  }).filter((item) => item.excess > 0);
   const legacyLots = group.lotItems.filter((lot) => !String(lot.variant ?? '').trim());
   const catalogVariants = product?.variants ?? [];
   const lotMatchesFilter = (lot: InventoryLot, filter: StockLotFilter) => {
@@ -229,7 +234,7 @@ function StockDetail({ group, product, orders, onChanged, onOpenOrder, onEditLot
 
   return <div className="detail-body">
     <div className="stock-detail-kpis"><span><small>Físico</small><strong>{group.physical}</strong></span><span><small>A caminho</small><strong>{group.incoming}</strong></span><span><small>Reservado</small><strong>{group.reserved}</strong></span><span><small>Disponível</small><strong>{group.available}</strong></span><span><small>Loja</small><strong>{group.published}</strong></span></div>
-    {group.warnings.length > 0 && <section className="request-alert"><AlertTriangle /><div><strong>Dados a verificar</strong>{group.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div></section>}
+    {group.warnings.length > 0 && <section className="request-alert stock-data-warning"><AlertTriangle /><div><strong>Dados a verificar</strong>{group.warnings.map((warning) => <p key={warning}>{warning}</p>)}{availableUnitMismatches.length > 0 && <div className="stock-warning-lot-actions">{availableUnitMismatches.map(({ lot, availableUnits, physical, excess }) => <button type="button" key={lot.id} onClick={() => onEditLot(lot)}><span><strong>Rever S/N do lote {lot.variant || 'sem variante'}</strong><small>{lot.supplierName || 'Fornecedor não indicado'} · {availableUnits} S/N disponíveis para {physical} unidade(s) física(s)</small></span><b>Corrigir {excess} S/N</b></button>)}</div>}</div></section>}
     {legacyLots.length > 0 && catalogVariants.length > 0 && <section className="legacy-variant-panel">
       <div><strong>Classificar stock antigo</strong><p>{legacyLots.length} lote(s) ainda estão “Sem variante”. Escolha a versão correta uma única vez; nenhum S/N, venda, quantidade, custo ou histórico será alterado.</p></div>
       <div className="legacy-variant-actions"><select aria-label="Versão dos lotes antigos" value={legacyVariant} onChange={(event) => setLegacyVariant(event.target.value)}><option value="">Escolher versão</option>{catalogVariants.map((variant) => <option key={variant.name} value={variant.name}>{variant.name}</option>)}</select><button className="save-button" type="button" onClick={() => void classifyLegacyLots()} disabled={!adminMutationsAvailable || classifying || !legacyVariant}>{classifying ? 'A classificar…' : `Aplicar aos ${legacyLots.length} lotes`}</button></div>
