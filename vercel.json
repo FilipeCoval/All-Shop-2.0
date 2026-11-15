@@ -35,6 +35,13 @@
         { "key": "Service-Worker-Allowed", "value": "/admin" },
         { "key": "Content-Type", "value": "application/javascript; charset=utf-8" }
       ]
+    },
+    {
+      "source": "/admin-build.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+      ]
     }
   ],
   "rewrites": [

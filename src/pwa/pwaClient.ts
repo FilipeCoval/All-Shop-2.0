@@ -32,6 +32,12 @@ let installPrompt: BeforeInstallPromptEvent | null = null;
 let updateServiceWorker: ((reloadPage?: boolean) => Promise<void>) | null = null;
 const listeners = new Set<Listener>();
 
+// The Admin service worker intentionally keeps forms safe: it never forces a
+// reload while an operator may still be editing an order or a lot. The small
+// build file lets an already-open installed app notice a deployment even when
+// the service-worker file itself did not change.
+const ADMIN_BUILD_VERSION_KEY = 'allshop-admin-build-version';
+
 const publish = (patch: Partial<PwaClientState>) => {
   state = { ...state, ...patch };
   listeners.forEach((listener) => listener());
@@ -64,13 +70,51 @@ const bindWindowLifecycle = () => {
   });
 };
 
-const bindUpdateChecks = (registration: ServiceWorkerRegistration) => {
-  const requestUpdate = () => checkForUpdate(registration);
+const bindUpdateChecks = (registration: ServiceWorkerRegistration, checkAppBuild?: () => void) => {
+  const requestUpdate = () => {
+    checkForUpdate(registration);
+    checkAppBuild?.();
+  };
   window.addEventListener('focus', requestUpdate);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') requestUpdate();
   });
-  window.setInterval(requestUpdate, 60 * 60 * 1000);
+  // Mobile PWAs can stay open for days. Check regularly as well as when the
+  // user returns to the app, so a new version is ready without reinstalling.
+  window.setInterval(requestUpdate, 15 * 60 * 1000);
+  requestUpdate();
+};
+
+const checkAdminBuildVersion = () => {
+  if (!navigator.onLine) return;
+
+  void fetch(`/admin-build.json?check=${Date.now()}`, { cache: 'no-store' })
+    .then(async (response) => {
+      if (!response.ok) return null;
+      return response.json() as Promise<{ version?: unknown }>;
+    })
+    .then((payload) => {
+      const version = typeof payload?.version === 'string' ? payload.version : '';
+      if (!version) return;
+
+      const installedVersion = window.localStorage.getItem(ADMIN_BUILD_VERSION_KEY);
+      // The first version that includes this detector is the baseline. From
+      // then on any deployment is surfaced immediately, not mistaken for an
+      // update that the customer has to install from Chrome.
+      if (!installedVersion) {
+        window.localStorage.setItem(ADMIN_BUILD_VERSION_KEY, version);
+        return;
+      }
+      if (installedVersion === version || state.needRefresh) return;
+
+      updateServiceWorker = async (reloadPage = true) => {
+        window.localStorage.setItem(ADMIN_BUILD_VERSION_KEY, version);
+        publish({ needRefresh: false });
+        if (reloadPage) window.location.reload();
+      };
+      publish({ needRefresh: true });
+    })
+    .catch(() => undefined);
 };
 
 export function registerAllShopPwa() {
@@ -120,7 +164,7 @@ function registerDedicatedAdminPwa(scope: '/admin' | '/') {
           else publish({ offlineReady: true });
         });
       });
-      bindUpdateChecks(registration);
+      bindUpdateChecks(registration, checkAdminBuildVersion);
     })
     .catch(() => publish({ error: 'Não foi possível ativar a aplicação Admin offline.' }));
 }

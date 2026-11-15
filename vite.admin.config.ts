@@ -1,10 +1,22 @@
 import { resolve } from 'node:path';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 const projectRoot = __dirname;
+const adminBuildVersion = process.env.VERCEL_DEPLOYMENT_ID || `${Date.now()}`;
+
+const adminBuildMetadata = (): Plugin => ({
+  name: 'allshop-admin-build-metadata',
+  generateBundle() {
+    this.emitFile({
+      type: 'asset',
+      fileName: 'admin-build.json',
+      source: JSON.stringify({ version: adminBuildVersion }),
+    });
+  },
+});
 
 export default defineConfig({
   root: resolve(projectRoot, 'admin-app'),
@@ -12,6 +24,7 @@ export default defineConfig({
   plugins: [
     tailwindcss(),
     react(),
+    adminBuildMetadata(),
     VitePWA({
       registerType: 'prompt',
       injectRegister: false,
@@ -19,6 +32,7 @@ export default defineConfig({
       filename: 'admin-sw.js',
       workbox: {
         cleanupOutdatedCaches: true,
+        globIgnores: ['admin-build.json'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [

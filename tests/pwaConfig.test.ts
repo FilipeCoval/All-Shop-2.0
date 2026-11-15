@@ -22,6 +22,7 @@ const adminDashboardSource = read('src/features/admin/AdminDashboard.tsx');
 const notificationCenterSource = read('src/features/admin/AdminNotificationCenter.tsx');
 const finalizeOrderSource = read('api/finalize-order.ts');
 const adminStyles = read('src/styles/admin3.css');
+const pwaClientSource = read('src/pwa/pwaClient.ts');
 const viteSource = read('vite.config.ts');
 const adminViteSource = read('vite.admin.config.ts');
 const vercelConfig = JSON.parse(read('vercel.json')) as { headers?: Array<{ source?: string }> };
@@ -46,8 +47,10 @@ assert.match(firebaseSource, /scope:\s*'\/firebase-cloud-messaging-push-scope\/'
 assert.match(firebaseSource, /serviceWorkerRegistration:\s*registration/);
 assert.match(viteSource, /registerType:\s*'prompt'/);
 assert.match(viteSource, /navigateFallbackDenylist/);
-assert.match(viteSource, /globIgnores:[\s\S]*admin\.html[\s\S]*admin-sw\.js/);
+assert.match(viteSource, /globIgnores:[\s\S]*admin\.html[\s\S]*admin-sw\.js[\s\S]*admin-build\.json/);
 assert.doesNotMatch(viteSource, /cacheName:\s*'allshop-admin-shell'/);
+assert.match(pwaClientSource, /admin-build\.json/);
+assert.match(pwaClientSource, /15 \* 60 \* 1000/);
 assert.match(installPromptSource, /Nova versão disponível/);
 assert.match(adminPwaSource, /Instalar admin/);
 assert.match(adminPwaSource, /Sem ligação/);
@@ -76,8 +79,10 @@ assert.ok(
 );
 assert.ok(vercelConfig.headers?.some((entry) => entry.source === '/sw.js'));
 assert.ok(vercelConfig.headers?.some((entry) => entry.source === '/admin-sw.js'));
+assert.ok(vercelConfig.headers?.some((entry) => entry.source === '/admin-build.json'));
 assert.match(adminViteSource, /outDir:\s*resolve\(projectRoot, 'dist-admin'\)/);
 assert.match(adminViteSource, /filename:\s*'admin-sw\.js'/);
+assert.match(adminViteSource, /globIgnores:\s*\['admin-build\.json'\]/);
 assert.match(adminViteSource, /navigateFallback:\s*'\/index\.html'/);
 
 console.log('PWA configuration regressions: OK');
