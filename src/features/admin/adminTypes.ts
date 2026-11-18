@@ -111,6 +111,7 @@ export interface AdminOrder {
     capacityHeld?: boolean; depositPercent?: number; depositDue?: number; balanceDue?: number;
     depositDeadlineAt?: string; estimatedDispatchDate?: string; termsAcceptedAt?: string;
     messagePlatform?: 'WHATSAPP' | 'TELEGRAM'; messageConfirmedAt?: string;
+    messagePending?: boolean;
     depositReceivedAt?: string; balanceReceivedAt?: string; capacityReleasedAt?: string;
   };
   shippingInfo?: {

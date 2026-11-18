@@ -15,6 +15,7 @@ import { ref, deleteObject, uploadBytes, getDownloadURL, uploadBytesResumable } 
 import { redeemLoyaltyReward, requestOrderAction } from '../services/api';
 import LoyaltyPage from './LoyaltyPage';
 import RequestsTab from './RequestsTab';
+import PreorderMessageActions from './PreorderMessageActions';
 
 import SupportTicketModal from './SupportTicketModal';
 import ReturnRequestModal from './ReturnRequestModal';
@@ -44,6 +45,7 @@ const preorderLabel = (order: Order) => {
   if (status === 'BALANCE_RECEIVED') return 'Pronta a expedir';
   if (status === 'FULFILLED') return 'Pré-reserva concluída';
   if (status === 'CANCELLED' || status === 'EXPIRED') return 'Pré-reserva cancelada';
+  if (order.preorder?.messagePending) return 'Mensagem por confirmar';
   return 'Aguarda sinal';
 };
 
@@ -874,7 +876,8 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                 </div>
                                 {preorder ? (
                                     <div className="rounded-xl border border-orange-200 bg-orange-50 p-5 dark:border-orange-900/70 dark:bg-orange-950/25">
-                                        <div className="flex items-start gap-3"><Clock className="mt-0.5 shrink-0 text-orange-600" size={21}/><div><p className="font-bold text-orange-950 dark:text-orange-100">Pré-reserva confirmada</p><p className="mt-1 text-sm text-orange-800 dark:text-orange-200">A equipa recebeu o seu pedido. O preço e a vaga ficam reservados enquanto o sinal for pago dentro do prazo.</p></div></div>
+                                        <div className="flex items-start gap-3"><Clock className="mt-0.5 shrink-0 text-orange-600" size={21}/><div><p className="font-bold text-orange-950 dark:text-orange-100">{['CANCELLED', 'EXPIRED'].includes(preorder.status) ? 'Pré-reserva encerrada' : preorder.messagePending ? 'Pré-reserva guardada · confirme a mensagem' : 'Pré-reserva registada'}</p><p className="mt-1 text-sm text-orange-800 dark:text-orange-200">{['CANCELLED', 'EXPIRED'].includes(preorder.status) ? 'Esta pré-reserva já não mantém uma vaga reservada.' : 'A equipa pode consultar o pedido. A vaga é temporária; confirme o envio da mensagem e efetue o sinal dentro do prazo indicado.'}</p></div></div>
+                                        {preorder.messagePending && preorder.status === 'DEPOSIT_PENDING' && order.status !== 'Cancelado' && <PreorderMessageActions order={order} />}
                                         <div className="mt-4 grid gap-3 border-t border-orange-200 pt-4 text-sm sm:grid-cols-3 dark:border-orange-900/70"><span><small className="block text-orange-700/80 dark:text-orange-300/80">Estado</small><strong className="text-orange-950 dark:text-orange-100">{preorderLabel(order)}</strong></span><span><small className="block text-orange-700/80 dark:text-orange-300/80">Sinal (50%)</small><strong className="text-orange-950 dark:text-orange-100">{formatCurrency(Number(preorder.depositDue || 0))}</strong></span><span><small className="block text-orange-700/80 dark:text-orange-300/80">Expedição prevista</small><strong className="text-orange-950 dark:text-orange-100">{preorder.estimatedDispatchDate ? new Date(preorder.estimatedDispatchDate).toLocaleDateString('pt-PT') : 'A confirmar'}</strong></span></div>
                                         {preorder.status === 'DEPOSIT_PENDING' && preorder.depositDeadlineAt && <p className="mt-4 text-xs font-semibold text-orange-800 dark:text-orange-200">Sinal a confirmar até {new Date(preorder.depositDeadlineAt).toLocaleString('pt-PT')}. Se precisar de ajuda com o pagamento ou cancelamento, contacte-nos indicando esta referência.</p>}
                                     </div>

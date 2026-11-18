@@ -17,6 +17,7 @@ import { AdminCashbackSection } from './AdminCashbackSection';
 import { AdminNotificationCenter, type AdminCashbackNotificationTarget } from './AdminNotificationCenter';
 import { AdminPwaControls } from './AdminPwaControls';
 import { AdminPushControls } from './AdminPushControls';
+import { PreordersSection } from './PreordersSection';
 import { reviewCatalogContent } from './adminMutations';
 
 interface AdminDashboardProps {
@@ -26,8 +27,8 @@ interface AdminDashboardProps {
   onToggleDarkMode: () => void;
 }
 
-type AdminTab = 'overview' | 'products' | 'orders' | 'clients' | 'coupons' | 'support' | 'marketing' | 'waitlist' | 'imports' | 'cashback' | 'categories' | 'reports' | 'audit' | 'backups';
-const adminTabs = new Set<AdminTab>(['overview', 'products', 'orders', 'clients', 'coupons', 'support', 'marketing', 'waitlist', 'imports', 'cashback', 'categories', 'reports', 'audit', 'backups']);
+type AdminTab = 'overview' | 'products' | 'orders' | 'preorders' | 'clients' | 'coupons' | 'support' | 'marketing' | 'waitlist' | 'imports' | 'cashback' | 'categories' | 'reports' | 'audit' | 'backups';
+const adminTabs = new Set<AdminTab>(['overview', 'products', 'orders', 'preorders', 'clients', 'coupons', 'support', 'marketing', 'waitlist', 'imports', 'cashback', 'categories', 'reports', 'audit', 'backups']);
 const tabFromLocation = (): AdminTab => {
   const requested = typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('tab');
   return requested && adminTabs.has(requested as AdminTab) ? requested as AdminTab : 'overview';
@@ -39,13 +40,14 @@ const orderDateValue = (date?: AdminOrder['date']) => {
   return Number.isFinite(value) ? value : 0;
 };
 const tabTitles: Record<AdminTab, string> = {
-  overview: 'Hoje na loja', products: 'Produtos e stock', orders: 'Encomendas', clients: 'Clientes',
+  overview: 'Hoje na loja', products: 'Produtos e stock', orders: 'Encomendas', preorders: 'Pré-reservas', clients: 'Clientes',
   coupons: 'Cupões', support: 'Suporte', marketing: 'Marketing', waitlist: 'Lista de espera', imports: 'Importações', cashback: 'Cashback', categories: 'Categorias', reports: 'Relatórios', audit: 'Histórico', backups: 'Backups',
 };
 const tabDescriptions: Record<AdminTab, string> = {
   overview: 'O que precisa da sua atenção, sem ruído.',
   products: 'Um único local para catálogo, preços, variantes e lotes.',
   orders: 'Acompanhe o pedido desde a entrada até à entrega.',
+  preorders: 'Pedidos futuros, confirmação de mensagens e pagamentos em duas fases.',
   clients: 'Contas, contactos, compras e AllPoints.',
   coupons: 'Crie e acompanhe descontos da loja.',
   support: 'Pedidos de apoio e produtos procurados.',
@@ -166,7 +168,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
     const order = data.orders.find((item) => item.id.replace(/^#/, '') === requested);
     requestedOrderId.current = '';
     if (order) {
-      setTab('orders');
+      setTab(order.preorder?.kind === 'PREORDER' ? 'preorders' : 'orders');
       setSelectedOrder(order);
     }
   }, [data]);
@@ -179,6 +181,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
     ? stockGroups.find((group) => group.productId === selectedStock.productId) ?? selectedStock
     : null;
   const totalAvailable = stockGroups.reduce((sum, group) => sum + group.available, 0);
+  const activePreorders = (data?.orders ?? []).filter((order) => order.preorder?.kind === 'PREORDER' && !['CANCELLED', 'EXPIRED', 'FULFILLED'].includes(order.preorder.status ?? '') && order.status !== 'Cancelado').length;
   const pendingOrders = (data?.orders ?? []).filter((order) => ['Pendente', 'Processamento', 'Pago'].includes(order.status)).length;
   const completedRevenue = (data?.orders ?? []).filter((order) => order.status === 'Entregue').reduce((sum, order) => sum + Number(order.total ?? 0), 0);
   const warningCount = stockGroups.filter((group) => group.warnings.length > 0).length;
@@ -206,6 +209,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
           <button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}><LayoutDashboard /> Hoje</button>
           <button className={tab === 'products' ? 'active' : ''} onClick={() => setTab('products')}><Boxes /> Produtos e stock</button>
           <button className={tab === 'orders' ? 'active' : ''} onClick={() => setTab('orders')}><ClipboardList /> Encomendas</button>
+          <button className={tab === 'preorders' ? 'active' : ''} onClick={() => { setTab('preorders'); setSearch(''); }}><PackageCheck /> Pré-reservas{activePreorders > 0 && <span className="admin-nav-count">{activePreorders}</span>}</button>
           <button className={tab === 'clients' ? 'active' : ''} onClick={() => setTab('clients')}><UsersRound /> Clientes</button>
           <button className={tab === 'support' ? 'active' : ''} onClick={() => setTab('support')}><Headphones /> Suporte{unreadSupportCount > 0 && <span className="admin-nav-count">{unreadSupportCount}</span>}</button>
           <button className={tab === 'reports' ? 'active' : ''} onClick={() => setTab('reports')}><FileBarChart /> Relatórios</button>
@@ -237,7 +241,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
             {data && <AdminNotificationCenter
               data={data}
               stockGroups={stockGroups}
-              onOrder={(order) => { setTab('orders'); setSelectedOrder(order); setSelectedStock(null); }}
+              onOrder={(order) => { setTab(order.preorder?.kind === 'PREORDER' ? 'preorders' : 'orders'); setSelectedOrder(order); setSelectedStock(null); }}
               onSupport={(ticket) => { setTab('support'); setActionTarget({ kind: 'ticket', value: ticket }); }}
               onRequest={(request) => { setTab('support'); setActionTarget({ kind: 'request', value: request }); }}
               onStock={(group) => { setTab('products'); setSelectedStock(group); setSelectedOrder(null); }}
@@ -291,7 +295,8 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
         )}
 
         {data && tab === 'products' && <ProductsSection products={data.products} groups={stockGroups} search={search} reviewingContent={catalogReviewBusy} onReviewContent={() => void reviewCatalog()} onCreateProduct={() => { setEditingProduct(null); setCatalogEditorOpen(true); }} onEditProduct={(product) => { setEditingProduct(product); setCatalogEditorOpen(true); }} onCreateLot={(productId) => { setEditingLot(null); setInitialLotProductId(productId); setLotEditorOpen(true); }} onOpenStock={(group) => { setSelectedStock(group); setSelectedOrder(null); }} />}
-        {data && tab === 'orders' && <OrdersSection orders={data.orders} search={search} onOpen={(order) => { setSelectedOrder(order); setSelectedStock(null); }} />}
+        {data && tab === 'orders' && <OrdersSection orders={data.orders.filter((order) => order.preorder?.kind !== 'PREORDER')} search={search} onOpen={(order) => { setSelectedOrder(order); setSelectedStock(null); }} />}
+        {data && tab === 'preorders' && <PreordersSection orders={data.orders} search={search} onOpen={(order) => { setSelectedOrder(order); setSelectedStock(null); }} />}
         {data && tab === 'clients' && <ClientsSection users={data.users} search={search} onOpen={(user) => setActionTarget({ kind: 'client', value: user })} />}
         {data && tab === 'coupons' && <CouponsSection coupons={data.coupons} products={data.products} search={search} onCreate={() => setActionTarget({ kind: 'coupon', value: null })} onEdit={(coupon) => setActionTarget({ kind: 'coupon', value: coupon })} />}
         {data && tab === 'support' && <SupportSection tickets={data.tickets} requests={data.requests} search={search} onTicket={(ticket) => setActionTarget({ kind: 'ticket', value: ticket })} onRequest={(request) => setActionTarget({ kind: 'request', value: request })} />}

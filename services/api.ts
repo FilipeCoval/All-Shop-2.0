@@ -7,7 +7,7 @@ const requestHeaders = async () => {
     try {
       headers.Authorization = `Bearer ${await user.getIdToken()}`;
     } catch {
-      // The server will treat the request as a guest request only when a valid guest token is sent.
+      throw new Error('Não foi possível validar a sessão. Volte a iniciar sessão antes de enviar o pedido.');
     }
   }
   return headers;
@@ -73,8 +73,8 @@ export async function createPreorder(input: {
   shippingInfo: unknown;
   termsAccepted: true;
   /** Confirmed only after the client has gone through the message step. */
-  messagePlatform: 'WHATSAPP' | 'TELEGRAM';
-  messageConfirmedAt: string;
+  messagePlatform?: 'WHATSAPP' | 'TELEGRAM';
+  messageConfirmedAt?: string;
 }, guestToken?: string) {
   const response = await fetch('/api/create-order-draft', {
     method: 'POST',
@@ -89,6 +89,14 @@ export async function syncCurrentUser() {
     method: 'POST',
     headers: await requestHeaders(),
     body: JSON.stringify({}),
+  });
+  return parseResponse(response);
+}
+
+export async function confirmPreorderMessage(orderId: string, messagePlatform: 'WHATSAPP' | 'TELEGRAM', guestToken?: string) {
+  const response = await fetch('/api/create-order-draft', {
+    method: 'POST', headers: await requestHeaders(),
+    body: JSON.stringify({ action: 'confirm_preorder_message', orderId, messagePlatform, guestToken }),
   });
   return parseResponse(response);
 }

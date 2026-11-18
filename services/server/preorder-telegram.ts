@@ -23,7 +23,7 @@ export async function notifyTelegramOfConfirmedPreorder(order: Record<string, an
   const shipping = order.shippingInfo && typeof order.shippingInfo === 'object' ? order.shippingInfo : {};
   const preorder = order.preorder && typeof order.preorder === 'object' ? order.preorder : {};
   const message = [
-    '🟠 NOVA PRÉ-RESERVA CONFIRMADA',
+    preorder.messagePending ? '🟠 PRÉ-RESERVA INICIADA · MENSAGEM POR CONFIRMAR' : '🟠 PRÉ-RESERVA · MENSAGEM CONFIRMADA',
     '',
     `Ref: #${text(order.id, 80).replace(/^#/, '')}`,
     `Cliente: ${text(shipping.name, 120) || 'Cliente'} (${text(shipping.phone, 50) || 'sem telefone'})`,
@@ -38,12 +38,14 @@ export async function notifyTelegramOfConfirmedPreorder(order: Record<string, an
     `Saldo antes da expedição: ${money(preorder.balanceDue)}`,
     preorder.estimatedDispatchDate ? `Expedição prevista: ${text(preorder.estimatedDispatchDate, 20)}` : '',
     '',
-    'Mensagem do cliente confirmada no site. Registe o sinal ou cancele a vaga na Dashboard.',
+    preorder.messagePending ? 'Pedido guardado. O cliente ainda não confirmou o envio da mensagem. Sem pagamento registado.' : 'Mensagem do cliente confirmada no site. Registe o sinal ou cancele a vaga na Dashboard.',
+    `https://www.all-shop.net/admin?tab=preorders&order=${encodeURIComponent(String(order.id))}`,
   ].filter(Boolean).join('\n');
 
   try {
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: 'POST',
+      signal: AbortSignal.timeout(8000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text: message }),
     });

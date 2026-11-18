@@ -27,6 +27,20 @@ pelas regras Firestore e pela validação do token em cada operação da API.
 
 ## Comandos locais
 
+Publicar a loja (`all-shop-2-0`) **não publica** a PWA separada
+(`all-shop-admin`). Em 18/11/2026 este segundo projeto não tinha integração Git:
+é necessário publicar ambos e verificar que ambos ficam `Ready`.
+O service worker do admin tem permissão de scope `/` no servidor para suportar
+o domínio dedicado; no domínio da loja o cliente continua a registá-lo apenas
+em `/admin`.
+
+As pré-reservas novas são guardadas antes de abrir WhatsApp/Telegram, aparecem
+na secção `Pré-reservas` e na Área de Cliente e só marcam a mensagem como
+confirmada após ação explícita. Testes transacionais isolados: `npm run test:preorder`.
+Teste de navegador local (requer Playwright e Chrome):
+`node tests/preorderBrowser.test.mjs`. Pode definir `PLAYWRIGHT_MODULE` com o
+caminho do módulo Playwright e `PLAYWRIGHT_CHANNEL` com o canal instalado.
+
 - Desenvolvimento: `npm run dev:admin`
 - Validação: `npm run check`
 - Compilação: `npm run build:admin`

@@ -148,6 +148,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersError, setOrdersError] = useState('');
   const [reviews, setReviews] = useState<Review[]>([]);
   const [route, setRoute] = useState(window.location.hash || '#/');
   const [processingProductIds, setProcessingProductIds] = useState<number[]>([]); // Loading local por produto
@@ -318,6 +319,8 @@ const App: React.FC = () => {
         clearTimeout(authTimeout);
         userUnsubscribe();
         ordersUnsubscribe();
+        setOrders([]);
+        setOrdersError('');
 
         if (firebaseUser && firebaseUser.email) {
             setAuthLoading(true);
@@ -336,9 +339,10 @@ const App: React.FC = () => {
                         const response = await syncCurrentUser();
                         const safeOrders = Array.isArray(response?.orders) ? response.orders as Order[] : [];
                         setOrders(safeOrders);
+                        setOrdersError('');
                     } catch (e) {
                         console.error('Não foi possível sincronizar encomendas da conta:', e);
-                        setOrders([]);
+                        setOrdersError('Não foi possível atualizar os seus pedidos. Isto não significa que não existam encomendas. Tente novamente.');
                     }
                 };
                 await refreshOrders();
@@ -348,9 +352,14 @@ const App: React.FC = () => {
                 }, 60_000);
                 const refreshAfterOrderChange = () => { void refreshOrders(); };
                 window.addEventListener('allshop:orders-changed', refreshAfterOrderChange);
+                const refreshVisibleOrders = () => { if (document.visibilityState === 'visible') void refreshOrders(); };
+                window.addEventListener('focus', refreshVisibleOrders);
+                document.addEventListener('visibilitychange', refreshVisibleOrders);
                 ordersUnsubscribe = () => {
                     window.clearInterval(ordersRefreshInterval);
                     window.removeEventListener('allshop:orders-changed', refreshAfterOrderChange);
+                    window.removeEventListener('focus', refreshVisibleOrders);
+                    document.removeEventListener('visibilitychange', refreshVisibleOrders);
                 };
 
                 userUnsubscribe = onSnapshot(userDocRef, (docSnap) => {
@@ -701,7 +710,7 @@ const App: React.FC = () => {
     
     if (route.startsWith('#account')) {
       if (!user) { setTimeout(() => { window.location.hash = '/'; setIsLoginOpen(true); }, 0); return null; }
-      return <ClientArea user={user} orders={orders} onLogout={handleLogout} onUpdateUser={handleUpdateUser} wishlist={wishlist} onToggleWishlist={toggleWishlist} onAddToCart={addToCart} publicProducts={dbProducts} onOpenSupportChat={() => setIsAIChatOpen(true)} onCheckout={handleCheckout} />;
+      return <>{ordersError && <div role="alert" className="mx-auto max-w-6xl rounded-xl bg-amber-50 p-4 text-amber-900">{ordersError} <button type="button" className="font-bold underline" onClick={() => window.dispatchEvent(new Event('allshop:orders-changed'))}>Voltar a tentar</button></div>}<ClientArea user={user} orders={orders} onLogout={handleLogout} onUpdateUser={handleUpdateUser} wishlist={wishlist} onToggleWishlist={toggleWishlist} onAddToCart={addToCart} publicProducts={dbProducts} onOpenSupportChat={() => setIsAIChatOpen(true)} onCheckout={handleCheckout} /></>;
     }
     if (route.startsWith('#product/')) {
         const id = parseInt(route.split('/')[1]);

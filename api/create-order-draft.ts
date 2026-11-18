@@ -7,6 +7,7 @@ import { notifyAdminsOfNewOrder } from '../services/server/admin-push.js';
 import { notifyTelegramOfConfirmedPreorder } from '../services/server/preorder-telegram.js';
 import { projectPublicStock } from '../src/server/stockProjection.js';
 import { adminAuditEntry } from '../src/server/adminAudit.js';
+import { preorderMessageConfirmation } from '../src/server/preorderConfirmation.js';
 
 type DraftItem = {
   productId: number;
@@ -138,16 +139,15 @@ const preorderOffer = (product: Record<string, unknown>) => {
   };
 };
 
-const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) => {
+export const createPreorder = async (firestore: NonNullable<typeof db>, req: Request, notify = notifyPreorder) => {
   const orderId = validateOrderId(req.body?.idempotencyKey);
   if (!orderId) throw new Error('Não foi possível criar a referência da pré-reserva. Tente novamente.');
   if (req.body?.termsAccepted !== true) throw new Error('Confirme que leu as condições da pré-reserva.');
   const messagePlatform = req.body?.messagePlatform === 'TELEGRAM' ? 'TELEGRAM' : req.body?.messagePlatform === 'WHATSAPP' ? 'WHATSAPP' : null;
-  const messageConfirmationDate = new Date(String(req.body?.messageConfirmedAt ?? ''));
-  if (!messagePlatform || Number.isNaN(messageConfirmationDate.getTime())) {
-    throw new Error('Envie a mensagem do pedido e confirme o respetivo envio antes de concluir a pré-reserva.');
-  }
-  const messageConfirmedAt = messageConfirmationDate.toISOString();
+  // Old clients still create after the message step. New clients persist first,
+  // before leaving for an external app; only an explicit confirmation completes it.
+  const messageConfirmed = Boolean(messagePlatform && req.body?.messageConfirmedAt);
+  const messageConfirmedAt = messageConfirmed ? new Date().toISOString() : null;
   const productId = Number(req.body?.productId);
   const quantity = asPositiveInt(req.body?.quantity, 10);
   const selectedVariant = String(req.body?.selectedVariant ?? '').trim().slice(0, 120);
@@ -172,6 +172,7 @@ const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) =
       const existing = existingSnapshot.data() ?? {};
       const belongs = existing.userId ? existing.userId === identity.userId : existing.ownerKey === identity.ownerKey;
       if (!belongs) throw new Error('Esta referência já pertence a outra sessão. Tente novamente.');
+      if (existing.preorder?.kind !== 'PREORDER') throw new Error('Esta referência já está em utilização por outra encomenda.');
       return { order: { id: orderId, ...existing }, alreadyExists: true };
     }
     if (!productSnapshot.exists) throw new Error('Este produto já não está disponível para pré-reserva.');
@@ -230,8 +231,8 @@ const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) =
       total,
       subtotal,
       shippingCost,
-      status: 'Pendente',
-      statusHistory: [{ status: 'Pendente', date: createdAt, notes: `Pré-reserva confirmada pelo cliente após o envio da mensagem via ${messagePlatform === 'WHATSAPP' ? 'WhatsApp' : 'Telegram'}. Aguarda o sinal de 50%.` }],
+      status: messageConfirmed ? 'Pendente' : 'A confirmar',
+      statusHistory: [{ status: messageConfirmed ? 'Pendente' : 'A confirmar', date: createdAt, notes: messageConfirmed ? 'Envio da mensagem confirmado pelo cliente. Aguarda o sinal de 50%.' : 'Pré-reserva guardada antes de abrir a aplicação de mensagens. Aguarda confirmação do envio; nenhum pagamento registado.' }],
       items: [{ productId, name: String(product.name ?? 'Produto').trim().slice(0, 250) || 'Produto', price: roundMoney(unitPrice), image: String(variant?.image ?? product.image ?? '').trim().slice(0, 1000), description: String(variant?.description ?? product.description ?? '').trim().slice(0, 5000), quantity, selectedVariant, addedAt: createdAt }],
       userId: identity.userId,
       ownerKey: identity.ownerKey,
@@ -244,7 +245,7 @@ const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) =
         depositDue, balanceDue: roundMoney(total - depositDue),
         depositDeadlineAt: new Date(now.getTime() + offer.paymentDeadlineHours * 60 * 60 * 1000).toISOString(),
         estimatedDispatchDate: offer.estimatedDispatchDate, termsAcceptedAt: createdAt,
-        messagePlatform, messageConfirmedAt,
+        messagePlatform, messageConfirmedAt, messagePending: !messageConfirmed,
       },
       schemaVersion: 3,
     };
@@ -290,15 +291,39 @@ const createPreorder = async (firestore: NonNullable<typeof db>, req: Request) =
       target: { type: 'Pré-reserva', id: orderId, label: `#${orderId}` },
       before: null,
       after: order,
-      summary: 'Pré-reserva confirmada pelo cliente; aguarda o sinal de 50%.',
+      summary: messageConfirmed ? 'Pré-reserva confirmada pelo cliente; aguarda o sinal de 50%.' : 'Pré-reserva iniciada; aguarda confirmação da mensagem.',
       details: { productId, quantity, selectedVariant: selectedVariant || 'Sem variante', messagePlatform, messageConfirmedAt },
     }));
     return { order, alreadyExists: false };
   });
-  if (!result.alreadyExists) {
-    try { await notifyAdminsOfNewOrder(firestore, result.order); } catch (error) { console.warn('[preorder-admin-push]', error); }
-    await notifyTelegramOfConfirmedPreorder(result.order);
-  }
+  if (!result.alreadyExists) await notify(firestore, result.order);
+  return result;
+};
+
+async function notifyPreorder(firestore: NonNullable<typeof db>, order: Record<string, any>) {
+  try { await notifyAdminsOfNewOrder(firestore, order); } catch (error) { console.warn('[preorder-admin-push]', error); }
+  await notifyTelegramOfConfirmedPreorder(order);
+}
+
+export const confirmPreorderMessage = async (firestore: NonNullable<typeof db>, req: Request, notify = notifyPreorder) => {
+  const orderId = validateOrderId(req.body?.orderId);
+  if (!orderId) throw new Error('Referência da pré-reserva inválida.');
+  const identity = await getRequestIdentity(req, req.body?.guestToken);
+  const result = await firestore.runTransaction(async (transaction) => {
+    const ref = firestore.collection('orders').doc(orderId);
+    const snapshot = await transaction.get(ref);
+    const order = snapshot.data();
+    if (!order || !(order.userId ? order.userId === identity.userId : order.ownerKey === identity.ownerKey)) {
+      throw new Error('Pré-reserva não encontrada nesta sessão. Entre na conta usada no pedido.');
+    }
+    const now = new Date();
+    const patch = preorderMessageConfirmation(order, req.body?.messagePlatform, now);
+    if (!patch) return { order: { ...order, id: orderId }, alreadyConfirmed: true };
+    transaction.update(ref, { ...patch, updatedAt: FieldValue.serverTimestamp(), statusHistory: FieldValue.arrayUnion({ status: patch.status, date: now.toISOString(), notes: 'Cliente confirmou o envio da mensagem da pré-reserva.' }) });
+    transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({ action: 'confirm_preorder_message', actor: { uid: identity.userId, kind: 'CLIENT' }, target: { type: 'Pré-reserva', id: orderId, label: `#${orderId}` }, before: order, after: { ...order, ...patch }, summary: 'Envio da mensagem confirmado pelo cliente.' }));
+    return { order: { ...order, ...patch, id: orderId }, alreadyConfirmed: false };
+  });
+  if (!result.alreadyConfirmed) await notify(firestore, result.order);
   return result;
 };
 
@@ -313,6 +338,10 @@ export default async function handler(req: Request, res: Response) {
   if (!firestore) return res.status(503).json({ error: 'O pedido não pode ser registado neste momento. Tente novamente dentro de momentos.' });
 
   try {
+    if (req.body?.action === 'confirm_preorder_message') {
+      const result = await confirmPreorderMessage(firestore, req);
+      return res.status(200).json({ success: true, ...result });
+    }
     if (req.body?.action === 'create_preorder') {
       const result = await createPreorder(firestore, req);
       return res.status(200).json({ success: true, ...result });

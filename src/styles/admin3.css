@@ -2674,3 +2674,9 @@ html.dark .audit-details { border-color: #33445b; background: #0b1627; color: #c
   .client-tool-fields { grid-template-columns: 1fr; }
   .client-history-table table { min-width: 520px; }
 }
+.preorder-list { display: grid; gap: 12px; padding: 20px; }
+.preorder-kpis { margin-bottom: 20px; }
+.preorder-list-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, .8fr) auto; gap: 16px; align-items: center; border: 1px solid var(--line); border-radius: 16px; padding: 18px; }
+.preorder-list-card small { display: block; margin-top: 7px; overflow-wrap: anywhere; }
+.preorder-list-card p { margin-top: 8px; overflow-wrap: anywhere; }
+@media (max-width: 900px) { .preorder-list-card { grid-template-columns: minmax(0, 1fr); } .preorder-list { padding: 12px; } }
