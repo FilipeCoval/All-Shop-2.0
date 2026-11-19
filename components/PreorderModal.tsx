@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { CheckCircle2, MapPin, PackageCheck, ShieldCheck, Store, X } from 'lucide-react';
+import { CheckCircle2, MapPin, ShieldCheck, Store, X } from 'lucide-react';
 import type { Order, Product, ProductVariant, User } from '../types';
 import { createPreorder } from '../services/api';
 import type { PreorderOffer } from '../src/domain/preorder';
-import { formatPreorderDate } from '../src/domain/preorder';
 import PreorderMessageActions from './PreorderMessageActions';
+import PreorderItemsEditor, { type PreorderSelection } from './PreorderItemsEditor';
 
 const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
 const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
@@ -21,6 +21,7 @@ const getGuestToken = () => {
 
 type Props = {
   product: Product;
+  allProducts: Product[];
   selectedVariant?: ProductVariant;
   currentUser: User | null;
   offer: PreorderOffer;
@@ -30,7 +31,7 @@ type Props = {
 
 type Stage = 'form' | 'channel' | 'success';
 
-export default function PreorderModal({ product, selectedVariant, currentUser, offer, remaining, onClose }: Props) {
+export default function PreorderModal({ product, allProducts, selectedVariant, currentUser, offer, onClose }: Props) {
   const savedAddress = currentUser?.addresses?.[0];
   const storageKey = `allshop-preorder:${currentUser?.uid ?? getGuestToken()}:${product.id}:${selectedVariant?.name ?? ''}`;
   const [created, setCreated] = useState<Order | null>(() => {
@@ -40,7 +41,7 @@ export default function PreorderModal({ product, selectedVariant, currentUser, o
     } catch { return null; }
   });
   const [stage, setStage] = useState<Stage>(created ? 'channel' : 'form');
-  const [quantity, setQuantity] = useState(1);
+  const [items, setItems] = useState<PreorderSelection[]>([{ productId: product.id, selectedVariant: selectedVariant?.name ?? '', quantity: 1 }]);
   const [deliveryMethod, setDeliveryMethod] = useState<'Shipping' | 'Pickup'>('Shipping');
   const [paymentMethod, setPaymentMethod] = useState<'MB Way' | 'Transferência' | 'Outro'>('MB Way');
   const [form, setForm] = useState({
@@ -64,15 +65,17 @@ export default function PreorderModal({ product, selectedVariant, currentUser, o
     };
   }, []);
 
-  const maxQuantity = Math.max(1, Math.min(remaining, Number(product.maxQuantityPerOrder ?? remaining), 10));
-  const price = Number(selectedVariant?.price ?? product.price);
   const summary = useMemo(() => {
-    const subtotal = roundMoney(price * quantity);
+    const subtotal = roundMoney(items.reduce((sum, item) => {
+      const selectedProduct = allProducts.find((candidate) => candidate.id === item.productId);
+      const variant = selectedProduct?.variants?.find((candidate) => candidate.name === item.selectedVariant);
+      return sum + Number(variant?.price ?? selectedProduct?.price ?? 0) * item.quantity;
+    }, 0));
     const shipping = deliveryMethod === 'Pickup' || subtotal >= 50 ? 0 : 4.99;
     const total = roundMoney(subtotal + shipping);
     const deposit = roundMoney(total * 0.5);
     return { total, shipping, deposit, balance: roundMoney(total - deposit) };
-  }, [deliveryMethod, price, quantity]);
+  }, [allProducts, deliveryMethod, items]);
 
   const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
   const beginMessageStage = async (event: FormEvent) => {
@@ -81,10 +84,12 @@ export default function PreorderModal({ product, selectedVariant, currentUser, o
     inFlight.current = true; setBusy(true); setError('');
     reference.current ||= `AS-${String(Date.now()).slice(-12)}`;
     try {
+      const firstItem = items[0];
+      if (!firstItem) throw new Error('Adicione pelo menos um artigo à pré-reserva.');
       const result = await createPreorder({
-        idempotencyKey: reference.current, productId: product.id,
-        selectedVariant: selectedVariant?.name ?? '', quantity, termsAccepted: true,
-        shippingInfo: { ...form, deliveryMethod, paymentMethod },
+        idempotencyKey: reference.current, productId: firstItem.productId,
+        selectedVariant: firstItem.selectedVariant, quantity: firstItem.quantity, termsAccepted: true,
+        shippingInfo: { ...form, deliveryMethod, paymentMethod }, items,
       }, getGuestToken());
       if (!result.order?.id || result.order?.preorder?.kind !== 'PREORDER') throw new Error('Não foi possível guardar o pedido. Tente novamente.');
       const order = result.order as Order;
@@ -129,8 +134,8 @@ export default function PreorderModal({ product, selectedVariant, currentUser, o
     </section> : <form onSubmit={beginMessageStage} className={shellClass}>
       <header className="shrink-0 flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-5 dark:border-slate-700 sm:px-7"><div><p className="text-xs font-extrabold uppercase tracking-[.16em] text-orange-600">Pré-reserva</p><h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">Garanta o preço com 50%</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">A mesma confirmação de uma compra, sem mexer no stock físico.</p></div><button type="button" onClick={onClose} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Fechar"><X /></button></header>
       <div className="grid min-h-0 flex-1 touch-pan-y gap-5 overflow-y-auto overscroll-contain p-5 [-webkit-overflow-scrolling:touch] sm:p-7">
-        <section className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm dark:border-orange-900/70 dark:bg-orange-950/25"><div className="flex gap-3"><PackageCheck className="mt-0.5 shrink-0 text-orange-600" size={21} /><div><strong className="text-slate-950 dark:text-white">{quantity}× {product.name}{selectedVariant ? ` · ${selectedVariant.name}` : ''}</strong><p className="mt-1 text-slate-700 dark:text-slate-200">Expedição prevista: <strong>{formatPreorderDate(offer.estimatedDispatchDate)}</strong>{offer.note ? ` · ${offer.note}` : ''}</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{remaining} vaga{remaining === 1 ? '' : 's'} disponível{remaining === 1 ? '' : 'is'}{selectedVariant ? ' nesta versão' : ' nesta previsão'}.</p></div></div></section>
-        <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-bold text-slate-700 dark:text-slate-200">Quantidade<select value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 font-semibold outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800">{Array.from({ length: maxQuantity }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{value} unidade{value === 1 ? '' : 's'}</option>)}</select></label><label className="text-sm font-bold text-slate-700 dark:text-slate-200">Pagamento do sinal<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as typeof paymentMethod)} className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 font-semibold outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"><option>MB Way</option><option>Transferência</option><option>Outro</option></select></label></div>
+        <PreorderItemsEditor items={items} products={allProducts} onChange={setItems}/>
+        <label className="text-sm font-bold text-slate-700 dark:text-slate-200">Pagamento do sinal<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as typeof paymentMethod)} className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 font-semibold outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"><option>MB Way</option><option>Transferência</option><option>Outro</option></select></label>
         <section className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-slate-800/80"><div className="flex justify-between gap-5"><span>Preço total garantido</span><strong>{euro.format(summary.total)}</strong></div><div className="flex justify-between gap-5 border-t border-slate-200 pt-3 text-orange-700 dark:border-slate-700 dark:text-orange-300"><span>Sinal a pagar agora (50%)</span><strong className="text-lg">{euro.format(summary.deposit)}</strong></div><div className="flex justify-between gap-5 text-slate-600 dark:text-slate-300"><span>Saldo antes da expedição</span><strong>{euro.format(summary.balance)}</strong></div>{summary.shipping > 0 && <small className="text-slate-500">Inclui {euro.format(summary.shipping)} de portes.</small>}</section>
         <section><div className="mb-3 flex gap-2"><MapPin size={19} className="text-orange-600" /><h3 className="font-extrabold text-slate-950 dark:text-white">Entrega e contacto</h3></div><div className="grid gap-3 sm:grid-cols-2"><input required placeholder="Nome completo" value={form.name} onChange={(event) => update('name', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input required type="email" placeholder="Email" value={form.email} onChange={(event) => update('email', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input required placeholder="Telemóvel" value={form.phone} onChange={(event) => update('phone', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input placeholder="NIF (opcional)" value={form.nif} onChange={(event) => update('nif', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/></div><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setDeliveryMethod('Shipping')} className={`rounded-xl border px-3 py-3 text-sm font-bold ${deliveryMethod === 'Shipping' ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-950/30' : 'border-slate-300 dark:border-slate-600'}`}><MapPin className="mr-1 inline" size={16}/> Envio</button><button type="button" onClick={() => setDeliveryMethod('Pickup')} className={`rounded-xl border px-3 py-3 text-sm font-bold ${deliveryMethod === 'Pickup' ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-950/30' : 'border-slate-300 dark:border-slate-600'}`}><Store className="mr-1 inline" size={16}/> Levantamento</button></div>{deliveryMethod === 'Shipping' && <div className="mt-3 grid gap-3 sm:grid-cols-2"><input required placeholder="Rua / Avenida" value={form.street} onChange={(event) => update('street', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input required placeholder="N.º da porta" value={form.doorNumber} onChange={(event) => update('doorNumber', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input required placeholder="Código-postal" value={form.zip} onChange={(event) => update('zip', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input required placeholder="Localidade" value={form.city} onChange={(event) => update('city', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/></div>}</section>
         <label className="flex gap-3 rounded-2xl border border-slate-200 p-4 text-sm leading-relaxed text-slate-600 dark:border-slate-700 dark:text-slate-300"><input required type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-orange-500"/><span><strong className="text-slate-950 dark:text-white">Confirmo as condições da pré-reserva.</strong><br/>O preço total fica garantido. Pagarei o sinal de 50% em {offer.paymentDeadlineHours} horas; o saldo é pedido antes da expedição. Se a All-Shop não puder fornecer o artigo, o sinal é reembolsado. Mantêm-se os direitos legais aplicáveis.</span></label>

@@ -724,7 +724,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
           <img src={selectedImage} alt={product.name} className="max-h-[88vh] max-w-[90vw] object-contain" onClick={event => event.stopPropagation()} />
         </div>
       )}
-      {isPreorderOpen && preorderOffer && <PreorderModal product={product} selectedVariant={selectedVariant} currentUser={currentUser} offer={preorderOffer} remaining={selectedPreorderRemaining} onClose={() => setIsPreorderOpen(false)} />}
+      {isPreorderOpen && preorderOffer && <PreorderModal product={product} allProducts={allProducts} selectedVariant={selectedVariant} currentUser={currentUser} offer={preorderOffer} remaining={selectedPreorderRemaining} onClose={() => setIsPreorderOpen(false)} />}
     </div>
   );
 };

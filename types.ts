@@ -143,6 +143,15 @@ export interface PreorderOrderInfo {
   depositReceivedAt?: string;
   balanceReceivedAt?: string;
   capacityReleasedAt?: string;
+  /** Artigos que ocupam vagas nesta pré-reserva. Ausente nos registos antigos de um só artigo. */
+  lines?: Array<{
+    productId: number;
+    variantName?: string;
+    quantity: number;
+    estimatedDispatchDate?: string;
+  }>;
+  productIds?: number[];
+  editedAt?: string;
 }
 
 export interface StockMovement {

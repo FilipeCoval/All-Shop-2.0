@@ -2,7 +2,7 @@ import { inventoryLotPhysicalQuantity } from '../domain/inventoryReceipt.js';
 
 type UnitData = { id?: string; status?: string; reservedUntil?: unknown; soldAt?: string; soldToOrder?: string; soldToCustomerName?: string; soldToCustomerEmail?: string };
 export type LotData = { id?: string; publicProductId?: number; variant?: string; quantityBought?: number; quantitySold?: number; receiptStatus?: string; units?: UnitData[] };
-export type ReservationData = { id?: string; productId?: number; variantName?: string; variantKey?: string; quantity?: number; expiresAt?: unknown };
+export type ReservationData = { id?: string; productId?: number; variantName?: string; variantKey?: string; quantity?: number; expiresAt?: unknown; orderId?: string; ownerKey?: string; kind?: string };
 type ProductData = { stock?: number; variants?: Array<{ name?: string; stock?: number; [key: string]: unknown }> };
 
 const normalize = (value: unknown) => String(value ?? '').replace(/\s+/g, ' ').trim().toLowerCase();

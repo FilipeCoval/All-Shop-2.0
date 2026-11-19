@@ -139,6 +139,184 @@ const preorderOffer = (product: Record<string, unknown>) => {
   };
 };
 
+type PreorderEditItem = { productId: number; selectedVariant: string; quantity: number };
+
+const parsePreorderEditItems = (value: unknown): PreorderEditItem[] => {
+  if (!Array.isArray(value) || !value.length || value.length > 10) throw new Error('A pré-reserva deve ter entre 1 e 10 artigos.');
+  const grouped = new Map<string, PreorderEditItem>();
+  for (const raw of value) {
+    const productId = Number((raw as any)?.productId);
+    const selectedVariant = String((raw as any)?.selectedVariant ?? '').trim().slice(0, 120);
+    const quantity = asPositiveInt((raw as any)?.quantity, 10);
+    if (!Number.isInteger(productId) || productId <= 0 || !quantity) throw new Error('Existe um artigo inválido na pré-reserva.');
+    const key = `${productId}|${normaliseVariant(selectedVariant)}`;
+    const nextQuantity = Number(grouped.get(key)?.quantity ?? 0) + quantity;
+    if (nextQuantity > 10) throw new Error('Só pode pré-reservar até 10 unidades da mesma versão.');
+    grouped.set(key, { productId, selectedVariant, quantity: nextQuantity });
+  }
+  return [...grouped.values()];
+};
+
+const lineReservationId = (orderId: string, line: PreorderEditItem, index: number) =>
+  `preorder_${orderId}_${index}_${line.productId}`;
+
+const reservationMillis = (value: unknown) => {
+  if (value && typeof (value as any).toMillis === 'function') return Number((value as any).toMillis());
+  if (value && typeof (value as any).seconds === 'number') return Number((value as any).seconds) * 1000;
+  const parsed = new Date(String(value ?? '')).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+/** The customer may change articles only while no deposit has been registered. */
+export const editPreorder = async (firestore: NonNullable<typeof db>, req: Request, notify = notifyPreorder) => {
+  const orderId = validateOrderId(req.body?.orderId);
+  if (!orderId) throw new Error('Referência da pré-reserva inválida.');
+  const requested = parsePreorderEditItems(req.body?.items);
+  const identity = await getRequestIdentity(req, req.body?.guestToken);
+  const now = new Date();
+
+  const result = await firestore.runTransaction(async (transaction) => {
+    const orderRef = firestore.collection('orders').doc(orderId);
+    const orderSnapshot = await transaction.get(orderRef);
+    const order = orderSnapshot.data() ?? null;
+    const belongs = order?.userId ? order.userId === identity.userId : order?.ownerKey === identity.ownerKey;
+    if (!orderSnapshot.exists || !order || !belongs || order.preorder?.kind !== 'PREORDER') {
+      throw new Error('Pré-reserva não encontrada nesta sessão.');
+    }
+    if (order.preorder.status !== 'DEPOSIT_PENDING' || order.preorder.capacityHeld !== true) {
+      throw new Error('Os artigos só podem ser alterados antes de o sinal ser registado.');
+    }
+    if (new Date(String(order.preorder.depositDeadlineAt ?? '')).getTime() <= now.getTime()) {
+      throw new Error('O prazo desta pré-reserva terminou. Contacte a All-Shop para confirmar novas vagas.');
+    }
+    const currentSelection = Array.isArray(order.items) ? order.items
+      .filter((item: any) => item && typeof item === 'object')
+      .map((item: any) => ({ productId: Number(item.productId), selectedVariant: String(item.selectedVariant ?? ''), quantity: Number(item.quantity) })) : [];
+    const selectionKey = (line: PreorderEditItem) => `${line.productId}|${normaliseVariant(line.selectedVariant)}|${line.quantity}`;
+    if (currentSelection.length === requested.length && currentSelection.map(selectionKey).sort().join(',') === requested.map(selectionKey).sort().join(',')) {
+      return { order: { ...order, id: orderId }, changed: false };
+    }
+
+    const productIds = [...new Set([
+      ...requested.map((line) => line.productId),
+      ...(Array.isArray(order.items) ? order.items.map((item: any) => Number(item?.productId)).filter((id: number) => Number.isInteger(id) && id > 0) : []),
+    ])];
+    const contexts = await Promise.all(productIds.map(async (productId) => {
+      const productRef = firestore.collection('products_public').doc(String(productId));
+      const [productSnapshot, inventorySnapshot, reservationsSnapshot] = await Promise.all([
+        transaction.get(productRef),
+        transaction.get(firestore.collection('products_inventory').where('publicProductId', '==', productId)),
+        transaction.get(firestore.collection('stock_reservations').where('productId', '==', productId)),
+      ]);
+      return { productId, productRef, productSnapshot, inventorySnapshot, reservationsSnapshot };
+    }));
+    const byProduct = new Map(contexts.map((context) => [context.productId, context]));
+
+    const canonicalItems = requested.map((line) => {
+      const context = byProduct.get(line.productId)!;
+      if (!context.productSnapshot.exists) throw new Error('Um dos produtos já não existe no catálogo.');
+      const product = context.productSnapshot.data() ?? {};
+      if (product.isPrivate === true) throw new Error('Um dos produtos já não está disponível para pré-reserva.');
+      const offer = preorderOffer(product);
+      if (!offer) throw new Error(`A pré-reserva de “${String(product.name ?? 'Produto')}” já não está ativa.`);
+      const variant = Array.isArray(product.variants)
+        ? product.variants.find((item: any) => normaliseVariant(item?.name) === normaliseVariant(line.selectedVariant))
+        : undefined;
+      if (Array.isArray(product.variants) && product.variants.length > 0 && !variant) throw new Error(`Escolha uma versão válida de “${String(product.name ?? 'Produto')}”.`);
+      if (product.maxQuantityPerOrder && line.quantity > Number(product.maxQuantityPerOrder)) throw new Error(`Só pode pré-reservar até ${product.maxQuantityPerOrder} unidade(s) de “${String(product.name ?? 'Produto')}”.`);
+
+      const otherReservations = context.reservationsSnapshot.docs
+        .map((document: any) => ({ id: document.id, ...document.data() }))
+        .filter((reservation: any) => reservation.orderId !== orderId && reservation.ownerKey !== `preorder:${orderId}` && reservationMillis(reservation.expiresAt) > now.getTime() && reservation.kind === 'PREORDER');
+      const variantKey = normaliseVariant(line.selectedVariant);
+      const occupied = otherReservations
+        .filter((reservation: any) => !offer.hasVariantCapacities || normaliseVariant(reservation.variantName ?? reservation.variantKey) === variantKey)
+        .reduce((sum: number, reservation: any) => sum + Math.max(0, Number(reservation.quantity ?? 0)), 0);
+      const capacity = offer.hasVariantCapacities ? Number(offer.variantCapacities[variantKey] ?? 0) : offer.capacity;
+      if (!capacity || occupied + line.quantity > capacity) {
+        const available = Math.max(0, capacity - occupied);
+        throw new Error(`Não existem vagas suficientes para “${String(product.name ?? 'Produto')}”${line.selectedVariant ? ` · ${line.selectedVariant}` : ''}. Restam ${available}.`);
+      }
+      const existingItem = Array.isArray(order.items) ? order.items.find((item: any) => Number(item?.productId) === line.productId && normaliseVariant(item?.selectedVariant) === variantKey) : null;
+      const unitPrice = Number(existingItem?.price ?? variant?.price ?? product.price);
+      if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('Um dos produtos não tem um preço válido.');
+      return {
+        productId: line.productId,
+        name: String(product.name ?? 'Produto').trim().slice(0, 250) || 'Produto',
+        price: roundMoney(unitPrice),
+        image: String(variant?.image ?? product.image ?? '').trim().slice(0, 1000),
+        description: String(variant?.description ?? product.description ?? '').trim().slice(0, 5000),
+        quantity: line.quantity,
+        selectedVariant: line.selectedVariant,
+        addedAt: now.toISOString(),
+        estimatedDispatchDate: offer.estimatedDispatchDate,
+      };
+    });
+
+    const shippingCost = order.shippingInfo?.deliveryMethod === 'Pickup'
+      ? 0
+      : canonicalItems.reduce((sum, item) => sum + item.price * item.quantity, 0) >= 50 ? 0 : 4.99;
+    const subtotal = roundMoney(canonicalItems.reduce((sum, item) => sum + item.price * item.quantity, 0));
+    const total = roundMoney(subtotal + shippingCost);
+    const depositDue = roundMoney(total * 0.5);
+    const lines = canonicalItems.map((item) => ({ productId: item.productId, variantName: item.selectedVariant || undefined, quantity: item.quantity, estimatedDispatchDate: item.estimatedDispatchDate }));
+    const latestDispatchDate = lines.map((line) => line.estimatedDispatchDate ?? '').sort().at(-1) ?? '';
+    const newReservations = requested.map((line, index) => ({
+      id: lineReservationId(orderId, line, index), productId: line.productId, variantName: line.selectedVariant || null,
+      variantKey: normaliseVariant(line.selectedVariant), quantity: line.quantity, ownerKey: `preorder:${orderId}`,
+      userId: identity.userId, orderId, kind: 'PREORDER', expiresAt: Timestamp.fromDate(PREORDER_RESERVATION_END),
+    }));
+
+    for (const context of contexts) {
+      const product = context.productSnapshot.data() ?? {};
+      const existing = context.reservationsSnapshot.docs.map((document: any) => ({ id: document.id, ...document.data() }));
+      const withoutCurrent = existing.filter((reservation: any) => reservation.orderId !== orderId && reservation.ownerKey !== `preorder:${orderId}` && reservation.id !== preorderReservationId(orderId));
+      const forProduct = newReservations.filter((reservation) => reservation.productId === context.productId);
+      const projectedReservations = [...withoutCurrent, ...forProduct];
+      const preorderReservations = projectedReservations.filter((reservation: any) => reservation.kind === 'PREORDER' && reservationMillis(reservation.expiresAt) > now.getTime());
+      const reservedByVariant: Record<string, number> = {};
+      for (const reservation of preorderReservations) {
+        const key = normaliseVariant(reservation.variantName ?? reservation.variantKey);
+        if (key) reservedByVariant[key] = (reservedByVariant[key] ?? 0) + Math.max(0, Number(reservation.quantity ?? 0));
+      }
+      const lots = context.inventorySnapshot.docs.map((document: any) => ({ id: document.id, ...document.data() }));
+      transaction.update(context.productRef, {
+        ...projectPublicStock(context.productId, product, lots, projectedReservations),
+        preorder: { ...(product.preorder ?? {}), reservedQuantity: preorderReservations.reduce((sum: number, reservation: any) => sum + Math.max(0, Number(reservation.quantity ?? 0)), 0), reservedByVariant },
+        stockUpdatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+      });
+      for (const reservation of existing.filter((item: any) => item.orderId === orderId || item.ownerKey === `preorder:${orderId}` || item.id === preorderReservationId(orderId))) {
+        transaction.delete(firestore.collection('stock_reservations').doc(reservation.id));
+      }
+      for (const reservation of forProduct) {
+        const { id, ...data } = reservation;
+        transaction.set(firestore.collection('stock_reservations').doc(id), { ...data, createdAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+      }
+    }
+
+    const updatedPreorder = {
+      ...order.preorder, productId: lines[0].productId, variantName: lines[0].variantName ?? null,
+      quantity: lines.reduce((sum, line) => sum + line.quantity, 0), lines, productIds: [...new Set(lines.map((line) => line.productId))],
+      depositDue, balanceDue: roundMoney(total - depositDue), estimatedDispatchDate: latestDispatchDate,
+      messagePending: true, messagePlatform: null, messageConfirmedAt: null, editedAt: now.toISOString(),
+    };
+    const update = {
+      items: canonicalItems.map(({ estimatedDispatchDate: _date, ...item }) => item), subtotal, shippingCost, total,
+      status: 'A confirmar', preorder: updatedPreorder, updatedAt: FieldValue.serverTimestamp(),
+      statusHistory: FieldValue.arrayUnion({ status: 'A confirmar', date: now.toISOString(), notes: 'Artigos da pré-reserva alterados pelo cliente; a mensagem atualizada precisa de nova confirmação.' }),
+    };
+    transaction.update(orderRef, update);
+    transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({
+      action: 'edit_preorder', actor: { uid: identity.userId, kind: 'CLIENT' }, target: { type: 'Pré-reserva', id: orderId, label: `#${orderId}` },
+      before: order, after: { ...order, ...update, statusHistory: order.statusHistory }, summary: 'Artigos da pré-reserva alterados antes do sinal.',
+      details: { items: lines },
+    }));
+    return { order: { ...order, ...update, statusHistory: [...(Array.isArray(order.statusHistory) ? order.statusHistory : []), { status: 'A confirmar', date: now.toISOString(), notes: 'Artigos da pré-reserva alterados pelo cliente; a mensagem atualizada precisa de nova confirmação.' }], id: orderId }, changed: true };
+  });
+  if (result.changed) await notify(firestore, result.order);
+  return result;
+};
+
 export const createPreorder = async (firestore: NonNullable<typeof db>, req: Request, notify = notifyPreorder) => {
   const orderId = validateOrderId(req.body?.idempotencyKey);
   if (!orderId) throw new Error('Não foi possível criar a referência da pré-reserva. Tente novamente.');
@@ -182,13 +360,11 @@ export const createPreorder = async (firestore: NonNullable<typeof db>, req: Req
     if (!offer) throw new Error('A pré-reserva deste produto já não está ativa.');
     if (product.maxQuantityPerOrder && quantity > Number(product.maxQuantityPerOrder)) throw new Error(`Só pode pré-reservar até ${product.maxQuantityPerOrder} unidade(s) deste produto.`);
 
-    let activeReserved = 0;
-    const activeReservedByVariant: Record<string, number> = {};
+    const releasedReservationIds = new Set<string>();
     for (const document of productOrders.docs) {
       const current = document.data() ?? {};
       const reservation = current.preorder && typeof current.preorder === 'object' ? current.preorder as Record<string, unknown> : {};
       const expired = reservation.status === 'DEPOSIT_PENDING' && reservation.capacityHeld === true && new Date(String(reservation.depositDeadlineAt ?? '')).getTime() <= now.getTime();
-      const held = Math.max(0, Math.floor(Number(reservation.quantity) || 0));
       if (expired) {
         transaction.update(document.ref, {
           status: 'Cancelado',
@@ -197,13 +373,19 @@ export const createPreorder = async (firestore: NonNullable<typeof db>, req: Req
           statusHistory: FieldValue.arrayUnion({ status: 'Cancelado', date: now.toISOString(), notes: 'Pré-reserva expirada: o sinal não foi recebido dentro do prazo.' }),
         });
         transaction.delete(firestore.collection('stock_reservations').doc(preorderReservationId(document.id)));
+        releasedReservationIds.add(preorderReservationId(document.id));
         continue;
       }
-      if (reservation.capacityHeld === true && !['CANCELLED', 'EXPIRED', 'FULFILLED'].includes(String(reservation.status ?? ''))) {
-        activeReserved += held;
-        const key = normaliseVariant(reservation.variantName);
-        if (key) activeReservedByVariant[key] = (activeReservedByVariant[key] ?? 0) + held;
-      }
+    }
+    let activeReserved = 0;
+    const activeReservedByVariant: Record<string, number> = {};
+    for (const document of reservationsSnapshot.docs) {
+      const reservation = document.data() ?? {};
+      if (releasedReservationIds.has(document.id) || reservation.kind !== 'PREORDER' || reservationMillis(reservation.expiresAt) <= now.getTime()) continue;
+      const held = Math.max(0, Math.floor(Number(reservation.quantity) || 0));
+      activeReserved += held;
+      const key = normaliseVariant(reservation.variantName ?? reservation.variantKey);
+      if (key) activeReservedByVariant[key] = (activeReservedByVariant[key] ?? 0) + held;
     }
 
     const variant = Array.isArray(product.variants)
@@ -241,6 +423,8 @@ export const createPreorder = async (firestore: NonNullable<typeof db>, req: Req
       storeShippingCost: 0,
       preorder: {
         kind: 'PREORDER', productId, variantName: selectedVariant || null, quantity,
+        lines: [{ productId, variantName: selectedVariant || undefined, quantity, estimatedDispatchDate: offer.estimatedDispatchDate }],
+        productIds: [productId],
         status: 'DEPOSIT_PENDING', capacityHeld: true, depositPercent: 50,
         depositDue, balanceDue: roundMoney(total - depositDue),
         depositDeadlineAt: new Date(now.getTime() + offer.paymentDeadlineHours * 60 * 60 * 1000).toISOString(),
@@ -263,13 +447,6 @@ export const createPreorder = async (firestore: NonNullable<typeof db>, req: Req
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
     };
-    const releasedReservationIds = new Set(productOrders.docs
-      .filter((document) => {
-        const current = document.data() ?? {};
-        const currentPreorder = current.preorder && typeof current.preorder === 'object' ? current.preorder as Record<string, unknown> : {};
-        return currentPreorder.status === 'DEPOSIT_PENDING' && currentPreorder.capacityHeld === true && new Date(String(currentPreorder.depositDeadlineAt ?? '')).getTime() <= now.getTime();
-      })
-      .map((document) => preorderReservationId(document.id)));
     const reservationsForProjection = [
       ...reservationsSnapshot.docs
         .filter((document) => !releasedReservationIds.has(document.id))
@@ -338,11 +515,30 @@ export default async function handler(req: Request, res: Response) {
   if (!firestore) return res.status(503).json({ error: 'O pedido não pode ser registado neste momento. Tente novamente dentro de momentos.' });
 
   try {
+    if (req.body?.action === 'edit_preorder') {
+      const result = await editPreorder(firestore, req);
+      return res.status(200).json({ success: true, ...result });
+    }
     if (req.body?.action === 'confirm_preorder_message') {
       const result = await confirmPreorderMessage(firestore, req);
       return res.status(200).json({ success: true, ...result });
     }
     if (req.body?.action === 'create_preorder') {
+      const batchItems = Array.isArray(req.body?.items) ? parsePreorderEditItems(req.body.items) : [];
+      if (batchItems.length > 1) {
+        const first = batchItems[0];
+        const createRequest = { ...req, body: { ...req.body, productId: first.productId, selectedVariant: first.selectedVariant, quantity: first.quantity } } as Request;
+        let created: Awaited<ReturnType<typeof createPreorder>> | null = null;
+        try {
+          created = await createPreorder(firestore, createRequest, async () => undefined);
+          const editRequest = { ...req, body: { ...req.body, action: 'edit_preorder', orderId: req.body.idempotencyKey, items: batchItems } } as Request;
+          const result = await editPreorder(firestore, editRequest);
+          return res.status(200).json({ success: true, ...result });
+        } catch (error) {
+          if (created && !created.alreadyExists) await notifyPreorder(firestore, created.order);
+          throw error;
+        }
+      }
       const result = await createPreorder(firestore, req);
       return res.status(200).json({ success: true, ...result });
     }

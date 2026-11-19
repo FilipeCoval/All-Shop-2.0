@@ -72,6 +72,7 @@ export async function createPreorder(input: {
   quantity: number;
   shippingInfo: unknown;
   termsAccepted: true;
+  items?: Array<{ productId: number; selectedVariant?: string; quantity: number }>;
   /** Confirmed only after the client has gone through the message step. */
   messagePlatform?: 'WHATSAPP' | 'TELEGRAM';
   messageConfirmedAt?: string;
@@ -80,6 +81,15 @@ export async function createPreorder(input: {
     method: 'POST',
     headers: await requestHeaders(),
     body: JSON.stringify({ action: 'create_preorder', ...input, guestToken }),
+  });
+  return parseResponse(response);
+}
+
+export async function editPreorder(orderId: string, items: Array<{ productId: number; selectedVariant?: string; quantity: number }>, guestToken?: string) {
+  const response = await fetch('/api/create-order-draft', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({ action: 'edit_preorder', orderId, items, guestToken }),
   });
   return parseResponse(response);
 }

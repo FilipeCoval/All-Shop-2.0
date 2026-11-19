@@ -17,6 +17,16 @@ const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g,
 const normalize = (value: unknown) => text(value).toLowerCase();
 const cleanOrderId = (value: unknown) => text(value, 100).replace(/^#+/, '');
 const preorderReservationId = (orderId: string) => `preorder_${orderId}`;
+const preorderLines = (preorder: DocumentData) => {
+  const source = Array.isArray(preorder.lines) && preorder.lines.length
+    ? preorder.lines
+    : [{ productId: preorder.productId, variantName: preorder.variantName, quantity: preorder.quantity }];
+  return source.map((line: DocumentData) => ({
+    productId: Number(line?.productId),
+    variantName: text(line?.variantName, 120),
+    quantity: Math.max(0, Math.floor(Number(line?.quantity ?? 0))),
+  })).filter((line: { productId: number; quantity: number }) => Number.isInteger(line.productId) && line.productId > 0 && line.quantity > 0);
+};
 const releasePreorderCapacity = (config: DocumentData, preorder: DocumentData) => {
   const held = preorder.capacityHeld === true ? Math.max(0, Number(preorder.quantity ?? 0)) : 0;
   const reservedByVariant = config.reservedByVariant && typeof config.reservedByVariant === 'object' && !Array.isArray(config.reservedByVariant)
@@ -543,8 +553,8 @@ export default async function handler(request: VercelRequest, response: VercelRe
       if (action === 'confirm_preorder_deposit' || action === 'confirm_preorder_balance' || action === 'cancel_preorder') {
         if (!preorder || preorder.kind !== 'PREORDER') throw new ApiError(409, 'Esta encomenda não é uma pré-reserva.');
         const preorderStatus = text(preorder.status, 50);
-        const productId = Number(preorder.productId);
-        if (!Number.isInteger(productId) || productId <= 0) throw new ApiError(409, 'A pré-reserva não tem um produto válido associado.');
+        const heldLines = preorderLines(preorder);
+        if (!heldLines.length) throw new ApiError(409, 'A pré-reserva não tem produtos válidos associados.');
 
         if (action === 'confirm_preorder_deposit') {
           if (preorderStatus === 'DEPOSIT_RECEIVED' || preorderStatus === 'BALANCE_RECEIVED' || preorderStatus === 'FULFILLED') return withDocument({ ...order, id: orderId }, false);
@@ -568,33 +578,30 @@ export default async function handler(request: VercelRequest, response: VercelRe
 
         if (preorderStatus === 'FULFILLED') throw new ApiError(409, 'Uma pré-reserva já entregue não pode ser cancelada por este atalho.');
         if (preorderStatus === 'CANCELLED' || preorderStatus === 'EXPIRED') return withDocument({ ...order, id: orderId }, false);
-        const productRef = database.collection('products_public').doc(String(productId));
-        const inventoryQuery = database.collection('products_inventory').where('publicProductId', '==', productId);
-        const reservationsQuery = database.collection('stock_reservations').where('productId', '==', productId);
-        const [productSnapshot, inventorySnapshot, reservationsSnapshot] = await Promise.all([
-          transaction.get(productRef),
-          transaction.get(inventoryQuery),
-          transaction.get(reservationsQuery),
-        ]);
-        if (!productSnapshot.exists) throw new ApiError(409, 'O produto desta pré-reserva já não existe no catálogo.');
-        const product = productSnapshot.data() ?? {};
-        const productPreorder = product.preorder && typeof product.preorder === 'object' ? product.preorder as DocumentData : {};
-        const held = preorder.capacityHeld === true ? Math.max(0, Number(preorder.quantity ?? 0)) : 0;
-        const reservationId = preorderReservationId(orderId);
-        const reservationsForProjection = reservationsSnapshot.docs
-          .filter((document) => document.id !== reservationId)
-          .map((document) => ({ id: document.id, ...document.data() } as ReservationData));
-        const lotsForProjection = inventorySnapshot.docs.map((document) => ({ id: document.id, ...document.data() } as LotData));
-        const productUpdate = {
-          ...projectPublicStock(productId, product, lotsForProjection, reservationsForProjection),
-          preorder: releasePreorderCapacity(productPreorder, preorder),
-          stockUpdatedAt: FieldValue.serverTimestamp(),
-          updatedAt: FieldValue.serverTimestamp(),
-        };
+        const productIds = [...new Set(heldLines.map((line) => line.productId))];
+        const cancellationContexts = await Promise.all(productIds.map(async (productId) => {
+          const productRef = database.collection('products_public').doc(String(productId));
+          const [productSnapshot, inventorySnapshot, reservationsSnapshot] = await Promise.all([
+            transaction.get(productRef),
+            transaction.get(database.collection('products_inventory').where('publicProductId', '==', productId)),
+            transaction.get(database.collection('stock_reservations').where('productId', '==', productId)),
+          ]);
+          if (!productSnapshot.exists) throw new ApiError(409, `O produto ${productId} desta pré-reserva já não existe no catálogo.`);
+          return { productId, productRef, product: productSnapshot.data() ?? {}, inventorySnapshot, reservationsSnapshot };
+        }));
+        const held = preorder.capacityHeld === true ? heldLines.reduce((sum, line) => sum + line.quantity, 0) : 0;
         const updatedPreorder = { ...preorder, status: 'CANCELLED', capacityHeld: false, capacityReleasedAt: now };
         const update = { status: 'Cancelado', preorder: updatedPreorder, updatedAt: FieldValue.serverTimestamp(), statusHistory: FieldValue.arrayUnion({ status: 'Cancelado', date: now, notes: 'Pré-reserva cancelada e vaga libertada pela administração.' }) };
-        transaction.update(productRef, productUpdate);
-        transaction.delete(database.collection('stock_reservations').doc(reservationId));
+        for (const context of cancellationContexts) {
+          const reservationsForProjection = context.reservationsSnapshot.docs
+            .filter((document) => document.id !== preorderReservationId(orderId) && document.data()?.orderId !== orderId && document.data()?.ownerKey !== `preorder:${orderId}`)
+            .map((document) => ({ id: document.id, ...document.data() } as ReservationData));
+          const lotsForProjection = context.inventorySnapshot.docs.map((document) => ({ id: document.id, ...document.data() } as LotData));
+          let productPreorder = context.product.preorder && typeof context.product.preorder === 'object' ? context.product.preorder as DocumentData : {};
+          for (const line of heldLines.filter((item) => item.productId === context.productId)) productPreorder = releasePreorderCapacity(productPreorder, { ...line, capacityHeld: preorder.capacityHeld });
+          transaction.update(context.productRef, { ...projectPublicStock(context.productId, context.product, lotsForProjection, reservationsForProjection), preorder: productPreorder, stockUpdatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() });
+          for (const document of context.reservationsSnapshot.docs.filter((document) => document.id === preorderReservationId(orderId) || document.data()?.orderId === orderId || document.data()?.ownerKey === `preorder:${orderId}`)) transaction.delete(document.ref);
+        }
         transaction.update(orderRef, update);
         transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({ action, actor: { uid: admin.uid, email: admin.email }, target: { type: 'Pré-reserva', id: orderId, label: `#${orderId}` }, before: order, after: { ...order, status: 'Cancelado', preorder: updatedPreorder }, summary: 'Pré-reserva cancelada e vaga libertada.', details: { capacityReleased: held }, requestId }));
         return withDocument({ ...order, ...update, id: orderId });
@@ -709,15 +716,19 @@ export default async function handler(request: VercelRequest, response: VercelRe
               }));
             }
           }
-          const releaseReservation = preorder?.kind === 'PREORDER' && preorder.capacityHeld === true && Number(preorder.productId) === context.productId;
+          const preorderProductLines = preorder?.kind === 'PREORDER' ? preorderLines(preorder).filter((line) => line.productId === context.productId) : [];
+          const releaseReservation = preorder?.kind === 'PREORDER' && preorder.capacityHeld === true && preorderProductLines.length > 0;
           const reservationsForProjection = releaseReservation
-            ? context.reservations.filter((reservation) => String(reservation.id ?? '') !== preorderReservationId(orderId))
+            ? context.reservations.filter((reservation: any) => String(reservation.id ?? '') !== preorderReservationId(orderId) && reservation.orderId !== orderId && reservation.ownerKey !== `preorder:${orderId}`)
             : context.reservations;
           const productUpdate: DocumentData = { ...projectPublicStock(context.productId, context.product, projectedLots, reservationsForProjection), stockUpdatedAt: FieldValue.serverTimestamp() };
-          if (preorder?.kind === 'PREORDER' && preorder.capacityHeld === true && Number(preorder.productId) === context.productId) {
-            const productPreorder = context.product.preorder && typeof context.product.preorder === 'object' ? context.product.preorder as DocumentData : {};
-            productUpdate.preorder = releasePreorderCapacity(productPreorder, preorder);
-            transaction.delete(database.collection('stock_reservations').doc(preorderReservationId(orderId)));
+          if (releaseReservation) {
+            let productPreorder = context.product.preorder && typeof context.product.preorder === 'object' ? context.product.preorder as DocumentData : {};
+            for (const line of preorderProductLines) productPreorder = releasePreorderCapacity(productPreorder, { ...line, capacityHeld: true });
+            productUpdate.preorder = productPreorder;
+            for (const reservation of context.reservations.filter((item: any) => String(item.id ?? '') === preorderReservationId(orderId) || item.orderId === orderId || item.ownerKey === `preorder:${orderId}`)) {
+              if (reservation.id) transaction.delete(database.collection('stock_reservations').doc(String(reservation.id)));
+            }
           }
           transaction.update(context.productRef, productUpdate);
         }

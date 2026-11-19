@@ -16,6 +16,7 @@ import { redeemLoyaltyReward, requestOrderAction } from '../services/api';
 import LoyaltyPage from './LoyaltyPage';
 import RequestsTab from './RequestsTab';
 import PreorderMessageActions from './PreorderMessageActions';
+import PreorderEditModal from './PreorderEditModal';
 
 import SupportTicketModal from './SupportTicketModal';
 import ReturnRequestModal from './ReturnRequestModal';
@@ -102,6 +103,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
 
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [modalState, setModalState] = useState<{ type: 'cancel' | 'return'; order: Order | null }>({ type: 'cancel', order: null });
+  const [editingPreorder, setEditingPreorder] = useState<Order | null>(null);
   const [modalReason, setModalReason] = useState('');
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [copyTrackingSuccess, setCopyTrackingSuccess] = useState('');
@@ -1031,6 +1033,12 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                             </button>
                                         )}
 
+                                        {preorder?.status === 'DEPOSIT_PENDING' && preorder.capacityHeld && order.status !== 'Cancelado' && new Date(preorder.depositDeadlineAt).getTime() > Date.now() && (
+                                            <button onClick={() => setEditingPreorder(order)} className="flex items-center gap-2 rounded-lg bg-orange-100 px-4 py-2 text-sm font-bold text-orange-700 shadow-sm hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:hover:bg-orange-900/50">
+                                                <ClipboardEdit size={16}/> Editar artigos da pré-reserva
+                                            </button>
+                                        )}
+
                                         {!preorder && ['Pendente', 'Processamento', 'Pago'].includes(order.status) && <button onClick={() => setModalState({ type: 'cancel', order })} className="flex items-center gap-2 text-sm font-bold text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400 px-4 py-2 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50"><XCircle size={16}/> Cancelar Encomenda</button>}
                                         
                                         {order.status === 'Entregue' && <button onClick={onOpenSupportChat} className="flex items-center gap-2 text-sm font-bold text-purple-700 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 border border-purple-200 dark:border-purple-800 px-4 py-2 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 shadow-sm"><Sparkles size={16} /> Ajuda / Garantia (IA)</button>}
@@ -1178,6 +1186,8 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
         </div>
 
         {/* Modal Genérico para Ações de Encomenda */}
+        {editingPreorder && <PreorderEditModal order={editingPreorder} products={publicProducts} onClose={() => setEditingPreorder(null)} />}
+
         {modalState.order && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
               <div className="bg-white dark:bg-[#0f172a] rounded-2xl shadow-2xl w-full max-w-lg p-6 border dark:border-slate-800">

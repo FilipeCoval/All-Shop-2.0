@@ -113,6 +113,8 @@ export interface AdminOrder {
     messagePlatform?: 'WHATSAPP' | 'TELEGRAM'; messageConfirmedAt?: string;
     messagePending?: boolean;
     depositReceivedAt?: string; balanceReceivedAt?: string; capacityReleasedAt?: string;
+    lines?: Array<{ productId: number; variantName?: string; quantity: number; estimatedDispatchDate?: string }>;
+    productIds?: number[]; editedAt?: string;
   };
   shippingInfo?: {
     name?: string; email?: string; phone?: string; street?: string; doorNumber?: string;

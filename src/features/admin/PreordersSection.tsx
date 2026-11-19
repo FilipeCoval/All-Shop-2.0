@@ -20,7 +20,7 @@ export function PreordersSection({ orders, search, onOpen }: { orders: AdminOrde
     .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
   return <>
     <div className="kpi-grid preorder-kpis">
-      <article><p>Pré-reservas ativas</p><strong>{active.length}</strong><small>{active.reduce((sum, order) => sum + Number(order.preorder?.quantity ?? 0), 0)} unidades pedidas</small></article>
+      <article><p>Pré-reservas ativas</p><strong>{active.length}</strong><small>{active.reduce((sum, order) => sum + (order.items ?? []).reduce((itemSum, item) => itemSum + Number(item.quantity ?? 0), 0), 0)} unidades pedidas</small></article>
       <article><p>Mensagem por confirmar</p><strong>{active.filter((order) => phase(order) === 'message').length}</strong><small>Pedidos guardados, mesmo sem regressar ao site</small></article>
       <article><p>Sinal por receber</p><strong>{euro(active.filter((order) => ['message', 'deposit'].includes(phase(order))).reduce((sum, order) => sum + Number(order.preorder?.depositDue ?? 0), 0))}</strong><small>Não representa pagamentos recebidos</small></article>
       <article><p>Prontas a expedir</p><strong>{active.filter((order) => phase(order) === 'ready').length}</strong><small>Validar stock e S/N antes da expedição</small></article>
