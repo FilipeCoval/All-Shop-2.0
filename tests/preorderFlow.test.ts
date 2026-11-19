@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createPreorder, confirmPreorderMessage, editPreorder } from '../api/create-order-draft.js';
+import { cancelCustomerPreorder, createPreorder, confirmPreorderMessage, editPreorder } from '../api/create-order-draft.js';
 import { preorderMessageConfirmation } from '../src/server/preorderConfirmation.js';
 
 // In-memory Firestore transaction double: no production writes or notifications.
@@ -71,6 +71,7 @@ assert.equal(editedOrder.items.find((item: any) => item.productId === 2)?.price,
 assert.equal(editedOrder.preorder.depositDue, 30);
 assert.equal(editedOrder.preorder.quantity, 3);
 assert.deepEqual(editedOrder.preorder.productIds, [2, 3]);
+assert.equal(editedOrder.preorder.lines[1].variantName, null, 'Products without variants are stored without an undefined Firestore value.');
 assert.equal(editedOrder.preorder.messagePending, true, 'Editing requires the updated message to be confirmed again.');
 assert.equal(documents.get('products_public/2').preorder.reservedQuantity, 1);
 assert.equal(documents.get('products_public/3').preorder.reservedQuantity, 2);
@@ -79,8 +80,16 @@ assert.equal(alerts, 3, 'The admin is notified of the changed preorder.');
 await editPreorder(fakeDb, req({ orderId: input.idempotencyKey, guestToken, items: [{ productId: 2, selectedVariant: 'Preto', quantity: 1 }, { productId: 3, selectedVariant: '', quantity: 2 }] }), notify);
 assert.equal(alerts, 3, 'Retrying the same edit is idempotent and does not duplicate notifications.');
 assert.equal(documents.get('products_public/3').preorder.reservedQuantity, 2, 'Retrying does not consume capacity twice.');
-documents.set(`orders/${input.idempotencyKey}`, { ...documents.get(`orders/${input.idempotencyKey}`), preorder: { ...documents.get(`orders/${input.idempotencyKey}`).preorder, status: 'DEPOSIT_RECEIVED' } });
+const unpaidOrder = documents.get(`orders/${input.idempotencyKey}`);
+documents.set(`orders/${input.idempotencyKey}`, { ...unpaidOrder, preorder: { ...unpaidOrder.preorder, status: 'DEPOSIT_RECEIVED' } });
 await assert.rejects(editPreorder(fakeDb, req({ orderId: input.idempotencyKey, guestToken, items: [{ productId: 2, selectedVariant: 'Preto', quantity: 1 }] }), notify), /antes de o sinal/);
+documents.set(`orders/${input.idempotencyKey}`, unpaidOrder);
+const cancelled = await cancelCustomerPreorder(fakeDb, req({ orderId: input.idempotencyKey, guestToken }));
+assert.equal((cancelled.order as any).status, 'Cancelado');
+assert.equal(documents.get('products_public/2').preorder.reservedQuantity, 0);
+assert.equal(documents.get('products_public/3').preorder.reservedQuantity, 0);
+assert.equal([...documents].filter(([key, value]) => key.startsWith('stock_reservations/') && (value.orderId === input.idempotencyKey || value.ownerKey === `preorder:${input.idempotencyKey}`)).length, 0);
+await assert.rejects(cancelCustomerPreorder(fakeDb, req({ orderId: input.idempotencyKey, guestToken })), /já não pode ser cancelada/);
 assert.throws(() => preorderMessageConfirmation({ status: 'Cancelado', preorder: { kind: 'PREORDER', status: 'CANCELLED' } }, 'WHATSAPP', new Date()), /cancelada/);
 assert.throws(() => preorderMessageConfirmation({ status: 'A confirmar', preorder: { kind: 'PREORDER', status: 'DEPOSIT_PENDING', depositDeadlineAt: '2020-01-01' } }, 'WHATSAPP', new Date()), /prazo/);
 assert.equal(preorderMessageConfirmation({ status: 'Processamento', preorder: { kind: 'PREORDER', status: 'DEPOSIT_RECEIVED', depositReceivedAt: '2026-11-18' } }, 'TELEGRAM', new Date())?.status, 'Processamento', 'Late message confirmation never undoes an admin payment.');

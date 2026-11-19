@@ -126,7 +126,7 @@ export interface ProductPreorderConfig {
 export interface PreorderOrderInfo {
   kind: 'PREORDER';
   productId: number;
-  variantName?: string;
+  variantName?: string | null;
   quantity: number;
   status: 'DEPOSIT_PENDING' | 'DEPOSIT_RECEIVED' | 'BALANCE_RECEIVED' | 'CANCELLED' | 'EXPIRED' | 'FULFILLED';
   capacityHeld: boolean;
@@ -146,7 +146,7 @@ export interface PreorderOrderInfo {
   /** Artigos que ocupam vagas nesta pré-reserva. Ausente nos registos antigos de um só artigo. */
   lines?: Array<{
     productId: number;
-    variantName?: string;
+    variantName?: string | null;
     quantity: number;
     estimatedDispatchDate?: string;
   }>;
@@ -373,7 +373,7 @@ export interface ProductUnit {
 export interface StockReservation {
     id: string;
     productId: number;
-    variantName?: string;
+    variantName?: string | null;
     quantity: number;
     sessionId: string;
     expiresAt: number; // Timestamp

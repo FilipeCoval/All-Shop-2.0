@@ -259,7 +259,7 @@ export const editPreorder = async (firestore: NonNullable<typeof db>, req: Reque
     const subtotal = roundMoney(canonicalItems.reduce((sum, item) => sum + item.price * item.quantity, 0));
     const total = roundMoney(subtotal + shippingCost);
     const depositDue = roundMoney(total * 0.5);
-    const lines = canonicalItems.map((item) => ({ productId: item.productId, variantName: item.selectedVariant || undefined, quantity: item.quantity, estimatedDispatchDate: item.estimatedDispatchDate }));
+    const lines = canonicalItems.map((item) => ({ productId: item.productId, variantName: item.selectedVariant || null, quantity: item.quantity, estimatedDispatchDate: item.estimatedDispatchDate }));
     const latestDispatchDate = lines.map((line) => line.estimatedDispatchDate ?? '').sort().at(-1) ?? '';
     const newReservations = requested.map((line, index) => ({
       id: lineReservationId(orderId, line, index), productId: line.productId, variantName: line.selectedVariant || null,
@@ -315,6 +315,80 @@ export const editPreorder = async (firestore: NonNullable<typeof db>, req: Reque
   });
   if (result.changed) await notify(firestore, result.order);
   return result;
+};
+
+/** Cancels an unpaid preorder owned by the current customer and releases every held slot. */
+export const cancelCustomerPreorder = async (firestore: NonNullable<typeof db>, req: Request) => {
+  const orderId = validateOrderId(req.body?.orderId);
+  if (!orderId) throw new Error('Referência da pré-reserva inválida.');
+  const identity = await getRequestIdentity(req, req.body?.guestToken);
+  const now = new Date();
+
+  return firestore.runTransaction(async (transaction) => {
+    const orderRef = firestore.collection('orders').doc(orderId);
+    const orderSnapshot = await transaction.get(orderRef);
+    const order = orderSnapshot.data() ?? null;
+    const belongs = order?.userId ? order.userId === identity.userId : order?.ownerKey === identity.ownerKey;
+    if (!orderSnapshot.exists || !order || !belongs || order.preorder?.kind !== 'PREORDER') {
+      throw new Error('Pré-reserva não encontrada nesta sessão.');
+    }
+    if (order.preorder.status !== 'DEPOSIT_PENDING' || order.preorder.capacityHeld !== true) {
+      throw new Error('Esta pré-reserva já não pode ser cancelada pelo cliente. Contacte a All-Shop.');
+    }
+
+    const rawLines = Array.isArray(order.preorder.lines) && order.preorder.lines.length
+      ? order.preorder.lines
+      : Array.isArray(order.items) ? order.items : [];
+    const lines = rawLines.map((line: any) => ({
+      productId: Number(line?.productId),
+      variantName: String(line?.variantName ?? line?.selectedVariant ?? ''),
+      quantity: Math.max(0, Math.floor(Number(line?.quantity) || 0)),
+    })).filter((line: any) => Number.isInteger(line.productId) && line.productId > 0 && line.quantity > 0);
+    const productIds: number[] = [...new Set<number>(lines.map((line: any) => Number(line.productId)))];
+    const contexts = await Promise.all(productIds.map(async (productId) => {
+      const productRef = firestore.collection('products_public').doc(String(productId));
+      const [productSnapshot, inventorySnapshot, reservationsSnapshot] = await Promise.all([
+        transaction.get(productRef),
+        transaction.get(firestore.collection('products_inventory').where('publicProductId', '==', productId)),
+        transaction.get(firestore.collection('stock_reservations').where('productId', '==', productId)),
+      ]);
+      return { productId, productRef, productSnapshot, inventorySnapshot, reservationsSnapshot };
+    }));
+
+    for (const context of contexts) {
+      const reservations = context.reservationsSnapshot.docs.map((document: any) => ({ id: document.id, ...document.data() }));
+      const remaining = reservations.filter((reservation: any) => reservation.orderId !== orderId && reservation.ownerKey !== `preorder:${orderId}` && reservation.id !== preorderReservationId(orderId));
+      for (const reservation of reservations.filter((item: any) => item.orderId === orderId || item.ownerKey === `preorder:${orderId}` || item.id === preorderReservationId(orderId))) {
+        transaction.delete(firestore.collection('stock_reservations').doc(reservation.id));
+      }
+      if (!context.productSnapshot.exists) continue;
+      const product = context.productSnapshot.data() ?? {};
+      const activePreorders = remaining.filter((reservation: any) => reservation.kind === 'PREORDER' && reservationMillis(reservation.expiresAt) > now.getTime());
+      const reservedByVariant: Record<string, number> = {};
+      for (const reservation of activePreorders) {
+        const key = normaliseVariant(reservation.variantName ?? reservation.variantKey);
+        if (key) reservedByVariant[key] = (reservedByVariant[key] ?? 0) + Math.max(0, Number(reservation.quantity ?? 0));
+      }
+      const lots = context.inventorySnapshot.docs.map((document: any) => ({ id: document.id, ...document.data() }));
+      transaction.update(context.productRef, {
+        ...projectPublicStock(context.productId, product, lots, remaining),
+        preorder: { ...(product.preorder ?? {}), reservedQuantity: activePreorders.reduce((sum: number, reservation: any) => sum + Math.max(0, Number(reservation.quantity ?? 0)), 0), reservedByVariant },
+        stockUpdatedAt: FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    const cancelledPreorder = { ...order.preorder, status: 'CANCELLED', capacityHeld: false, capacityReleasedAt: now.toISOString(), messagePending: false };
+    const history = { status: 'Cancelado', date: now.toISOString(), notes: 'Pré-reserva cancelada pelo cliente antes do pagamento do sinal.' };
+    const update = { status: 'Cancelado', preorder: cancelledPreorder, updatedAt: FieldValue.serverTimestamp(), statusHistory: FieldValue.arrayUnion(history) };
+    transaction.update(orderRef, update);
+    transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({
+      action: 'cancel_preorder_customer', actor: { uid: identity.userId, kind: 'CLIENT' },
+      target: { type: 'Pré-reserva', id: orderId, label: `#${orderId}` }, before: order,
+      after: { ...order, ...update, statusHistory: [...(Array.isArray(order.statusHistory) ? order.statusHistory : []), history] },
+      summary: 'Pré-reserva cancelada pelo cliente antes do sinal.', details: { releasedLines: lines },
+    }));
+    return { order: { ...order, ...update, statusHistory: [...(Array.isArray(order.statusHistory) ? order.statusHistory : []), history], id: orderId } };
+  });
 };
 
 export const createPreorder = async (firestore: NonNullable<typeof db>, req: Request, notify = notifyPreorder) => {
@@ -423,7 +497,7 @@ export const createPreorder = async (firestore: NonNullable<typeof db>, req: Req
       storeShippingCost: 0,
       preorder: {
         kind: 'PREORDER', productId, variantName: selectedVariant || null, quantity,
-        lines: [{ productId, variantName: selectedVariant || undefined, quantity, estimatedDispatchDate: offer.estimatedDispatchDate }],
+        lines: [{ productId, variantName: selectedVariant || null, quantity, estimatedDispatchDate: offer.estimatedDispatchDate }],
         productIds: [productId],
         status: 'DEPOSIT_PENDING', capacityHeld: true, depositPercent: 50,
         depositDue, balanceDue: roundMoney(total - depositDue),
@@ -515,6 +589,10 @@ export default async function handler(req: Request, res: Response) {
   if (!firestore) return res.status(503).json({ error: 'O pedido não pode ser registado neste momento. Tente novamente dentro de momentos.' });
 
   try {
+    if (req.body?.action === 'cancel_preorder_customer') {
+      const result = await cancelCustomerPreorder(firestore, req);
+      return res.status(200).json({ success: true, ...result });
+    }
     if (req.body?.action === 'edit_preorder') {
       const result = await editPreorder(firestore, req);
       return res.status(200).json({ success: true, ...result });

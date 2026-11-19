@@ -15,7 +15,7 @@ try {
   page.setDefaultTimeout(15000);
   page.on('pageerror', (error) => console.error('UI error:', error.message));
   await page.route('**/*', (route) => route.request().url().startsWith('http://127.0.0.1:5179') ? route.continue() : route.abort());
-  let order; let creates = 0; let edits = 0; let confirmations = 0; let failConfirmation = true;
+  let order; let creates = 0; let edits = 0; let cancellations = 0; let confirmations = 0; let failConfirmation = true;
   await page.route('**/api/create-order-draft', async (route) => {
     const body = route.request().postDataJSON();
     if (body.action === 'create_preorder') {
@@ -26,6 +26,9 @@ try {
     } else if (body.action === 'edit_preorder') {
       edits++;
       order = { ...order, total: 60, items: [{ productId: 2, name: 'TV Box teste', quantity: 1 }, { productId: 3, name: 'Comando teste', quantity: 2 }], preorder: { ...order.preorder, quantity: 3, productIds: [2, 3], depositDue: 30, balanceDue: 30, messagePending: true } };
+    } else if (body.action === 'cancel_preorder_customer') {
+      cancellations++;
+      order = { ...order, status: 'Cancelado', preorder: { ...order.preorder, status: 'CANCELLED', capacityHeld: false } };
     } else {
       if (failConfirmation) { failConfirmation = false; return route.fulfill({ status: 503, json: { error: 'Falha temporária de teste. Pode repetir.' } }); }
       confirmations++; order = { ...order, status: 'Pendente', preorder: { ...order.preorder, messagePending: false, messageConfirmedAt: new Date().toISOString() } };
@@ -73,5 +76,10 @@ try {
   await page.getByRole('button', { name: 'Guardar alterações' }).click();
   await page.waitForFunction(() => document.title === 'Edição guardada');
   assert.equal(edits, 1, 'The customer area can edit a preorder before the deposit.');
+  await page.goto('http://127.0.0.1:5179/__preorder-test?edit');
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Cancelar toda a pré-reserva' }).click();
+  await page.waitForFunction(() => document.title === 'Edição guardada');
+  assert.equal(cancellations, 1, 'The customer can cancel the last remaining item by cancelling the unpaid preorder.');
   console.log('Preorder mobile save / interrupted flow / retry / success / admin filters: OK', captures);
 } finally { await browser.close(); await server.close(); }

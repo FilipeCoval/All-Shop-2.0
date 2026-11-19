@@ -106,14 +106,14 @@ export interface AdminOrder {
   awaitingCustomerConfirmation?: boolean;
   confirmationDeadlineAt?: string;
   preorder?: {
-    kind?: 'PREORDER'; productId?: number; variantName?: string; quantity?: number;
+    kind?: 'PREORDER'; productId?: number; variantName?: string | null; quantity?: number;
     status?: 'DEPOSIT_PENDING' | 'DEPOSIT_RECEIVED' | 'BALANCE_RECEIVED' | 'CANCELLED' | 'EXPIRED' | 'FULFILLED';
     capacityHeld?: boolean; depositPercent?: number; depositDue?: number; balanceDue?: number;
     depositDeadlineAt?: string; estimatedDispatchDate?: string; termsAcceptedAt?: string;
     messagePlatform?: 'WHATSAPP' | 'TELEGRAM'; messageConfirmedAt?: string;
     messagePending?: boolean;
     depositReceivedAt?: string; balanceReceivedAt?: string; capacityReleasedAt?: string;
-    lines?: Array<{ productId: number; variantName?: string; quantity: number; estimatedDispatchDate?: string }>;
+    lines?: Array<{ productId: number; variantName?: string | null; quantity: number; estimatedDispatchDate?: string }>;
     productIds?: number[]; editedAt?: string;
   };
   shippingInfo?: {

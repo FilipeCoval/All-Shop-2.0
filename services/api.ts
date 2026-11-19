@@ -94,6 +94,15 @@ export async function editPreorder(orderId: string, items: Array<{ productId: nu
   return parseResponse(response);
 }
 
+export async function cancelCustomerPreorder(orderId: string, guestToken?: string) {
+  const response = await fetch('/api/create-order-draft', {
+    method: 'POST',
+    headers: await requestHeaders(),
+    body: JSON.stringify({ action: 'cancel_preorder_customer', orderId, guestToken }),
+  });
+  return parseResponse(response);
+}
+
 export async function syncCurrentUser() {
   const response = await fetch('/api/sync-user', {
     method: 'POST',
