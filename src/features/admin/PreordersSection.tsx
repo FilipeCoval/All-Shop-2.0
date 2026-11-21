@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { AdminOrder } from './adminTypes';
+import { isPreorderWorkflowOrder } from './preorderRouting';
 
 const euro = (value?: number) => new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value ?? 0);
 const phase = (order: AdminOrder) => {
@@ -14,7 +15,7 @@ const labels: Record<string, string> = { message: 'Mensagem por confirmar', depo
 
 export function PreordersSection({ orders, search, onOpen }: { orders: AdminOrder[]; search: string; onOpen: (order: AdminOrder) => void }) {
   const [filter, setFilter] = useState('all');
-  const preorders = orders.filter((order) => order.preorder?.kind === 'PREORDER');
+  const preorders = orders.filter(isPreorderWorkflowOrder);
   const active = preorders.filter((order) => !['closed', 'fulfilled'].includes(phase(order)));
   const visible = preorders.filter((order) => (filter === 'all' || phase(order) === filter) && `${order.id} ${order.shippingInfo?.name} ${order.shippingInfo?.email} ${(order.items ?? []).map((item) => `${item.name} ${item.selectedVariant}`).join(' ')}`.toLocaleLowerCase('pt').includes(search.toLocaleLowerCase('pt')))
     .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());

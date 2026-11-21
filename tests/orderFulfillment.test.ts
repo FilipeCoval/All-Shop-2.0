@@ -99,6 +99,39 @@ const incorrectlyFlaggedLegacyOrder = planStoredOrderFulfillment({
 assert.equal(incorrectlyFlaggedLegacyOrder.updatedLots[0].quantitySold, 5, 'uma flag antiga incorreta não pode provocar uma segunda baixa');
 assert.equal(incorrectlyFlaggedLegacyOrder.updatedLots[0].units?.find((unit) => unit.id === 'INT-4C52E5CF')?.soldToOrder, 'AS-772844');
 
+const fulfillmentAlongsideUnrelatedLegacyMismatch = planStoredOrderFulfillment({
+  orderId: 'AS-PREORDER-CLEAN',
+  orderItems: [{ productId: 2, quantity: 1, selectedVariant: '4 GB RAM + 32 GB' }],
+  lots: [
+    {
+      id: 'L-LEGACY-MISMATCH',
+      publicProductId: 2,
+      variant: '4 GB RAM + 32 GB',
+      quantityBought: 1,
+      quantitySold: 1,
+      units: Array.from({ length: 10 }, (_, index) => ({ id: `INT-OLD-${index}`, status: 'SOLD', soldToOrder: `AS-OLD-${index}` })),
+    },
+    {
+      id: 'L-CLEAN-PREORDER-STOCK',
+      publicProductId: 2,
+      variant: '4 GB RAM + 32 GB',
+      quantityBought: 3,
+      quantitySold: 1,
+      units: [
+        { id: 'INT-SOLD', status: 'SOLD', soldToOrder: 'AS-OLDER' },
+        { id: 'INT-PREORDER', status: 'AVAILABLE' },
+        { id: 'INT-FREE', status: 'AVAILABLE' },
+      ],
+    },
+  ],
+  serialNumbers: ['INT-PREORDER'],
+  stockDeducted: false,
+  fulfilledAt: '2026-11-21T15:00:00Z',
+});
+assert.equal(fulfillmentAlongsideUnrelatedLegacyMismatch.updatedLots.find((lot) => lot.id === 'L-CLEAN-PREORDER-STOCK')?.quantitySold, 2);
+assert.equal(fulfillmentAlongsideUnrelatedLegacyMismatch.updatedLots.find((lot) => lot.id === 'L-CLEAN-PREORDER-STOCK')?.units?.find((unit) => unit.id === 'INT-PREORDER')?.soldToOrder, 'AS-PREORDER-CLEAN');
+assert.equal(fulfillmentAlongsideUnrelatedLegacyMismatch.updatedLots.find((lot) => lot.id === 'L-LEGACY-MISMATCH')?.quantitySold, 1, 'uma divergência histórica não relacionada deve permanecer inalterada');
+
 assert.throws(
   () => planStoredOrderFulfillment({
     orderId: 'AS-MANUAL-RECONCILIATION',

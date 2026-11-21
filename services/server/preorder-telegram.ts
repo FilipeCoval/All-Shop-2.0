@@ -59,3 +59,48 @@ export async function notifyTelegramOfConfirmedPreorder(order: Record<string, an
     return { sent: false, skipped: false };
   }
 }
+
+export async function notifyTelegramOfFulfilledPreorder(order: Record<string, any>) {
+  const token = text(process.env.TELEGRAM_BOT_TOKEN || TELEGRAM_BOT_TOKEN, 300);
+  const chatId = text(process.env.TELEGRAM_CHAT_ID || TELEGRAM_CHAT_ID, 120);
+  if (!token || !chatId) return { sent: false, skipped: true };
+
+  const items = Array.isArray(order.items)
+    ? order.items.map((item: any) => `• ${Math.max(1, Number(item?.quantity ?? 1))}x ${text(item?.name, 180) || 'Artigo'}${text(item?.selectedVariant, 100) ? ` (${text(item.selectedVariant, 100)})` : ''}`).join('\n')
+    : '• Artigo não indicado';
+  const shipping = order.shippingInfo && typeof order.shippingInfo === 'object' ? order.shippingInfo : {};
+  const orderId = text(order.id, 80).replace(/^#/, '');
+  const pickup = shipping.deliveryMethod === 'Pickup';
+  const message = [
+    '✅ PRÉ-RESERVA CONVERTIDA EM ENCOMENDA',
+    '',
+    `Ref: #${orderId}`,
+    `Cliente: ${text(shipping.name, 120) || 'Cliente'} (${text(shipping.phone, 50) || 'sem telefone'})`,
+    `Estado: ${pickup ? 'Pronta para levantamento' : 'Enviada'}`,
+    order.trackingNumber ? `Rastreio: ${text(order.trackingNumber, 150)}` : '',
+    '',
+    'Itens:',
+    items,
+    '',
+    `Total: ${money(order.total)}`,
+    'O stock foi abatido pelos S/N e a pré-reserva passou para Encomendas.',
+    `https://www.all-shop.net/admin?tab=orders&order=${encodeURIComponent(orderId)}`,
+  ].filter(Boolean).join('\n');
+
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      signal: AbortSignal.timeout(8000),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: message }),
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(`Telegram devolveu ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ''}`);
+    }
+    return { sent: true, skipped: false };
+  } catch (error) {
+    console.warn('[preorder-telegram] A encomenda foi concluída, mas o alerta Telegram falhou.', error instanceof Error ? error.message : error);
+    return { sent: false, skipped: false };
+  }
+}

@@ -217,6 +217,7 @@ export function planOrderFulfillment(input: PlanOrderFulfillmentInput) {
   const updatedLots = lots.map((lot) => {
     const selected = selectedByLot.get(lot.id) ?? 0;
     totalProductCost += selected * Math.max(0, Number(lot.purchasePrice ?? 0));
+    const originalSoldUnitCount = (lot.units ?? []).filter((unit) => unit.status === 'SOLD').length;
     const units = (lot.units ?? []).map((unit, unitIndex) => {
       const key = `${lot.id}:${unitIndex}`;
       if (chosen.has(key)) return {
@@ -240,11 +241,15 @@ export function planOrderFulfillment(input: PlanOrderFulfillmentInput) {
     const quantityBought = Math.max(0, Number(lot.quantityBought ?? 0));
     const legacyOverflow = originalQuantitySold > quantityBought;
     const createsNewOverflow = quantitySold > quantityBought && (!legacyOverflow || quantitySold > originalQuantitySold);
+    const originalIdentityShortfall = Math.max(0, originalSoldUnitCount - originalQuantitySold);
+    const identityShortfall = Math.max(0, soldUnitCount - quantitySold);
+    const worsensIdentityShortfall = identityShortfall > originalIdentityShortfall;
     // Alguns lotes antigos já têm o contador abatido acima da compra registada.
     // Atribuir um S/N a uma dessas vendas é seguro quando não aumenta essa
-    // divergência; continuamos a bloquear qualquer novo abatimento impossível.
+    // divergência; uma inconsistência antiga noutro lote também não pode
+    // bloquear uma expedição nova e válida que não lhe toca.
     const identityOnlyForDeductedSale = input.stockAlreadyDeducted && delta <= 0;
-    if (!identityOnlyForDeductedSale && (quantitySold < soldUnitCount || createsNewOverflow)) {
+    if (!identityOnlyForDeductedSale && (worsensIdentityShortfall || createsNewOverflow)) {
       throw new FulfillmentError(`O lote ${lot.id} não tem quantidade física suficiente para estas unidades. [comprado ${quantityBought}; abatido ${originalQuantitySold}; S/N vendidos ${soldUnitCount}; ajuste ${delta}]`);
     }
     return { ...lot, units, quantitySold, status: quantitySold >= Number(lot.quantityBought ?? 0) ? 'SOLD' : quantitySold > 0 ? 'PARTIAL' : 'AVAILABLE' };

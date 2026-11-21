@@ -11,6 +11,7 @@ import { activeReservedQuantity, allocateSale, normalizeVariant, toMillis } from
 import { applyFulfillmentToPackages, FulfillmentError, fulfillmentItemsFromPackages, fulfillmentUnitSerial, isOrderFulfillmentComplete, planStoredOrderFulfillment, type FulfillmentLot, type FulfillmentPackage } from '../orderFulfillment.js';
 import { cancelledOrderDeletionIssue } from '../cancelledOrderDeletion.js';
 import { adminAuditEntry, adminRequestId } from '../adminAudit.js';
+import { notifyTelegramOfFulfilledPreorder } from '../../../services/server/preorder-telegram.js';
 
 const STATUSES = new Set(['Pendente', 'Processamento', 'Pago', 'Enviado', 'Entregue', 'Cancelado', 'Reclamação', 'Devolvido', 'Levantamento em Loja']);
 const text = (value: unknown, max = 1200) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
@@ -916,16 +917,23 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const persistedOrderRef = database.collection('orders').doc(transactionResult.documentId);
 
     let notification: { sentCount: number; failureCount: number } | undefined;
+    let telegramNotification: { sent: boolean; skipped: boolean } | undefined;
     if (action === 'fulfill_order' && transactionResult.changed) {
+      const attemptedAt = new Date().toISOString();
       try {
         notification = await notifyFulfillment(database, result);
-        await persistedOrderRef.update({ fulfillmentNotification: { ...notification, attemptedAt: new Date().toISOString() } });
       } catch (notificationError) {
         notification = { sentCount: 0, failureCount: 1 };
-        await persistedOrderRef.update({ fulfillmentNotification: { ...notification, attemptedAt: new Date().toISOString(), error: notificationError instanceof Error ? text(notificationError.message, 300) : 'Erro desconhecido' } }).catch(() => undefined);
       }
+      if (result.preorder?.kind === 'PREORDER' && result.preorder?.status === 'FULFILLED') {
+        telegramNotification = await notifyTelegramOfFulfilledPreorder(result);
+      }
+      await persistedOrderRef.update({
+        fulfillmentNotification: { ...notification, attemptedAt },
+        ...(telegramNotification ? { fulfillmentTelegramNotification: { ...telegramNotification, attemptedAt } } : {}),
+      }).catch(() => undefined);
     }
-    return response.status(200).json({ success: true, order: result, ...(notification ? { notification } : {}) });
+    return response.status(200).json({ success: true, order: result, ...(notification ? { notification } : {}), ...(telegramNotification ? { telegramNotification } : {}) });
   } catch (error) {
     return handleApiError(response, error);
   }

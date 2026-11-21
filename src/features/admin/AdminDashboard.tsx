@@ -19,6 +19,7 @@ import { AdminPwaControls } from './AdminPwaControls';
 import { AdminPushControls } from './AdminPushControls';
 import { PreordersSection } from './PreordersSection';
 import { reviewCatalogContent } from './adminMutations';
+import { isPreorderWorkflowOrder } from './preorderRouting';
 
 interface AdminDashboardProps {
   email: string;
@@ -168,7 +169,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
     const order = data.orders.find((item) => item.id.replace(/^#/, '') === requested);
     requestedOrderId.current = '';
     if (order) {
-      setTab(order.preorder?.kind === 'PREORDER' ? 'preorders' : 'orders');
+      setTab(isPreorderWorkflowOrder(order) ? 'preorders' : 'orders');
       setSelectedOrder(order);
     }
   }, [data]);
@@ -241,7 +242,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
             {data && <AdminNotificationCenter
               data={data}
               stockGroups={stockGroups}
-              onOrder={(order) => { setTab(order.preorder?.kind === 'PREORDER' ? 'preorders' : 'orders'); setSelectedOrder(order); setSelectedStock(null); }}
+              onOrder={(order) => { setTab(isPreorderWorkflowOrder(order) ? 'preorders' : 'orders'); setSelectedOrder(order); setSelectedStock(null); }}
               onSupport={(ticket) => { setTab('support'); setActionTarget({ kind: 'ticket', value: ticket }); }}
               onRequest={(request) => { setTab('support'); setActionTarget({ kind: 'request', value: request }); }}
               onStock={(group) => { setTab('products'); setSelectedStock(group); setSelectedOrder(null); }}
@@ -295,7 +296,7 @@ export function AdminDashboard({ email, isDarkMode, onLogout, onToggleDarkMode }
         )}
 
         {data && tab === 'products' && <ProductsSection products={data.products} groups={stockGroups} search={search} reviewingContent={catalogReviewBusy} onReviewContent={() => void reviewCatalog()} onCreateProduct={() => { setEditingProduct(null); setCatalogEditorOpen(true); }} onEditProduct={(product) => { setEditingProduct(product); setCatalogEditorOpen(true); }} onCreateLot={(productId) => { setEditingLot(null); setInitialLotProductId(productId); setLotEditorOpen(true); }} onOpenStock={(group) => { setSelectedStock(group); setSelectedOrder(null); }} />}
-        {data && tab === 'orders' && <OrdersSection orders={data.orders.filter((order) => order.preorder?.kind !== 'PREORDER')} search={search} onOpen={(order) => { setSelectedOrder(order); setSelectedStock(null); }} />}
+        {data && tab === 'orders' && <OrdersSection orders={data.orders.filter((order) => !isPreorderWorkflowOrder(order))} search={search} onOpen={(order) => { setSelectedOrder(order); setSelectedStock(null); }} />}
         {data && tab === 'preorders' && <PreordersSection orders={data.orders} search={search} onOpen={(order) => { setSelectedOrder(order); setSelectedStock(null); }} />}
         {data && tab === 'clients' && <ClientsSection users={data.users} search={search} onOpen={(user) => setActionTarget({ kind: 'client', value: user })} />}
         {data && tab === 'coupons' && <CouponsSection coupons={data.coupons} products={data.products} search={search} onCreate={() => setActionTarget({ kind: 'coupon', value: null })} onEdit={(coupon) => setActionTarget({ kind: 'coupon', value: coupon })} />}
