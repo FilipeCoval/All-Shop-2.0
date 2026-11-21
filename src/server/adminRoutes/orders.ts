@@ -707,9 +707,18 @@ export default async function handler(request: VercelRequest, response: VercelRe
           for (const lot of projectedLots) {
             const ref = context.lotRefs.get(lot.id);
             if (!ref) continue;
-            transaction.update(ref, { quantitySold: Number(lot.quantitySold ?? 0), status: lot.status, units: lot.units ?? [] });
             const originalLot = context.lots.find((item) => item.id === lot.id);
-            if (originalLot && updatedById.has(lot.id)) {
+            const lotChanged = Boolean(originalLot) && JSON.stringify({
+              quantitySold: Number(originalLot?.quantitySold ?? 0),
+              status: originalLot?.status,
+              units: originalLot?.units ?? [],
+            }) !== JSON.stringify({
+              quantitySold: Number(lot.quantitySold ?? 0),
+              status: lot.status,
+              units: lot.units ?? [],
+            });
+            if (lotChanged) {
+              transaction.update(ref, { quantitySold: Number(lot.quantitySold ?? 0), status: lot.status, units: lot.units ?? [] });
               transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
                 action: correctingSerials ? 'correct_fulfillment_serials_stock' : 'fulfill_order_stock',
                 actor: { uid: admin.uid, email: admin.email },

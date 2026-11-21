@@ -164,6 +164,11 @@ const correctedShipment = planStoredOrderFulfillment({
         { id: 'SN-RETURN-TO-STOCK', status: 'SOLD', soldToOrder: 'AS-CORRECT' },
       ],
     },
+    {
+      id: 'L-UNRELATED-LEGACY-SALE', publicProductId: 17, variant: 'Preto', purchaseDate: '2026-01-20',
+      quantityBought: 2, quantitySold: 2,
+      units: [{ id: 'SN-OTHER-ORDER', status: 'SOLD', soldToOrder: 'AS-OTHER' }],
+    },
   ],
   serialNumbers: ['SN-KEEP', 'SN-ACTUALLY-SENT'],
   stockDeducted: true,
@@ -173,6 +178,41 @@ assert.equal(correctedShipment.updatedLots.find((lot) => lot.id === 'L-PREVIOUS-
 assert.equal(correctedShipment.updatedLots.find((lot) => lot.id === 'L-PREVIOUS-SELECTION')?.units?.find((unit) => unit.id === 'SN-RETURN-TO-STOCK')?.status, 'AVAILABLE');
 assert.equal(correctedShipment.updatedLots.find((lot) => lot.id === 'L-NEW-MISSING-IDENTITY')?.quantitySold, 1);
 assert.equal(correctedShipment.updatedLots.find((lot) => lot.id === 'L-NEW-MISSING-IDENTITY')?.units?.find((unit) => unit.id === 'SN-ACTUALLY-SENT')?.soldToOrder, 'AS-CORRECT');
+assert.equal(correctedShipment.updatedLots.find((lot) => lot.id === 'L-UNRELATED-LEGACY-SALE')?.quantitySold, 2, 'uma correção de S/N não pode reabrir uma venda histórica não relacionada');
+
+assert.throws(
+  () => planStoredOrderFulfillment({
+    orderId: 'AS-MUST-NOT-STEAL-LEGACY',
+    orderItems: [{ productId: 17, quantity: 2, selectedVariant: 'Preto' }],
+    lots: [
+      {
+        id: 'L-JANUARY-LEGACY', publicProductId: 17, variant: 'Preto', quantityBought: 2, quantitySold: 2,
+        units: [{ id: 'SN-JANUARY-SOLD', status: 'SOLD', soldToOrder: 'AS-JANUARY' }],
+      },
+      {
+        id: 'L-MARCH-LEGACY', publicProductId: 17, variant: 'Preto', quantityBought: 3, quantitySold: 3,
+        units: [
+          { id: 'SN-MARCH-SOLD-1', status: 'SOLD', soldToOrder: 'AS-MARCH-1' },
+          { id: 'SN-MARCH-SOLD-2', status: 'SOLD', soldToOrder: 'AS-MARCH-2' },
+        ],
+      },
+      {
+        id: 'L-NEW-STOCK', publicProductId: 17, variant: 'Preto', quantityBought: 2, quantitySold: 0,
+        units: [
+          { id: 'SN-NEW-1', status: 'AVAILABLE' },
+          { id: 'SN-NEW-2', status: 'AVAILABLE' },
+        ],
+      },
+    ],
+    serialNumbers: ['SN-NEW-1', 'SN-NEW-2'],
+    stockDeducted: true,
+    fulfilledAt: '2026-11-21T16:10:00Z',
+  }),
+  (error) => error instanceof FulfillmentError
+    && error.message.includes('não pode ser reconciliado com segurança')
+    && error.message.includes('vendas antigas sem referência'),
+  'uma expedição não pode reabrir vendas históricas sem S/N noutros lotes',
+);
 
 assert.throws(
   () => planStoredOrderFulfillment({
@@ -242,18 +282,19 @@ const relocationLots = [
   },
 ];
 const soldBeforeRelocation = relocationLots.reduce((sum, lot) => sum + lot.quantitySold, 0);
-const relocation = planOrderFulfillment({
-  orderId: '#AS-REALLOC',
-  orderItems: [{ productId: 7, quantity: 1, selectedVariant: 'Preto' }],
-  lots: relocationLots,
-  serialNumbers: ['SN-CHOSEN'],
-  stockAlreadyDeducted: true,
-  fulfilledAt: '2026-10-04T02:00:00Z',
-});
-assert.equal(relocation.updatedLots.find((lot) => lot.id === 'L-DEBITED')?.quantitySold, 0);
-assert.equal(relocation.updatedLots.find((lot) => lot.id === 'L-CHOSEN')?.quantitySold, 1);
-assert.equal(relocation.updatedLots.reduce((sum, lot) => sum + Number(lot.quantitySold), 0), soldBeforeRelocation);
-assert.equal(relocation.updatedLots[1].units?.[0].soldToOrder, 'AS-REALLOC');
+assert.throws(
+  () => planOrderFulfillment({
+    orderId: '#AS-REALLOC',
+    orderItems: [{ productId: 7, quantity: 1, selectedVariant: 'Preto' }],
+    lots: relocationLots,
+    serialNumbers: ['SN-CHOSEN'],
+    stockAlreadyDeducted: true,
+    fulfilledAt: '2026-10-04T02:00:00Z',
+  }),
+  (error) => error instanceof FulfillmentError && error.message.includes('não pode ser reconciliado com segurança'),
+  'uma baixa anónima noutro lote não prova que pertence a esta encomenda',
+);
+assert.equal(relocationLots.reduce((sum, lot) => sum + Number(lot.quantitySold), 0), soldBeforeRelocation, 'o plano bloqueado não pode alterar os lotes recebidos');
 
 const fullLotsWithUnassignedSales = [
   {

@@ -173,6 +173,7 @@ export function planOrderFulfillment(input: PlanOrderFulfillmentInput) {
   if (new Set(serialNumbers).size !== serialNumbers.length) throw new FulfillmentError('O mesmo S/N foi indicado mais do que uma vez.');
 
   const existingAssigned = new Map<string, number>();
+  const existingAssignedByItemLot = new Map<string, number>();
   for (const lot of lots) {
     const assignedUnits = (lot.units ?? []).filter((unit) => unit.status === 'SOLD' && cleanOrderId(unit.soldToOrder) === orderId);
     existingAssigned.set(lot.id, assignedUnits.length);
@@ -180,6 +181,8 @@ export function planOrderFulfillment(input: PlanOrderFulfillmentInput) {
       const target = expected.find((item) => item.matchingLotIds.has(lot.id) && item.existingAssigned < item.quantity);
       if (!target) throw new FulfillmentError('As unidades já associadas à encomenda não correspondem aos artigos atuais.');
       target.existingAssigned += 1;
+      const itemLotKey = `${target.index}:${lot.id}`;
+      existingAssignedByItemLot.set(itemLotKey, (existingAssignedByItemLot.get(itemLotKey) ?? 0) + 1);
     }
   }
   const existingAssignedTotal = [...existingAssigned.values()].reduce((sum, value) => sum + value, 0);
@@ -224,28 +227,46 @@ export function planOrderFulfillment(input: PlanOrderFulfillmentInput) {
       return [lot.id, Math.max(0, Number(lot.quantitySold ?? 0) - soldUnits)] as const;
     }));
     for (const item of expected) {
-      let remaining = item.quantity - item.existingAssigned;
-      // A compra já abateu o stock, mas ainda não conhecia o S/N. Primeiro ligamos
-      // esse abatimento ao lote das unidades agora escolhidas. Só depois usamos
-      // outro lote compatível, permitindo mover o débito sem duplicar uma venda.
-      const chosenLotIds = [...new Set([...chosen.values()]
-        .filter((selected) => selected.itemIndex === item.index)
-        .map((selected) => selected.lotId))];
-      const candidateLotIds = [
-        ...chosenLotIds,
-        ...lots.filter((lot) => item.matchingLotIds.has(lot.id) && !chosenLotIds.includes(lot.id)).map((lot) => lot.id),
-      ];
-      for (const lotId of candidateLotIds) {
-        if (remaining <= 0) break;
-        if (!item.matchingLotIds.has(lotId)) continue;
-        const available = unattributedSold.get(lotId) ?? 0;
-        const take = Math.min(remaining, available);
-        if (!take) continue;
-        baselineByLot.set(lotId, (baselineByLot.get(lotId) ?? 0) + take);
-        unattributedSold.set(lotId, available - take);
-        remaining -= take;
+      const selectedForItem = new Map<string, number>();
+      for (const selected of chosen.values()) {
+        if (selected.itemIndex !== item.index) continue;
+        selectedForItem.set(selected.lotId, (selectedForItem.get(selected.lotId) ?? 0) + 1);
       }
-      if (remaining > 0) throw new FulfillmentError('O stock previamente abatido não pode ser reconciliado com os lotes desta encomenda.');
+
+      // Uma correção pode transferir a baixa entre dois lotes porque conhecemos
+      // exatamente as unidades que já pertenciam a esta encomenda. Já uma venda
+      // antiga sem S/N não pode ser retirada de outro lote por aproximação: pode
+      // pertencer a qualquer encomenda histórica e ficaria falsamente disponível.
+      let exactReassignmentCredit = 0;
+      const requiredBySelectedLot = new Map<string, number>();
+      for (const lot of lots.filter((candidate) => item.matchingLotIds.has(candidate.id))) {
+        const existingForOrder = existingAssignedByItemLot.get(`${item.index}:${lot.id}`) ?? 0;
+        const selectedHere = selectedForItem.get(lot.id) ?? 0;
+        const keptHere = Math.min(existingForOrder, selectedHere);
+        exactReassignmentCredit += existingForOrder - keptHere;
+        if (selectedHere > keptHere) requiredBySelectedLot.set(lot.id, selectedHere - keptHere);
+      }
+
+      for (const [lotId, initialRequired] of requiredBySelectedLot) {
+        let required = initialRequired;
+        const reassigned = Math.min(required, exactReassignmentCredit);
+        exactReassignmentCredit -= reassigned;
+        required -= reassigned;
+
+        if (required > 0) {
+          const availableInSameLot = unattributedSold.get(lotId) ?? 0;
+          const attributedHere = Math.min(required, availableInSameLot);
+          if (attributedHere > 0) {
+            baselineByLot.set(lotId, (baselineByLot.get(lotId) ?? 0) + attributedHere);
+            unattributedSold.set(lotId, availableInSameLot - attributedHere);
+            required -= attributedHere;
+          }
+        }
+
+        if (required > 0) {
+          throw new FulfillmentError('O stock previamente abatido não pode ser reconciliado com segurança com os S/N escolhidos. Existem vendas antigas sem referência noutros lotes; corrija primeiro o histórico do produto.');
+        }
+      }
     }
   }
   let totalProductCost = 0;
@@ -255,14 +276,17 @@ export function planOrderFulfillment(input: PlanOrderFulfillmentInput) {
     const originalSoldUnitCount = (lot.units ?? []).filter((unit) => unit.status === 'SOLD').length;
     const units = (lot.units ?? []).map((unit, unitIndex) => {
       const key = `${lot.id}:${unitIndex}`;
-      if (chosen.has(key)) return {
-        ...unit,
-        status: 'SOLD',
-        soldAt: input.fulfilledAt,
-        soldToOrder: orderId,
-        soldToCustomerName: input.customerName ?? '',
-        soldToCustomerEmail: input.customerEmail ?? '',
-      };
+      if (chosen.has(key)) {
+        if (unit.status === 'SOLD' && cleanOrderId(unit.soldToOrder) === orderId) return unit;
+        return {
+          ...unit,
+          status: 'SOLD',
+          soldAt: input.fulfilledAt,
+          soldToOrder: orderId,
+          soldToCustomerName: input.customerName ?? '',
+          soldToCustomerEmail: input.customerEmail ?? '',
+        };
+      }
       if (unit.status === 'SOLD' && cleanOrderId(unit.soldToOrder) === orderId) {
         const { soldAt: _soldAt, soldToOrder: _soldToOrder, soldToCustomerName: _name, soldToCustomerEmail: _email, ...rest } = unit;
         return { ...rest, status: 'AVAILABLE' };
