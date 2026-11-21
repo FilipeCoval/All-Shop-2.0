@@ -325,7 +325,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
         id: currentOrderId,
         date: new Date().toISOString(),
         total: finalTotal,
-        status: 'Pendente',
+        status: 'A confirmar',
         stockDeducted: false,
         items: cartItems.map(i => ({ productId: i.id, name: i.name, price: i.price, quantity: i.quantity, selectedVariant: i.selectedVariant || '', image: i.image, addedAt: new Date().toISOString() })),
         shippingInfo: finalUserInfo,
@@ -358,13 +358,23 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
     msg += `Portes: ${shippingCost === 0 ? 'Grátis' : formatCurrency(shippingCost)}\n`;
     msg += `Total Final: *${formatCurrency(finalTotal)}*`;
     
+    // Regista primeiro a intenção de compra. Assim uma mensagem enviada para o
+    // Telegram/WhatsApp nunca fica sem rasto, mas também não reserva nem baixa
+    // stock até o cliente confirmar explicitamente o envio.
+    const saved = await onCheckout(newOrder, true);
+    if (!saved) {
+        setIsFinalizing(false);
+        return;
+    }
+
     setPendingOrder(newOrder);
     setFinalMessage(msg);
     setSelectedPlatform(platform);
     setCheckoutStep('tutorial');
     setIsFinalizing(false);
     
-    // A encomenda ainda não é gravada: o stock mantém-se reservado até o cliente confirmar.
+    // O pedido fica em “A confirmar”; a confirmação final valida novamente o
+    // stock, o cupão e os preços atuais diretamente no servidor.
   };
 
   const handleConfirmSent = async (isAutoSave: boolean = false) => {

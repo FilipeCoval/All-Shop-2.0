@@ -1,0 +1,147 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { FormEvent } from 'react';
+import { CheckCircle2, MapPin, ShieldCheck, Store, X } from 'lucide-react';
+import type { Order, Product, ProductVariant, User } from '../types';
+import { createPreorder } from '../services/api';
+import type { PreorderOffer } from '../src/domain/preorder';
+import PreorderMessageActions from './PreorderMessageActions';
+import PreorderItemsEditor, { type PreorderSelection } from './PreorderItemsEditor';
+
+const euro = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
+const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const getGuestToken = () => {
+  let token = localStorage.getItem('guestToken');
+  if (!token) {
+    token = `guest_${Math.random().toString(36).slice(2, 15)}_${Date.now()}`;
+    localStorage.setItem('guestToken', token);
+  }
+  return token;
+};
+
+type Props = {
+  product: Product;
+  allProducts: Product[];
+  selectedVariant?: ProductVariant;
+  currentUser: User | null;
+  offer: PreorderOffer;
+  remaining: number;
+  onClose: () => void;
+};
+
+type Stage = 'form' | 'channel' | 'success';
+
+export default function PreorderModal({ product, allProducts, selectedVariant, currentUser, offer, onClose }: Props) {
+  const savedAddress = currentUser?.addresses?.[0];
+  const storageKey = `allshop-preorder:${currentUser?.uid ?? getGuestToken()}:${product.id}:${selectedVariant?.name ?? ''}`;
+  const [created, setCreated] = useState<Order | null>(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null') as Order | null;
+      return saved?.preorder?.messagePending && new Date(saved.preorder.depositDeadlineAt).getTime() > Date.now() ? saved : null;
+    } catch { return null; }
+  });
+  const [stage, setStage] = useState<Stage>(created ? 'channel' : 'form');
+  const [items, setItems] = useState<PreorderSelection[]>([{ productId: product.id, selectedVariant: selectedVariant?.name ?? '', quantity: 1 }]);
+  const [deliveryMethod, setDeliveryMethod] = useState<'Shipping' | 'Pickup'>('Shipping');
+  const [paymentMethod, setPaymentMethod] = useState<'MB Way' | 'Transferência' | 'Outro'>('MB Way');
+  const [form, setForm] = useState({
+    name: currentUser?.name ?? '', email: currentUser?.email ?? '', phone: currentUser?.phone ?? '', nif: currentUser?.nif ?? '',
+    street: savedAddress?.street ?? '', doorNumber: '', zip: savedAddress?.zip ?? '', city: savedAddress?.city ?? '',
+  });
+  const [accepted, setAccepted] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const reference = useRef('');
+  const inFlight = useRef(false);
+
+  useEffect(() => {
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousRootOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousRootOverflow;
+    };
+  }, []);
+
+  const summary = useMemo(() => {
+    const subtotal = roundMoney(items.reduce((sum, item) => {
+      const selectedProduct = allProducts.find((candidate) => candidate.id === item.productId);
+      const variant = selectedProduct?.variants?.find((candidate) => candidate.name === item.selectedVariant);
+      return sum + Number(variant?.price ?? selectedProduct?.price ?? 0) * item.quantity;
+    }, 0));
+    const shipping = deliveryMethod === 'Pickup' || subtotal >= 50 ? 0 : 4.99;
+    const total = roundMoney(subtotal + shipping);
+    const deposit = roundMoney(total * 0.5);
+    return { total, shipping, deposit, balance: roundMoney(total - deposit) };
+  }, [allProducts, deliveryMethod, items]);
+
+  const update = (key: keyof typeof form, value: string) => setForm((current) => ({ ...current, [key]: value }));
+  const beginMessageStage = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!accepted || inFlight.current) return;
+    inFlight.current = true; setBusy(true); setError('');
+    reference.current ||= `AS-${String(Date.now()).slice(-12)}`;
+    try {
+      const firstItem = items[0];
+      if (!firstItem) throw new Error('Adicione pelo menos um artigo à pré-reserva.');
+      const result = await createPreorder({
+        idempotencyKey: reference.current, productId: firstItem.productId,
+        selectedVariant: firstItem.selectedVariant, quantity: firstItem.quantity, termsAccepted: true,
+        shippingInfo: { ...form, deliveryMethod, paymentMethod }, items,
+      }, getGuestToken());
+      if (!result.order?.id || result.order?.preorder?.kind !== 'PREORDER') throw new Error('Não foi possível guardar o pedido. Tente novamente.');
+      const order = result.order as Order;
+      setCreated(order);
+      try { sessionStorage.setItem(storageKey, JSON.stringify(order)); } catch { /* Account remains the durable recovery path. */ }
+      window.dispatchEvent(new Event('allshop:orders-changed'));
+      setStage('channel');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível guardar a pré-reserva. Tente novamente.');
+    } finally { inFlight.current = false; setBusy(false); }
+  };
+
+  const shellClass = 'flex h-[100dvh] min-h-0 w-full max-w-2xl flex-col overflow-hidden bg-white shadow-2xl dark:bg-slate-900 sm:h-auto sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-[2rem]';
+  const closeToAccount = () => {
+    onClose();
+    window.location.hash = '#account?tab=orders';
+  };
+
+  return <div className="fixed inset-0 z-[100] flex min-h-0 bg-slate-950/65 p-0 backdrop-blur-sm sm:items-center sm:justify-center sm:p-5" role="dialog" aria-modal="true" aria-label="Fazer pré-reserva">
+    {stage === 'success' && created ? <section className={`${shellClass} justify-center p-6 sm:p-8`}>
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50"><CheckCircle2 size={34} /></div>
+      <h2 className="mt-5 text-center text-2xl font-black text-slate-950 dark:text-white">Obrigado pela encomenda!</h2>
+      <p className="mt-2 text-center text-sm leading-relaxed text-slate-600 dark:text-slate-300">A pré-reserva ficou registada e a nossa equipa recebeu o pedido. A vaga e o preço estão garantidos enquanto o sinal for recebido dentro do prazo.</p>
+      <div className="mt-6 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-center dark:border-orange-900/70 dark:bg-orange-950/25">
+        <p className="text-xs font-extrabold uppercase tracking-wide text-orange-700 dark:text-orange-300">Referência do pedido</p>
+        <p className="mt-1 font-mono text-xl font-black text-slate-950 dark:text-white">#{created.id}</p>
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-orange-200 pt-4 text-left text-sm dark:border-orange-900/70"><span><small className="block text-slate-500">Sinal a pagar</small><strong>{euro.format(created.preorder?.depositDue ?? 0)}</strong></span><span><small className="block text-slate-500">Saldo mais tarde</small><strong>{euro.format(created.preorder?.balanceDue ?? 0)}</strong></span></div>
+      </div>
+      <p className="mt-4 text-center text-xs text-slate-500 dark:text-slate-400">Pode acompanhar este pedido na sua Área de Cliente.</p>
+      {currentUser && <button type="button" onClick={closeToAccount} className="mt-5 w-full rounded-2xl bg-orange-500 px-5 py-4 font-extrabold text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600">Ver a minha pré-reserva</button>}
+      <button type="button" onClick={onClose} className="mt-3 w-full rounded-2xl border border-slate-200 px-5 py-3.5 font-bold text-slate-700 dark:border-slate-700 dark:text-slate-200">Voltar à loja</button>
+    </section> : stage === 'channel' && created ? <section className={`${shellClass} p-5 sm:p-8`}>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <h2 className="text-2xl font-black text-slate-950 dark:text-white">Pré-reserva guardada</h2>
+        <PreorderMessageActions order={created} guestToken={getGuestToken()} onConfirmed={(order) => {
+          setCreated(order);
+          try { sessionStorage.removeItem(storageKey); } catch { /* No storage access. */ }
+          setStage('success');
+        }} />
+      </div>
+      <button type="button" onClick={onClose} className="mt-4 shrink-0 rounded-xl border border-slate-200 p-3 font-bold dark:border-slate-700">Continuar mais tarde</button>
+    </section> : <form onSubmit={beginMessageStage} className={shellClass}>
+      <header className="shrink-0 flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-5 dark:border-slate-700 sm:px-7"><div><p className="text-xs font-extrabold uppercase tracking-[.16em] text-orange-600">Pré-reserva</p><h2 className="mt-1 text-2xl font-black text-slate-950 dark:text-white">Garanta o preço com 50%</h2><p className="mt-1 text-sm text-slate-500 dark:text-slate-400">A mesma confirmação de uma compra, sem mexer no stock físico.</p></div><button type="button" onClick={onClose} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800" aria-label="Fechar"><X /></button></header>
+      <div className="grid min-h-0 flex-1 touch-pan-y gap-5 overflow-y-auto overscroll-contain p-5 [-webkit-overflow-scrolling:touch] sm:p-7">
+        <PreorderItemsEditor items={items} products={allProducts} onChange={setItems}/>
+        <label className="text-sm font-bold text-slate-700 dark:text-slate-200">Pagamento do sinal<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as typeof paymentMethod)} className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 font-semibold outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"><option>MB Way</option><option>Transferência</option><option>Outro</option></select></label>
+        <section className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm dark:bg-slate-800/80"><div className="flex justify-between gap-5"><span>Preço total garantido</span><strong>{euro.format(summary.total)}</strong></div><div className="flex justify-between gap-5 border-t border-slate-200 pt-3 text-orange-700 dark:border-slate-700 dark:text-orange-300"><span>Sinal a pagar agora (50%)</span><strong className="text-lg">{euro.format(summary.deposit)}</strong></div><div className="flex justify-between gap-5 text-slate-600 dark:text-slate-300"><span>Saldo antes da expedição</span><strong>{euro.format(summary.balance)}</strong></div>{summary.shipping > 0 && <small className="text-slate-500">Inclui {euro.format(summary.shipping)} de portes.</small>}</section>
+        <section><div className="mb-3 flex gap-2"><MapPin size={19} className="text-orange-600" /><h3 className="font-extrabold text-slate-950 dark:text-white">Entrega e contacto</h3></div><div className="grid gap-3 sm:grid-cols-2"><input required placeholder="Nome completo" value={form.name} onChange={(event) => update('name', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input required type="email" placeholder="Email" value={form.email} onChange={(event) => update('email', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input required placeholder="Telemóvel" value={form.phone} onChange={(event) => update('phone', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input placeholder="NIF (opcional)" value={form.nif} onChange={(event) => update('nif', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/></div><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => setDeliveryMethod('Shipping')} className={`rounded-xl border px-3 py-3 text-sm font-bold ${deliveryMethod === 'Shipping' ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-950/30' : 'border-slate-300 dark:border-slate-600'}`}><MapPin className="mr-1 inline" size={16}/> Envio</button><button type="button" onClick={() => setDeliveryMethod('Pickup')} className={`rounded-xl border px-3 py-3 text-sm font-bold ${deliveryMethod === 'Pickup' ? 'border-orange-500 bg-orange-50 text-orange-700 dark:bg-orange-950/30' : 'border-slate-300 dark:border-slate-600'}`}><Store className="mr-1 inline" size={16}/> Levantamento</button></div>{deliveryMethod === 'Shipping' && <div className="mt-3 grid gap-3 sm:grid-cols-2"><input required placeholder="Rua / Avenida" value={form.street} onChange={(event) => update('street', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input required placeholder="N.º da porta" value={form.doorNumber} onChange={(event) => update('doorNumber', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input required placeholder="Código-postal" value={form.zip} onChange={(event) => update('zip', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/><input required placeholder="Localidade" value={form.city} onChange={(event) => update('city', event.target.value)} className="rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-orange-500 dark:border-slate-600 dark:bg-slate-800"/></div>}</section>
+        <label className="flex gap-3 rounded-2xl border border-slate-200 p-4 text-sm leading-relaxed text-slate-600 dark:border-slate-700 dark:text-slate-300"><input required type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} className="mt-1 h-4 w-4 shrink-0 accent-orange-500"/><span><strong className="text-slate-950 dark:text-white">Confirmo as condições da pré-reserva.</strong><br/>O preço total fica garantido. Pagarei o sinal de 50% em {offer.paymentDeadlineHours} horas; o saldo é pedido antes da expedição. Se a All-Shop não puder fornecer o artigo, o sinal é reembolsado. Mantêm-se os direitos legais aplicáveis.</span></label>
+      </div>
+      {error && <p role="alert" className="mx-5 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-200">{error}</p>}
+      <footer className="shrink-0 flex flex-col-reverse gap-3 border-t border-slate-200 p-5 dark:border-slate-700 sm:flex-row sm:justify-end sm:px-7"><button type="button" onClick={onClose} className="rounded-xl px-5 py-3 font-bold text-slate-600 dark:text-slate-300">Cancelar</button><button type="submit" disabled={!accepted || busy} className="flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-6 py-3.5 font-extrabold text-white shadow-lg shadow-orange-500/20 disabled:cursor-not-allowed disabled:opacity-50"><ShieldCheck size={18}/> {busy ? 'A guardar pré-reserva…' : 'Guardar e continuar para a mensagem'}</button></footer>
+    </form>}
+  </div>;
+}

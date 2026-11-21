@@ -1,0 +1,38 @@
+{
+  "id": "/",
+  "name": "All-Shop Administração",
+  "short_name": "All-Shop Admin",
+  "description": "Aplicação reservada para gerir encomendas, stock, clientes, alertas e cashback da All-Shop.",
+  "lang": "pt-PT",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "orientation": "any",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "https://i.imgur.com/nSiZKBf.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://i.imgur.com/nSiZKBf.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Abrir administração",
+      "short_name": "Admin",
+      "url": "/"
+    }
+  ]
+}

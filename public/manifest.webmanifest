@@ -1,0 +1,40 @@
+{
+  "id": "/",
+  "name": "All-Shop | Eletrónica e Gadgets",
+  "short_name": "All-Shop",
+  "description": "Loja All-Shop: eletrónica, gadgets e acompanhamento de encomendas.",
+  "lang": "pt-PT",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#f97316",
+  "background_color": "#ffffff",
+  "categories": ["shopping", "business"],
+  "icons": [
+    {
+      "src": "https://i.imgur.com/nSiZKBf.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://i.imgur.com/nSiZKBf.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Ver produtos",
+      "short_name": "Produtos",
+      "url": "/?source=pwa#/"
+    },
+    {
+      "name": "Área do cliente",
+      "short_name": "Conta",
+      "url": "/?source=pwa#account"
+    }
+  ]
+}

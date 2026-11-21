@@ -1,18 +1,7 @@
 import { useState, useEffect } from 'react';
 import { modularDb } from '../services/firebaseConfig';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { Product } from '../types';
-import { INITIAL_PRODUCTS } from '../constants';
-
-import { PRODUCT_SPECS, CATEGORY_DEFAULT_SPECS } from '../src/constants/productSpecs';
-
-const getSpecsForProduct = (product: Product): Record<string, string | boolean> => {
-    if (PRODUCT_SPECS[product.id]) {
-        return PRODUCT_SPECS[product.id];
-    }
-    const categorySpecs = CATEGORY_DEFAULT_SPECS[product.category] || CATEGORY_DEFAULT_SPECS['Acessórios'];
-    return categorySpecs;
-};
 
 export const usePublicProducts = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -47,10 +36,6 @@ export const usePublicProducts = () => {
           
           if (data && productId !== null) {
              const product = { ...data, id: productId } as Product;
-             // MERGE SPECS: Se o produto não tiver specs na DB, injeta as specs mockadas/hardcoded
-             if (!product.specs || Object.keys(product.specs).length === 0) {
-                 product.specs = getSpecsForProduct(product);
-             }
              items.push(product);
           } else {
             console.warn(`[usePublicProducts] Documento '${doc.id}' foi ignorado por não ter um ID válido.`);

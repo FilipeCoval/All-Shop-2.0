@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ProductRequest } from '../types';
 import { modularDb, storage, requestPushPermission } from '../services/firebaseConfig';
-import { collection, addDoc, onSnapshot, query, where, doc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, where, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { 
     Loader2, Plus, Camera, X, Package, DollarSign, Image as ImageIcon, Bell, 
@@ -142,7 +142,6 @@ const RequestsTab: React.FC<RequestsTabProps> = ({ user, isAdmin }) => {
     const handleDelete = async (id: string) => {
         if (!window.confirm('Tem a certeza que deseja apagar este pedido permanentemente?')) return;
         try {
-            const { deleteDoc } = await import('firebase/firestore');
             await deleteDoc(doc(modularDb, 'product_requests', id));
         } catch (err: any) {
             console.error("[RequestsTab] Erro ao apagar pedido:", err);

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Product, ProductVariant } from '../types';
 import { X, ShoppingCart, Info } from 'lucide-react';
+import { effectiveProductAvailability } from '../src/domain/productAvailability';
 
 interface QuickViewModalProps {
   product: Product | null;
@@ -23,14 +24,21 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
   if (!product) return null;
 
   const selectedVariant = product.variants?.find(v => v.name === selectedVariantName);
-  const currentPrice = selectedVariant?.price || product.price;
+  const hasVariants = Boolean(product.variants?.length);
+  const currentPrice = selectedVariant?.price ?? (hasVariants && product.variants ? Math.min(...product.variants.map((variant) => variant.price)) : product.price);
+  const currentOriginalPrice = selectedVariant && Number(selectedVariant.originalPrice ?? 0) > Number(selectedVariant.price) ? Number(selectedVariant.originalPrice) : !hasVariants && Number(product.originalPrice ?? 0) > Number(product.price) ? Number(product.originalPrice) : null;
+  const publicDescription = hasVariants
+    ? selectedVariant?.description || (selectedVariant ? `${product.name}, versão ${selectedVariant.name}.` : `Disponível em ${product.variants?.length ?? 0} versões. Escolha uma opção para ver a informação correta.`)
+    : product.description;
   const currentStock = getStock(product.id, selectedVariantName);
-  const isOutOfStock = currentStock <= 0 && currentStock !== 999 && !product.comingSoon;
-  const hasVariants = product.variants && product.variants.length > 0;
+  const availability = effectiveProductAvailability(product, currentStock);
+  const isOutOfStock = availability === 'OUT_OF_STOCK';
+  const isComingSoon = availability === 'COMING_SOON';
+  const isUnavailable = availability !== 'AVAILABLE';
   const isVariantSelected = !!selectedVariantName;
 
   const handleAddToCart = () => {
-      if (isOutOfStock || (hasVariants && !isVariantSelected)) return;
+      if (isUnavailable || (hasVariants && !isVariantSelected)) return;
       if (selectedVariant) onAddToCart(product, selectedVariant);
       else onAddToCart(product);
       onClose();
@@ -50,7 +58,8 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
             <img src={selectedImage} alt={product.name} className="max-w-full max-h-[300px] md:max-h-full object-contain mix-blend-multiply dark:mix-blend-normal" />
             <div className="absolute top-4 left-4 flex flex-col gap-2">
                 {isOutOfStock && <span className="bg-red-600 text-white text-xs font-bold px-2 py-1 rounded shadow-sm">ESGOTADO</span>}
-                {product.badges && product.badges.map(badge => {
+                {isComingSoon && <span className="bg-purple-600 text-white text-xs font-bold px-2 py-1 rounded shadow-sm">EM BREVE</span>}
+                {product.badges && product.badges.filter((badge) => !(hasVariants && badge.toUpperCase() === 'PROMOÇÃO' && !currentOriginalPrice)).map(badge => {
                     const upperBadge = badge.toUpperCase();
                     let color = "bg-indigo-600";
                     if (upperBadge === 'MAIS VENDIDO') color = "bg-orange-500";
@@ -79,13 +88,14 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
                 </button>
             </div>
 
-            <p className="text-gray-600 dark:text-slate-300 text-sm mb-6 line-clamp-3">{product.description}</p>
+            <p className="text-gray-600 dark:text-slate-300 text-sm mb-6 line-clamp-3">{publicDescription}</p>
 
             <div className="mt-auto">
                 <div className="flex items-baseline gap-3 mb-6">
+                    {hasVariants && !selectedVariant && <span className="text-xs font-extrabold uppercase tracking-wide text-gray-500">Desde</span>}
                     <span className="text-3xl font-bold text-gray-900 dark:text-white">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(currentPrice)}</span>
-                    {product.originalPrice && product.originalPrice > currentPrice && (
-                        <span className="text-lg text-gray-400 line-through">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(product.originalPrice)}</span>
+                    {currentOriginalPrice && (
+                        <span className="text-lg text-gray-400 line-through">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(currentOriginalPrice)}</span>
                     )}
                 </div>
 
@@ -113,6 +123,7 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
                                );
                            })}
                        </div>
+                       {selectedVariant && <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-950 dark:border-orange-900/70 dark:bg-orange-950/25 dark:text-orange-100"><strong className="block">{selectedVariant.name}</strong>{selectedVariant.description && <span className="mt-1 block text-xs">{selectedVariant.description}</span>}</div>}
                    </div>
                 )}
 
@@ -125,15 +136,15 @@ const QuickViewModal: React.FC<QuickViewModalProps> = ({ product, onClose, onAdd
 
                 <button 
                     onClick={handleAddToCart}
-                    disabled={isOutOfStock || (hasVariants && !isVariantSelected)}
+                    disabled={isUnavailable || (hasVariants && !isVariantSelected)}
                     className={`w-full py-3 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center gap-2 transition-all transform active:scale-95
-                        ${isOutOfStock || (hasVariants && !isVariantSelected)
+                        ${isUnavailable || (hasVariants && !isVariantSelected)
                             ? 'bg-gray-200 dark:bg-slate-700 text-gray-400 cursor-not-allowed' 
                             : 'bg-primary hover:bg-blue-600 text-white'}
                     `}
                 >
                     <ShoppingCart size={20} />
-                    {isOutOfStock ? 'Indisponível' : 'Adicionar ao Carrinho'}
+                    {isComingSoon ? 'Brevemente disponível' : isOutOfStock ? 'Indisponível' : 'Adicionar ao Carrinho'}
                 </button>
                 
                 <a href={`#product/${product.id}`} onClick={onClose} className="block text-center mt-4 text-sm font-medium text-gray-500 dark:text-slate-400 hover:text-primary dark:hover:text-primary transition-colors">

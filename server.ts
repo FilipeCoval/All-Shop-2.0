@@ -6,16 +6,17 @@ import { fileURLToPath } from "url";
 
 // Static imports of all API endpoints to bundle them into server.cjs cleanly
 import sendPushHandler from './api/send-push.ts';
-import updateStockSummaryHandler from './api/update-stock-summary.ts';
 import ogHandler from './api/og.ts';
-import checkoutHandler from './api/checkout.ts';
 import reserveStockHandler from './api/reserve-stock.ts';
 import finalizeOrderHandler from './api/finalize-order.ts';
-import cleanupReservationsHandler from './api/cleanup-reservations.ts';
+import createOrderDraftHandler from './api/create-order-draft.ts';
+import redeemLoyaltyRewardHandler from './api/redeem-loyalty-reward.ts';
 import updateOrderHandler from './api/update-order.ts';
 import syncUserHandler from './api/sync-user.ts';
 import sitemapHandler from './api/sitemap.ts';
 import chatHandler from './api/chat.ts';
+import trackOrderHandler from './api/track-order.ts';
+import adminHandler from './api/admin.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -42,11 +43,7 @@ async function startServer() {
   });
 
   app.all('/api/update-stock-summary', async (req, res) => {
-    try {
-        await updateStockSummaryHandler(req as any, res as any);
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
+    res.status(410).json({ error: 'Endpoint antigo desativado.' });
   });
 
   app.all('/api/og', async (req, res) => {
@@ -58,11 +55,7 @@ async function startServer() {
   });
 
   app.all('/api/checkout', async (req, res) => {
-    try {
-        await checkoutHandler(req as any, res as any);
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
+    res.status(410).json({ error: 'Endpoint desativado. Atualize a página e tente novamente.' });
   });
 
   app.all('/api/reserve-stock', async (req, res) => {
@@ -81,12 +74,24 @@ async function startServer() {
     }
   });
 
-  app.all('/api/cleanup-reservations', async (req, res) => {
+  app.all('/api/create-order-draft', async (req, res) => {
     try {
-        await cleanupReservationsHandler(req as any, res as any);
+        await createOrderDraftHandler(req as any, res as any);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
+  });
+
+  app.all('/api/redeem-loyalty-reward', async (req, res) => {
+    try {
+        await redeemLoyaltyRewardHandler(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.all('/api/cleanup-reservations', async (req, res) => {
+    res.status(410).json({ error: 'Endpoint antigo desativado.' });
   });
 
   app.all('/api/update-order', async (req, res) => {
@@ -112,6 +117,25 @@ async function startServer() {
         res.status(500).json({ error: 'Erro interno no assistente.' });
     }
   });
+
+  app.all('/api/track-order', async (req, res) => {
+    try {
+        await trackOrderHandler(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Erro interno no rastreio.' });
+    }
+  });
+
+  const handleAdminRequest = async (req: express.Request, res: express.Response) => {
+    try {
+        await adminHandler(req as any, res as any);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message || 'Erro interno na administração.' });
+    }
+  };
+
+  app.all('/api/admin', handleAdminRequest);
+  app.all('/api/admin/:resource', handleAdminRequest);
 
   // Sitemap route
   app.get('/sitemap.xml', async (req, res) => {

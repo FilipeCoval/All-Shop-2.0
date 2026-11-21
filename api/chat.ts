@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type { Request, Response } from 'express';
+import { effectiveProductAvailability } from '../src/domain/productAvailability.js';
 import { GoogleGenAI } from '@google/genai';
 import { db } from '../services/firebase-admin.js';
 
@@ -169,7 +170,8 @@ const getCatalogContext = async (): Promise<string> => {
       const features = Array.isArray(product.features)
         ? product.features.slice(0, 4).map((feature: unknown) => String(feature).slice(0, 80)).join(', ')
         : '';
-      const availability = product.comingSoon ? 'em breve' : stock > 0 ? 'em stock' : 'sem stock';
+      const productAvailability = effectiveProductAvailability(product, stock);
+      const availability = productAvailability === 'COMING_SOON' ? 'em breve' : productAvailability === 'AVAILABLE' ? 'em stock' : 'sem stock';
       return `- ${name} | ${category} | ${price.toFixed(2)}€ | ${availability}${features ? ` | ${features}` : ''}`;
     }).join('\n');
 
