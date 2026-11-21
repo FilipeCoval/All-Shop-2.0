@@ -1,7 +1,7 @@
 import { Barcode, CheckCircle2, PackageCheck, Trash2, Truck } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AdminOrder, AdminOrderItem, InventoryLot } from './adminTypes';
-import { adminMutationsAvailable, fulfillOrder } from './adminMutations';
+import { adminMutationsAvailable, correctFulfillmentSerials, fulfillOrder } from './adminMutations';
 import { displayUnitCode, normalizeUnitCode, stableUnitId, unitMatchesCode } from './unitIdentity';
 import { fulfillmentAvailableUnitCapacity, isGeneratedInternalUnit } from '../../domain/fulfillmentCapacity';
 
@@ -22,10 +22,11 @@ const matchingLotsForItem = (lots: InventoryLot[], item: AdminOrderItem) => {
   return exact.length ? exact : generic;
 };
 
-const selectableUnitsInLot = (lot: InventoryLot, orderId: string) => {
+const selectableUnitsInLot = (lot: InventoryLot, orderId: string, includeExcessAvailable = false) => {
   const units = lot.units ?? [];
   const assigned = units.filter((unit) => unit.status === 'SOLD' && orderKey(unit.soldToOrder) === orderKey(orderId));
-  const available = units.filter((unit) => unit.status === 'AVAILABLE').slice(0, fulfillmentAvailableUnitCapacity(lot));
+  const availableUnits = units.filter((unit) => unit.status === 'AVAILABLE');
+  const available = includeExcessAvailable ? availableUnits : availableUnits.slice(0, fulfillmentAvailableUnitCapacity(lot));
   return [...assigned, ...available];
 };
 
@@ -38,6 +39,7 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
   const [tracking, setTracking] = useState(order.trackingNumber ?? '');
   const [packageTrackings, setPackageTrackings] = useState<string[]>(() => packages.map((pkg) => pkg.trackingNumber ?? ''));
   const [busy, setBusy] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,14 +48,37 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
   const isPickup = order.shippingInfo?.deliveryMethod === 'Pickup' || order.status === 'Levantamento em Loja';
 
   useEffect(() => {
-    setScanned([]); setCurrent(''); setTracking(order.trackingNumber ?? ''); setPackageTrackings((order.packages ?? []).map((pkg) => pkg.trackingNumber ?? '')); setError(null); setMessage(null);
+    setScanned([]); setCorrecting(false); setCurrent(''); setTracking(order.trackingNumber ?? ''); setPackageTrackings((order.packages ?? []).map((pkg) => pkg.trackingNumber ?? '')); setError(null); setMessage(null);
   }, [order.id, order.trackingNumber, order.packages]);
+
+  const beginCorrection = () => {
+    const assigned = items.flatMap((item, itemIndex) => {
+      if (item.isCustom === true) return [];
+      const codes = item.serialNumbers?.length ? item.serialNumbers : item.unitIds ?? [];
+      return codes.flatMap((code) => {
+        const matches = matchingLotsForItem(lots, item).flatMap((lot) => (lot.units ?? [])
+          .filter((unit) => unitMatchesCode(unit, code) && unit.status === 'SOLD' && orderKey(unit.soldToOrder) === orderKey(order.id))
+          .map((unit) => ({ lot, unit })));
+        if (matches.length !== 1) return [];
+        const { lot, unit } = matches[0];
+        return [{ serial: displayUnitCode(unit), itemIndex, lotId: lot.id, unitId: stableUnitId(unit) }];
+      });
+    });
+    if (assigned.length !== totalNeeded) {
+      setError('Não foi possível reconstruir todos os S/N desta encomenda. Atualize a dashboard e confirme o rasto das vendas antes de corrigir.');
+      return;
+    }
+    setScanned(assigned);
+    setCorrecting(true);
+    setError(null);
+    setMessage(null);
+  };
 
   const addSerial = (raw: string, preferredItemIndex?: number) => {
     const serial = normalizeUnitCode(raw);
     setError(null); setMessage(null);
     if (!serial) return;
-    const matches = lots.flatMap((lot) => selectableUnitsInLot(lot, order.id).filter((unit) => unitMatchesCode(unit, serial)).map((unit) => ({ lot, unit })));
+    const matches = lots.flatMap((lot) => selectableUnitsInLot(lot, order.id, correcting).filter((unit) => unitMatchesCode(unit, serial)).map((unit) => ({ lot, unit })));
     if (!matches.length) { setError(`O S/N ${serial} não existe no inventário.`); return; }
     if (matches.length > 1) { setError(`O S/N ${serial} aparece em mais do que um lote.`); return; }
     const { lot, unit } = matches[0];
@@ -79,7 +104,7 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
   const selectableUnitsForItem = (item: AdminOrderItem, itemIndex: number): SelectableUnit[] => {
     const selectedUnits = new Set(scanned.map((entry) => `${entry.lotId}:${entry.unitId}`));
     const candidates = matchingLotsForItem(lots, item).flatMap((lot) => {
-      return selectableUnitsInLot(lot, order.id).flatMap((unit) => {
+      return selectableUnitsInLot(lot, order.id, correcting).flatMap((unit) => {
         const serial = displayUnitCode(unit);
         const unitId = stableUnitId(unit);
         const assignedToOrder = unit.status === 'SOLD' && orderKey(unit.soldToOrder) === orderKey(order.id);
@@ -98,22 +123,25 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
 
   const submit = async () => {
     if (scanned.length !== totalNeeded) { setError(`Ainda falta validar ${totalNeeded - scanned.length} unidade(s).`); return; }
-    if (!window.confirm(isPickup ? 'Confirmar a entrega destas unidades ao cliente?' : 'Expedir estas unidades e marcar a encomenda como enviada?')) return;
+    if (!window.confirm(correcting ? 'Guardar a troca dos S/N? Os identificadores retirados voltam a ficar disponíveis e os novos ficam associados a esta encomenda.' : isPickup ? 'Confirmar a entrega destas unidades ao cliente?' : 'Expedir estas unidades e marcar a encomenda como enviada?')) return;
     setBusy(true); setError(null); setMessage(null);
     try {
-      await fulfillOrder(order.id, scanned.map((entry) => ({ serialNumber: entry.serial, itemIndex: entry.itemIndex })), tracking, packages.length ? packageTrackings : undefined);
-      setMessage(isPickup ? 'Levantamento concluído e S/N registados.' : 'Encomenda expedida, S/N e rastreio registados.');
+      const selections = scanned.map((entry) => ({ serialNumber: entry.serial, itemIndex: entry.itemIndex }));
+      if (correcting) await correctFulfillmentSerials(order.id, selections);
+      else await fulfillOrder(order.id, selections, tracking, packages.length ? packageTrackings : undefined);
+      setMessage(correcting ? 'S/N corrigidos. O inventário, o custo e o histórico foram atualizados.' : isPickup ? 'Levantamento concluído e S/N registados.' : 'Encomenda expedida, S/N e rastreio registados.');
       await onChanged();
+      if (correcting) setCorrecting(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível concluir a expedição.');
     } finally { setBusy(false); }
   };
 
   const registeredSerials = Math.max((order.serialNumbersUsed ?? []).length, inventoryItems.reduce((sum, item) => sum + (item.serialNumbers?.length ?? 0), 0));
-  if (completed) return <section className="fulfillment-complete"><CheckCircle2 /><div><strong>{isPickup ? 'Entrega validada' : 'Expedição concluída'}</strong><p>{totalNeeded ? `${registeredSerials} S/N registado(s)` : 'Artigo por pedido registado sem movimento de stock'}{order.trackingNumber ? ` · Rastreio ${order.trackingNumber}` : ''}</p></div></section>;
+  if (completed && !correcting) return <section className="fulfillment-complete"><CheckCircle2 /><div><strong>{isPickup ? 'Entrega validada' : 'Expedição concluída'}</strong><p>{totalNeeded ? `${registeredSerials} S/N registado(s)` : 'Artigo por pedido registado sem movimento de stock'}{order.trackingNumber ? ` · Rastreio ${order.trackingNumber}` : ''}</p></div>{totalNeeded > 0 && <button type="button" onClick={beginCorrection} disabled={!adminMutationsAvailable}>Corrigir S/N</button>}{error && <p className="form-error">{error}</p>}</section>;
 
   return <div className="fulfillment-panel">
-    <header><span><PackageCheck /></span><div><strong>{isPickup ? 'Validar levantamento' : 'Preparar e expedir'}</strong><p>{totalNeeded ? 'Leia o S/N de cada unidade. O sistema confirma produto, variante e lote.' : 'Este pedido contém apenas artigos por pedido e não necessita de S/N.'}</p></div><b>{scanned.length}/{totalNeeded}</b></header>
+    <header><span><PackageCheck /></span><div><strong>{correcting ? 'Corrigir S/N expedidos' : isPickup ? 'Validar levantamento' : 'Preparar e expedir'}</strong><p>{correcting ? 'Retire apenas o S/N incorreto e escolha o que foi realmente enviado. A quantidade vendida não muda.' : totalNeeded ? 'Leia o S/N de cada unidade. O sistema confirma produto, variante e lote.' : 'Este pedido contém apenas artigos por pedido e não necessita de S/N.'}</p></div><b>{scanned.length}/{totalNeeded}</b></header>
     <div className="fulfillment-progress"><i style={{ width: `${totalNeeded ? Math.min(100, scanned.length / totalNeeded * 100) : 0}%` }} /></div>
     {totalNeeded > 0 && <form className="serial-entry" onSubmit={(event) => { event.preventDefault(); addSerial(current); }}>
       <label><Barcode /> S/N da unidade<input ref={inputRef} value={current} onChange={(event) => setCurrent(event.target.value)} disabled={busy || !adminMutationsAvailable} placeholder="Leia ou escreva o S/N e carregue Enter" autoComplete="off" /></label>
@@ -137,8 +165,8 @@ export function OrderFulfillmentPanel({ order, lots, onChanged }: { order: Admin
         <div className="fulfillment-serials">{entries.map((entry) => <span key={`${entry.lotId}:${entry.unitId}`}>{entry.serial}<button type="button" onClick={() => setScanned((previous) => previous.filter((unit) => unit.lotId !== entry.lotId || unit.unitId !== entry.unitId))} aria-label={`Remover ${entry.serial}`}><Trash2 /></button></span>)}</div>
       </article>;
     })}</div>
-    {!isPickup && (packages.length ? packages.map((pkg, index) => <label className="fulfillment-tracking" key={pkg.id || index}><Truck /> Rastreio do volume {index + 1}<input value={packageTrackings[index] ?? ''} onChange={(event) => setPackageTrackings((previous) => previous.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} disabled={busy} placeholder="Opcional — pode adicionar agora" /></label>) : <label className="fulfillment-tracking"><Truck /> Número de rastreio <input value={tracking} onChange={(event) => setTracking(event.target.value)} disabled={busy} placeholder="Opcional — pode adicionar agora" /></label>)}
+    {!correcting && !isPickup && (packages.length ? packages.map((pkg, index) => <label className="fulfillment-tracking" key={pkg.id || index}><Truck /> Rastreio do volume {index + 1}<input value={packageTrackings[index] ?? ''} onChange={(event) => setPackageTrackings((previous) => previous.map((value, itemIndex) => itemIndex === index ? event.target.value : value))} disabled={busy} placeholder="Opcional — pode adicionar agora" /></label>) : <label className="fulfillment-tracking"><Truck /> Número de rastreio <input value={tracking} onChange={(event) => setTracking(event.target.value)} disabled={busy} placeholder="Opcional — pode adicionar agora" /></label>)}
     {error && <p className="form-error">{error}</p>}{message && <p className="form-success">{message}</p>}
-    <button className="fulfillment-submit" onClick={() => void submit()} disabled={busy || !adminMutationsAvailable || scanned.length !== totalNeeded}><PackageCheck /> {busy ? 'A processar…' : isPickup ? 'Confirmar entrega' : 'Expedir e marcar como enviado'}</button>
+    <div className="fulfillment-footer-actions">{correcting && <button className="fulfillment-cancel" type="button" onClick={() => { setCorrecting(false); setScanned([]); setError(null); }} disabled={busy}>Cancelar correção</button>}<button className="fulfillment-submit" onClick={() => void submit()} disabled={busy || !adminMutationsAvailable || scanned.length !== totalNeeded}><PackageCheck /> {busy ? 'A processar…' : correcting ? 'Guardar correção dos S/N' : isPickup ? 'Confirmar entrega' : 'Expedir e marcar como enviado'}</button></div>
   </div>;
 }

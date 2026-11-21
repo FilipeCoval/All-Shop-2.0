@@ -8,7 +8,7 @@ import { getAdminDb } from '../firebaseAdmin.js';
 import { projectPublicStock, type LotData, type ReservationData } from '../stockProjection.js';
 import { applyPartialCancellation, calculateCancellationRefund, validateCancellationItems } from '../orderCancellation.js';
 import { activeReservedQuantity, allocateSale, normalizeVariant, toMillis } from '../checkoutCore.js';
-import { applyFulfillmentToPackages, FulfillmentError, fulfillmentItemsFromPackages, fulfillmentUnitSerial, isOrderFulfillmentComplete, planStoredOrderFulfillment, type FulfillmentLot, type FulfillmentPackage } from '../orderFulfillment.js';
+import { applyFulfillmentToPackages, FulfillmentError, fulfillmentItemsFromPackages, fulfillmentUnitSerial, isOrderFulfillmentComplete, planStoredOrderFulfillment, prepareLotsForFulfillmentSerialCorrection, type FulfillmentLot, type FulfillmentPackage } from '../orderFulfillment.js';
 import { cancelledOrderDeletionIssue } from '../cancelledOrderDeletion.js';
 import { adminAuditEntry, adminRequestId } from '../adminAudit.js';
 import { notifyTelegramOfFulfilledPreorder } from '../../../services/server/preorder-telegram.js';
@@ -208,7 +208,7 @@ export default async function handler(request: VercelRequest, response: VercelRe
     const requestId = adminRequestId(request.headers);
     const orderId = cleanOrderId(request.body?.orderId);
     if (!orderId) throw new ApiError(400, 'A encomenda não foi indicada.');
-    if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'create_manual_order', 'fulfill_order', 'link_customer_account', 'confirm_preorder_deposit', 'confirm_preorder_balance', 'cancel_preorder', 'delete_cancelled_order'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
+    if (!['set_status', 'update_tracking', 'review_request', 'recover_telegram_order', 'create_manual_order', 'fulfill_order', 'correct_fulfillment_serials', 'link_customer_account', 'confirm_preorder_deposit', 'confirm_preorder_balance', 'cancel_preorder', 'delete_cancelled_order'].includes(action)) throw new ApiError(400, 'Ação de encomenda inválida.');
     const creatingOrder = action === 'recover_telegram_order' || action === 'create_manual_order';
 
     // Uma compra feita como convidado pode ter um e-mail de entrega diferente
@@ -608,11 +608,13 @@ export default async function handler(request: VercelRequest, response: VercelRe
         return withDocument({ ...order, ...update, id: orderId });
       }
 
-      if (action === 'fulfill_order') {
+      if (action === 'fulfill_order' || action === 'correct_fulfillment_serials') {
+        const correctingSerials = action === 'correct_fulfillment_serials';
         // Se a primeira resposta se perder depois do commit, a repetição do mesmo
         // pedido deve confirmar o resultado já guardado, não apresentar um erro.
-        if (isOrderFulfillmentComplete(order)) return withDocument({ ...order, id: orderId }, false);
-        if (preorder?.kind === 'PREORDER' && preorder.status !== 'BALANCE_RECEIVED') throw new ApiError(409, 'Registe primeiro o sinal e o saldo da pré-reserva antes de expedir.');
+        if (!correctingSerials && isOrderFulfillmentComplete(order)) return withDocument({ ...order, id: orderId }, false);
+        if (correctingSerials && !isOrderFulfillmentComplete(order)) throw new ApiError(409, 'Só é possível corrigir S/N depois de concluir a expedição ou entrega.');
+        if (!correctingSerials && preorder?.kind === 'PREORDER' && preorder.status !== 'BALANCE_RECEIVED') throw new ApiError(409, 'Registe primeiro o sinal e o saldo da pré-reserva antes de expedir.');
         if (['Cancelado', 'Devolvido'].includes(String(order.status ?? ''))) throw new ApiError(409, 'Uma encomenda cancelada ou devolvida não pode ser expedida.');
         const rawSelections: unknown[] = Array.isArray(request.body?.selections) ? request.body.selections : [];
         const selections = rawSelections.map((raw) => {
@@ -671,8 +673,11 @@ export default async function handler(request: VercelRequest, response: VercelRe
           };
         }));
         const isPickup = order.shippingInfo?.deliveryMethod === 'Pickup' || order.status === 'Levantamento em Loja';
-        const userRef = isPickup && typeof order.userId === 'string' && order.userId && !order.pointsAwarded ? database.collection('users').doc(order.userId) : null;
+        const userRef = !correctingSerials && isPickup && typeof order.userId === 'string' && order.userId && !order.pointsAwarded ? database.collection('users').doc(order.userId) : null;
         const userSnapshot = userRef ? await transaction.get(userRef) : null;
+        const preparedCorrection = correctingSerials
+          ? prepareLotsForFulfillmentSerialCorrection(contexts.flatMap((context) => context.lots), serialNumbers)
+          : { lots: contexts.flatMap((context) => context.lots), movedUnits: [] };
         let plan: { updatedLots: FulfillmentLot[]; itemUnitIds: string[][]; itemSerials: string[][]; serialNumbers: string[]; totalProductCost: number };
         if (!inventoryItems.length) {
           plan = { updatedLots: [], itemUnitIds: orderItems.map(() => []), itemSerials: orderItems.map(() => []), serialNumbers: [], totalProductCost: 0 };
@@ -681,11 +686,11 @@ export default async function handler(request: VercelRequest, response: VercelRe
             plan = planStoredOrderFulfillment({
               orderId,
               orderItems,
-              lots: contexts.flatMap((context) => context.lots),
+              lots: preparedCorrection.lots,
               serialNumbers,
               ...(selections.length ? { serialItemIndexes: selections.map((selection) => selection.itemIndex) } : {}),
-              ...(typeof order.stockDeducted === 'boolean' ? { stockDeducted: order.stockDeducted } : {}),
-              ...(order.stockReconciliationRequired === true ? { stockReconciliationRequired: true } : {}),
+              ...(correctingSerials ? { stockDeducted: true } : typeof order.stockDeducted === 'boolean' ? { stockDeducted: order.stockDeducted } : {}),
+              ...(!correctingSerials && order.stockReconciliationRequired === true ? { stockReconciliationRequired: true } : {}),
               customerName: text(order.shippingInfo?.name, 140),
               customerEmail: text(order.shippingInfo?.email, 180).toLowerCase(),
               fulfilledAt: now,
@@ -706,19 +711,19 @@ export default async function handler(request: VercelRequest, response: VercelRe
             const originalLot = context.lots.find((item) => item.id === lot.id);
             if (originalLot && updatedById.has(lot.id)) {
               transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
-                action: 'fulfill_order_stock',
+                action: correctingSerials ? 'correct_fulfillment_serials_stock' : 'fulfill_order_stock',
                 actor: { uid: admin.uid, email: admin.email },
                 target: { type: 'Lote', id: lot.id, label: String(lot.name || `Lote ${lot.id}`) },
                 before: originalLot,
                 after: lot,
-                summary: `Stock abatido ao preparar a encomenda #${orderId}.`,
+                summary: correctingSerials ? `S/N corrigidos na encomenda #${orderId}.` : `Stock abatido ao preparar a encomenda #${orderId}.`,
                 details: { orderId, productId: context.productId },
                 requestId,
               }));
             }
           }
           const preorderProductLines = preorder?.kind === 'PREORDER' ? preorderLines(preorder).filter((line) => line.productId === context.productId) : [];
-          const releaseReservation = preorder?.kind === 'PREORDER' && preorder.capacityHeld === true && preorderProductLines.length > 0;
+          const releaseReservation = !correctingSerials && preorder?.kind === 'PREORDER' && preorder.capacityHeld === true && preorderProductLines.length > 0;
           const reservationsForProjection = releaseReservation
             ? context.reservations.filter((reservation: any) => String(reservation.id ?? '') !== preorderReservationId(orderId) && reservation.orderId !== orderId && reservation.ownerKey !== `preorder:${orderId}`)
             : context.reservations;
@@ -734,9 +739,9 @@ export default async function handler(request: VercelRequest, response: VercelRe
           transaction.update(context.productRef, productUpdate);
         }
 
-        const status = isPickup ? 'Entregue' : 'Enviado';
-        const requestedTrackingNumber = isPickup ? '' : text(request.body?.trackingNumber, 150);
-        const packageTrackingNumbers = Array.isArray(request.body?.packageTrackingNumbers)
+        const status = correctingSerials ? String(order.status ?? (isPickup ? 'Entregue' : 'Enviado')) : isPickup ? 'Entregue' : 'Enviado';
+        const requestedTrackingNumber = correctingSerials ? text(order.trackingNumber, 150) : isPickup ? '' : text(request.body?.trackingNumber, 150);
+        const packageTrackingNumbers = !correctingSerials && Array.isArray(request.body?.packageTrackingNumbers)
           ? request.body.packageTrackingNumbers.slice(0, orderPackages.length).map((value: unknown) => isPickup ? '' : text(value, 150))
           : undefined;
         const updatedItems = orderItems.map((item, index) => ({
@@ -759,17 +764,16 @@ export default async function handler(request: VercelRequest, response: VercelRe
           ...(orderPackages.length ? { packages: updatedPackages } : { items: updatedItems }),
           status,
           fulfillmentStatus: 'COMPLETED',
-          fulfilledAt: now,
-          fulfilledBy: admin.email,
+          ...(correctingSerials ? { serialsCorrectedAt: now, serialsCorrectedBy: admin.email } : { fulfilledAt: now, fulfilledBy: admin.email }),
           serialNumbersUsed: plan.serialNumbers,
           totalProductCost: Math.round((plan.totalProductCost + customProductCost) * 100) / 100,
           trackingNumber: trackingNumber || null,
           stockDeducted: true,
           stockReconciliationRequired: false,
           updatedAt: FieldValue.serverTimestamp(),
-          statusHistory: FieldValue.arrayUnion({ status, date: now, notes: inventoryItems.length ? (isPickup ? 'Levantamento validado por S/N na All-Shop 3.0' : `Expedição validada por S/N na All-Shop 3.0${trackingNumber ? ` · Rastreio: ${trackingNumber}` : ''}`) : (isPickup ? 'Levantamento de artigo por pedido confirmado' : `Artigo por pedido expedido${trackingNumber ? ` · Rastreio: ${trackingNumber}` : ''}`) }),
+          statusHistory: FieldValue.arrayUnion({ status: correctingSerials ? 'S/N corrigidos' : status, date: now, notes: correctingSerials ? 'Identificadores da expedição corrigidos sem alterar a quantidade total vendida.' : inventoryItems.length ? (isPickup ? 'Levantamento validado por S/N na All-Shop 3.0' : `Expedição validada por S/N na All-Shop 3.0${trackingNumber ? ` · Rastreio: ${trackingNumber}` : ''}`) : (isPickup ? 'Levantamento de artigo por pedido confirmado' : `Artigo por pedido expedido${trackingNumber ? ` · Rastreio: ${trackingNumber}` : ''}`) }),
         };
-        if (preorder?.kind === 'PREORDER') update.preorder = { ...preorder, status: 'FULFILLED', capacityHeld: false, capacityReleasedAt: now };
+        if (!correctingSerials && preorder?.kind === 'PREORDER') update.preorder = { ...preorder, status: 'FULFILLED', capacityHeld: false, capacityReleasedAt: now };
         if (userSnapshot?.exists && userRef) {
           const user = userSnapshot.data() ?? {};
           const multiplier = user.tier === 'Ouro' ? 1.5 : user.tier === 'Prata' ? 1.25 : 1;
@@ -778,15 +782,15 @@ export default async function handler(request: VercelRequest, response: VercelRe
           update.pointsAwarded = true;
         }
         transaction.update(orderRef, update);
-        if (inventoryItems.length) transaction.set(database.collection('stock_movements').doc(), { type: 'SALE', orderId, items: updatedItems.filter((item: DocumentData) => item.isCustom !== true).map((item: DocumentData) => ({ productId: item.productId, quantity: item.quantity, unitIds: item.unitIds, serialNumbers: item.serialNumbers })), totalValue: Number(order.total ?? 0), createdAt: now, createdBy: admin.email });
+        if (inventoryItems.length) transaction.set(database.collection('stock_movements').doc(), { type: correctingSerials ? 'SERIAL_CORRECTION' : 'SALE', orderId, items: updatedItems.filter((item: DocumentData) => item.isCustom !== true).map((item: DocumentData) => ({ productId: item.productId, quantity: item.quantity, unitIds: item.unitIds, serialNumbers: item.serialNumbers })), ...(correctingSerials ? { previousSerialNumbers: Array.isArray(order.serialNumbersUsed) ? order.serialNumbersUsed : [], movedUnitIdentities: preparedCorrection.movedUnits } : { totalValue: Number(order.total ?? 0) }), createdAt: now, createdBy: admin.email });
         transaction.set(database.collection('admin_audit_log').doc(), adminAuditEntry({
           action,
           actor: { uid: admin.uid, email: admin.email },
           target: { type: 'Encomenda', id: orderId, label: `#${orderId}` },
           before: order,
           after: { ...order, ...update, statusHistory: order.statusHistory },
-          summary: isPickup ? 'Levantamento validado.' : 'Expedição confirmada.',
-          details: { serialNumbers: plan.serialNumbers.join(', ') || 'Sem S/N', trackingNumber: trackingNumber || '—' },
+          summary: correctingSerials ? 'S/N da expedição corrigidos.' : isPickup ? 'Levantamento validado.' : 'Expedição confirmada.',
+          details: correctingSerials ? { previousSerialNumbers: (Array.isArray(order.serialNumbersUsed) ? order.serialNumbersUsed : []).join(', ') || 'Sem S/N', serialNumbers: plan.serialNumbers.join(', ') || 'Sem S/N', movedUnitIdentities: preparedCorrection.movedUnits } : { serialNumbers: plan.serialNumbers.join(', ') || 'Sem S/N', trackingNumber: trackingNumber || '—' },
           requestId,
         }));
         return withDocument({ ...order, ...update, id: orderId });

@@ -8,6 +8,7 @@ import {
   matchingFulfillmentLots,
   planOrderFulfillment,
   planStoredOrderFulfillment,
+  prepareLotsForFulfillmentSerialCorrection,
 } from '../src/server/orderFulfillment.js';
 import { isGeneratedInternalUnit } from '../src/domain/fulfillmentCapacity.js';
 
@@ -131,6 +132,47 @@ const fulfillmentAlongsideUnrelatedLegacyMismatch = planStoredOrderFulfillment({
 assert.equal(fulfillmentAlongsideUnrelatedLegacyMismatch.updatedLots.find((lot) => lot.id === 'L-CLEAN-PREORDER-STOCK')?.quantitySold, 2);
 assert.equal(fulfillmentAlongsideUnrelatedLegacyMismatch.updatedLots.find((lot) => lot.id === 'L-CLEAN-PREORDER-STOCK')?.units?.find((unit) => unit.id === 'INT-PREORDER')?.soldToOrder, 'AS-PREORDER-CLEAN');
 assert.equal(fulfillmentAlongsideUnrelatedLegacyMismatch.updatedLots.find((lot) => lot.id === 'L-LEGACY-MISMATCH')?.quantitySold, 1, 'uma divergência histórica não relacionada deve permanecer inalterada');
+
+const preparedSerialCorrection = prepareLotsForFulfillmentSerialCorrection([
+  {
+    id: 'L-OLD-EXCESS-IDENTITY', publicProductId: 17, variant: 'Preto', purchaseDate: '2026-03-01',
+    quantityBought: 1, quantitySold: 1,
+    units: [
+      { id: 'SN-OLD-SALE', status: 'SOLD', soldToOrder: 'AS-OLD' },
+      { id: 'SN-ACTUALLY-SENT', status: 'AVAILABLE' },
+    ],
+  },
+  {
+    id: 'L-NEW-MISSING-IDENTITY', publicProductId: 17, variant: 'Preto', purchaseDate: '2026-11-20',
+    quantityBought: 1, quantitySold: 0, units: [],
+  },
+], ['SN-ACTUALLY-SENT']);
+assert.deepEqual(preparedSerialCorrection.movedUnits, [{ serialNumber: 'SN-ACTUALLY-SENT', fromLotId: 'L-OLD-EXCESS-IDENTITY', toLotId: 'L-NEW-MISSING-IDENTITY' }]);
+assert.deepEqual(preparedSerialCorrection.lots[0].units?.map((unit) => unit.id), ['SN-OLD-SALE']);
+assert.deepEqual(preparedSerialCorrection.lots[1].units?.map((unit) => unit.id), ['SN-ACTUALLY-SENT']);
+
+const correctedShipment = planStoredOrderFulfillment({
+  orderId: 'AS-CORRECT',
+  orderItems: [{ productId: 17, quantity: 2, selectedVariant: 'Preto' }],
+  lots: [
+    ...preparedSerialCorrection.lots,
+    {
+      id: 'L-PREVIOUS-SELECTION', publicProductId: 17, variant: 'Preto', purchaseDate: '2026-10-20',
+      quantityBought: 2, quantitySold: 2,
+      units: [
+        { id: 'SN-KEEP', status: 'SOLD', soldToOrder: 'AS-CORRECT' },
+        { id: 'SN-RETURN-TO-STOCK', status: 'SOLD', soldToOrder: 'AS-CORRECT' },
+      ],
+    },
+  ],
+  serialNumbers: ['SN-KEEP', 'SN-ACTUALLY-SENT'],
+  stockDeducted: true,
+  fulfilledAt: '2026-11-21T16:00:00Z',
+});
+assert.equal(correctedShipment.updatedLots.find((lot) => lot.id === 'L-PREVIOUS-SELECTION')?.quantitySold, 1);
+assert.equal(correctedShipment.updatedLots.find((lot) => lot.id === 'L-PREVIOUS-SELECTION')?.units?.find((unit) => unit.id === 'SN-RETURN-TO-STOCK')?.status, 'AVAILABLE');
+assert.equal(correctedShipment.updatedLots.find((lot) => lot.id === 'L-NEW-MISSING-IDENTITY')?.quantitySold, 1);
+assert.equal(correctedShipment.updatedLots.find((lot) => lot.id === 'L-NEW-MISSING-IDENTITY')?.units?.find((unit) => unit.id === 'SN-ACTUALLY-SENT')?.soldToOrder, 'AS-CORRECT');
 
 assert.throws(
   () => planStoredOrderFulfillment({

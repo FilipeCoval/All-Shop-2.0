@@ -2,6 +2,13 @@ import { TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID } from '../../constants.js';
 
 const text = (value: unknown, max = 500) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const money = (value: unknown) => Math.max(0, Number(value ?? 0) || 0).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' });
+const deliveryAddress = (shipping: Record<string, any>) => shipping.deliveryMethod === 'Pickup'
+  ? 'Levantamento em loja'
+  : [
+      [text(shipping.street, 180), text(shipping.doorNumber, 40)].filter(Boolean).join(', '),
+      text(shipping.addressExtra, 120),
+      [text(shipping.zip, 30), text(shipping.city, 120)].filter(Boolean).join(' '),
+    ].filter(Boolean).join('\n') || 'Morada não indicada';
 
 /**
  * Alerts the operations chat after the preorder has been explicitly confirmed
@@ -22,11 +29,14 @@ export async function notifyTelegramOfConfirmedPreorder(order: Record<string, an
     : '• Artigo não indicado';
   const shipping = order.shippingInfo && typeof order.shippingInfo === 'object' ? order.shippingInfo : {};
   const preorder = order.preorder && typeof order.preorder === 'object' ? order.preorder : {};
+  const address = deliveryAddress(shipping);
   const message = [
     preorder.messagePending ? '🟠 PRÉ-RESERVA INICIADA · MENSAGEM POR CONFIRMAR' : '🟠 PRÉ-RESERVA · MENSAGEM CONFIRMADA',
     '',
     `Ref: #${text(order.id, 80).replace(/^#/, '')}`,
     `Cliente: ${text(shipping.name, 120) || 'Cliente'} (${text(shipping.phone, 50) || 'sem telefone'})`,
+    `Email: ${text(shipping.email, 180) || 'não indicado'}`,
+    `Morada: ${address}`,
     `Pagamento do sinal: ${text(shipping.paymentMethod, 80) || 'não indicado'}`,
     `Entrega: ${shipping.deliveryMethod === 'Pickup' ? 'Levantamento em loja' : 'Envio'}`,
     '',
@@ -71,11 +81,14 @@ export async function notifyTelegramOfFulfilledPreorder(order: Record<string, an
   const shipping = order.shippingInfo && typeof order.shippingInfo === 'object' ? order.shippingInfo : {};
   const orderId = text(order.id, 80).replace(/^#/, '');
   const pickup = shipping.deliveryMethod === 'Pickup';
+  const address = deliveryAddress(shipping);
   const message = [
     '✅ PRÉ-RESERVA CONVERTIDA EM ENCOMENDA',
     '',
     `Ref: #${orderId}`,
     `Cliente: ${text(shipping.name, 120) || 'Cliente'} (${text(shipping.phone, 50) || 'sem telefone'})`,
+    `Email: ${text(shipping.email, 180) || 'não indicado'}`,
+    `Morada: ${address}`,
     `Estado: ${pickup ? 'Pronta para levantamento' : 'Enviada'}`,
     order.trackingNumber ? `Rastreio: ${text(order.trackingNumber, 150)}` : '',
     '',

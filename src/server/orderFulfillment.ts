@@ -22,6 +22,8 @@ export type FulfillmentLot = {
   quantityBought?: number;
   quantitySold?: number;
   purchasePrice?: number;
+  purchaseDate?: string;
+  status?: string;
   units?: FulfillmentUnit[];
   [key: string]: unknown;
 };
@@ -85,6 +87,39 @@ export const matchingFulfillmentLots = (lots: FulfillmentLot[], productId: numbe
   const exact = productLots.filter((lot) => normalizeVariant(lot.variant) === variantKey);
   return exact.length ? exact : generic;
 };
+
+export function prepareLotsForFulfillmentSerialCorrection(lots: FulfillmentLot[], serialNumbers: string[]) {
+  const prepared = lots.map((lot) => ({ ...lot, units: (lot.units ?? []).map((unit) => ({ ...unit })) }));
+  const movedUnits: Array<{ serialNumber: string; fromLotId: string; toLotId: string }> = [];
+  for (const rawSerial of serialNumbers) {
+    const serial = cleanSerial(rawSerial);
+    const source = prepared.find((lot) => (lot.units ?? []).some((unit) => fulfillmentUnitAliases(unit).includes(serial)));
+    if (!source) continue;
+    const sourceUnits = source.units ?? [];
+    const unitIndex = sourceUnits.findIndex((unit) => fulfillmentUnitAliases(unit).includes(serial));
+    const unit = sourceUnits[unitIndex];
+    const sourceQuantity = Math.max(0, Math.trunc(Number(source.quantityBought ?? 0)));
+    if (!unit || unit.status !== 'AVAILABLE' || sourceUnits.length <= sourceQuantity) continue;
+
+    const sourceVariant = normalizeVariant(source.variant);
+    const candidates = prepared.filter((lot) => lot.id !== source.id
+      && Number(lot.publicProductId) === Number(source.publicProductId)
+      && normalizeVariant(lot.variant) === sourceVariant
+      && String(lot.status ?? '').toUpperCase() !== 'IN_TRANSIT'
+      && (lot.units ?? []).length < Math.max(0, Math.trunc(Number(lot.quantityBought ?? 0)))
+      && Number(lot.quantitySold ?? 0) < Number(lot.quantityBought ?? 0));
+    const target = candidates.sort((left, right) => {
+      const rightDate = new Date(String(right.purchaseDate ?? '')).getTime() || 0;
+      const leftDate = new Date(String(left.purchaseDate ?? '')).getTime() || 0;
+      return rightDate - leftDate;
+    })[0];
+    if (!target) continue;
+    source.units = sourceUnits.filter((_candidate, index) => index !== unitIndex);
+    target.units = [...(target.units ?? []), unit];
+    movedUnits.push({ serialNumber: fulfillmentUnitSerial(unit) || serial, fromLotId: source.id, toLotId: target.id });
+  }
+  return { lots: prepared, movedUnits };
+}
 
 export const fulfillmentItemsFromPackages = (packages: FulfillmentPackage[]) => packages.flatMap((pkg) =>
   Array.isArray(pkg.items) ? pkg.items.filter((item): item is FulfillmentItem => Boolean(item && typeof item === 'object')) : [],

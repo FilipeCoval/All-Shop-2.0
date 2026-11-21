@@ -49,6 +49,7 @@ export const createManualOrder = (payload: Record<string, unknown>) => callAdmin
 export const linkOrderToCustomerAccount = (orderId: string, accountEmail: string) => callAdminApi(adminApiPath('orders'), { action: 'link_customer_account', orderId, accountEmail });
 export const updateOrderTracking = (orderId: string, trackingNumber: string, packageTrackingNumbers?: string[]) => callAdminApi(adminApiPath('orders'), { action: 'update_tracking', orderId, trackingNumber, ...(packageTrackingNumbers ? { packageTrackingNumbers } : {}) }, { retryTransient: true });
 export const fulfillOrder = (orderId: string, selections: Array<{ serialNumber: string; itemIndex: number }>, trackingNumber: string, packageTrackingNumbers?: string[]) => callAdminApi(adminApiPath('orders'), { action: 'fulfill_order', orderId, selections, trackingNumber, ...(packageTrackingNumbers ? { packageTrackingNumbers } : {}) });
+export const correctFulfillmentSerials = (orderId: string, selections: Array<{ serialNumber: string; itemIndex: number }>) => callAdminApi(adminApiPath('orders'), { action: 'correct_fulfillment_serials', orderId, selections });
 export const confirmPreorderDeposit = (orderId: string) => callAdminApi(adminApiPath('orders'), { action: 'confirm_preorder_deposit', orderId });
 export const confirmPreorderBalance = (orderId: string) => callAdminApi(adminApiPath('orders'), { action: 'confirm_preorder_balance', orderId });
 export const cancelPreorder = (orderId: string) => callAdminApi(adminApiPath('orders'), { action: 'cancel_preorder', orderId });
