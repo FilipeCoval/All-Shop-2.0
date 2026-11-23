@@ -237,8 +237,10 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
   };
 
   const handleShare = async () => {
-    // Usar SHARE_URL para o link de partilha
-    const shareUrl = `${SHARE_URL}/product/${product.id}`;
+    // O preço no endereço força as aplicações de mensagens a atualizar a pré-visualização
+    // quando uma promoção começa, termina ou o preço é alterado.
+    const shareVersion = Math.round(Number(currentPrice) * 100);
+    const shareUrl = `${SHARE_URL}/product/${product.id}?v=${shareVersion}`;
     
     const shareData: ShareData = {
       title: product.name,

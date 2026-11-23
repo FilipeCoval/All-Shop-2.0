@@ -1,5 +1,6 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { effectiveProductPrice } from '../src/domain/productPricing.js';
 
 // --- CONSTANTES ---
 const STORE_NAME = "All-Shop";
@@ -14,11 +15,15 @@ const HOME_BANNER = "https://images.unsplash.com/photo-1593359677879-a4bb92f829d
 // Helpers para Firestore REST
 const parseFirestoreField = (field: any) => {
     if (!field) return null;
+    if ('nullValue' in field) return null;
+    if ('booleanValue' in field) return field.booleanValue;
     if (field.stringValue) return field.stringValue;
     if (field.doubleValue) return parseFloat(field.doubleValue);
     if (field.integerValue) return parseInt(field.integerValue);
-    if (field.arrayValue && field.arrayValue.values) {
-        return field.arrayValue.values.map((v: any) => parseFirestoreField(v));
+    if (field.timestampValue) return field.timestampValue;
+    if (field.mapValue) return parseFirestoreDoc(field.mapValue.fields || {});
+    if (field.arrayValue) {
+        return (field.arrayValue.values || []).map((v: any) => parseFirestoreField(v));
     }
     return null;
 };
@@ -52,6 +57,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let seoTitle = "";
   let description = "";
   let finalImage = "";
+  const shareVersion = typeof req.query.v === 'string' ? req.query.v.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 40) : '';
+  const canonicalShareUrl = `${SHARE_URL}/${productId === 'home' ? 'home' : `product/${productId}`}${shareVersion ? `?v=${shareVersion}` : ''}`;
 
   // --- LÓGICA ESPECIAL: HOME / LOJA / ALLPOINTS ---
   if (productId === 'home') {
@@ -96,7 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       // Preparação Visual Produto
-      const priceVal = product.price || 0;
+      const priceVal = effectiveProductPrice(product);
       const formattedPrice = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(priceVal);
       seoTitle = `${formattedPrice} | ${product.name}`;
       description = `⭐️ 4.9/5 • ${product.category}\n🔥 OFERTA RELÂMPAGO! Stock Nacional 🇵🇹\n🚚 Entrega 24h • Garantia 3 Anos\n👇 Toque aqui para ver detalhes!`;
@@ -119,7 +126,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     <!-- Open Graph / Facebook / WhatsApp -->
     <meta property="og:type" content="website">
-    <meta property="og:url" content="${SHARE_URL}/${productId === 'home' ? 'home' : `product/${productId}`}">
+    <meta property="og:url" content="${canonicalShareUrl}">
     <meta property="og:title" content="${seoTitle}">
     <meta property="og:description" content="${description}">
     <meta property="og:image" content="${finalImage}">
@@ -130,7 +137,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     <!-- Twitter Large Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:domain" content="${SHARE_URL.replace('https://', '')}">
-    <meta name="twitter:url" content="${SHARE_URL}/${productId === 'home' ? 'home' : `product/${productId}`}">
+    <meta name="twitter:url" content="${canonicalShareUrl}">
     <meta name="twitter:title" content="${seoTitle}">
     <meta name="twitter:description" content="${description}">
     <meta name="twitter:image" content="${finalImage}">
