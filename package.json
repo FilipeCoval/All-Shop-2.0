@@ -26,6 +26,7 @@
     "test:availability": "tsx tests/productAvailability.test.ts",
     "test:presentation": "tsx tests/productPresentation.test.ts",
     "test:pricing": "tsx tests/productPricing.test.ts",
+    "test:filament-request": "tsx tests/filamentRequest.test.ts",
     "test:catalog-content": "tsx tests/catalogContentHealth.test.ts",
     "test:cashback": "tsx tests/cashbackReceipt.test.ts",
     "test:support": "tsx tests/supportConversation.test.ts",
@@ -37,7 +38,7 @@
     "test:cancelled-order-deletion": "tsx tests/cancelledOrderDeletion.test.ts",
     "test:shipping-label": "tsx tests/shippingLabel.test.ts",
     "test:admin-audit": "tsx tests/adminAudit.test.ts",
-    "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock && npm run test:identity && npm run test:admin-request && npm run test:admin-error && npm run test:admin-routing && npm run test:inventory-identity && npm run test:availability && npm run test:presentation && npm run test:pricing && npm run test:catalog-content && npm run test:cashback && npm run test:support && npm run test:clients && npm run test:reports && npm run test:pwa && npm run test:preorder && npm run test:cancelled-order-deletion && npm run test:shipping-label && npm run test:admin-audit",
+    "test:regression": "npm run test:checkout && npm run test:fulfillment && npm run test:cancellation && npm run test:stock && npm run test:identity && npm run test:admin-request && npm run test:admin-error && npm run test:admin-routing && npm run test:inventory-identity && npm run test:availability && npm run test:presentation && npm run test:pricing && npm run test:filament-request && npm run test:catalog-content && npm run test:cashback && npm run test:support && npm run test:clients && npm run test:reports && npm run test:pwa && npm run test:preorder && npm run test:cancelled-order-deletion && npm run test:shipping-label && npm run test:admin-audit",
     "check": "npm run lint && npm run test:regression && npm run build && npm run build:admin"
   },
   "dependencies": {

@@ -14,6 +14,7 @@ import { doc, updateDoc, increment, arrayUnion, collection, addDoc } from 'fireb
 import { effectiveProductAvailability } from '../src/domain/productAvailability';
 import { formatPreorderDate, getPreorderOffer, getPreorderRemainingForVariant } from '../src/domain/preorder';
 import PreorderModal from './PreorderModal';
+import FilamentRequestPanel from './FilamentRequestPanel';
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('pt-PT', {
     style: 'currency',
@@ -553,6 +554,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                   {selectedVariant && <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-950 dark:border-orange-900/70 dark:bg-orange-950/25 dark:text-orange-100"><strong className="block">Versão escolhida: {selectedVariant.name}</strong><span className="mt-1 block text-xs leading-relaxed text-orange-800 dark:text-orange-200/80">{variantDescription || 'Esta versão ficará identificada no carrinho, na encomenda e na fatura.'}</span>{variantFeatures.length > 0 && <ul className="mt-3 grid gap-1.5 text-xs text-orange-900 dark:text-orange-100 sm:grid-cols-2">{variantFeatures.map((feature, index) => <li key={`${feature}-${index}`} className="flex items-start gap-1.5"><Check size={13} className="mt-0.5 shrink-0" />{feature}</li>)}</ul>}</div>}
                 </div>
               )}
+
+              <FilamentRequestPanel product={product} currentUser={currentUser} />
 
               <div className="mt-7">
                 {isUnavailable && canPreorder && preorderOffer ? (
