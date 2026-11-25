@@ -34,7 +34,7 @@
     "test:reports": "tsx tests/reportTimeline.test.ts",
     "test:pwa": "tsx tests/pwaConfig.test.ts",
     "test:checkout": "tsx tests/checkoutCore.test.ts",
-    "test:preorder": "tsx tests/preorderOffer.test.ts && tsx tests/preorderFlow.test.ts",
+    "test:preorder": "tsx tests/preorderOffer.test.ts && tsx tests/preorderFlow.test.ts && tsx tests/preorderRouting.test.ts",
     "test:cancelled-order-deletion": "tsx tests/cancelledOrderDeletion.test.ts",
     "test:shipping-label": "tsx tests/shippingLabel.test.ts",
     "test:admin-audit": "tsx tests/adminAudit.test.ts",
