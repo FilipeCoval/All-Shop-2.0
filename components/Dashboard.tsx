@@ -1015,173 +1015,97 @@ const Dashboard: React.FC<DashboardProps> = ({ user, isAdmin }) => {
   };
 
   const handleSyncPublicStock = async () => {
-    if (publicProductsList.length === 0) {
-      alert("A lista de produtos públicos está vazia ou ainda a carregar.");
-      return;
-    }
-    if (!window.confirm("Isto irá recalculado o stock do inventário (Lotes) para coincidir com os valores reais da loja pública (que é a sua fonte de verdade).\n\nContinuar?")) return;
-    
-    console.log(`[Sync] Iniciando sincronização reversa: Loja Pública -> Inventário para ${publicProductsList.length} produtos...`);
+    if (!window.confirm(
+      'Os lotes/unidades são a fonte de verdade.\n\n' +
+      'Esta ação atualiza apenas o stock disponível mostrado no Catálogo (físico − reservas ativas). ' +
+      'Não altera quantidades compradas, custos, S/N, vendas nem lotes.\n\nContinuar?',
+    )) return;
+
     setIsSyncingStock(true);
     try {
-      const batches = [];
-      let currentBatch = writeBatch(modularDb);
-      let operationsInBatch = 0;
-      let totalUpdated = 0;
-      
-      const normalizeVName = (n: string) => String(n || '').replace(/\s+/g, ' ').trim().toLowerCase();
-
-      // Buscar IDs de produtos públicos para re-fetch
-      const publicIds = publicProductsList.map(p => p.id);
-
-      for (const publicId of publicIds) {
-        // Fetch fresh product
-        const pubSnap = await getDoc(doc(modularDb, 'products_public', String(publicId)));
-        if (!pubSnap.exists()) continue;
-        const pub = { ...pubSnap.data(), id: publicId } as Product;
-        
-        // Obter lotes de inventário deste produto
-        const inventoryQuery = query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', Number(pub.id)));
-        const inventorySnap = await getDocs(inventoryQuery);
-        const lots = inventorySnap.docs.map(d => ({ id: d.id, ref: d.ref, data: d.data() as InventoryProduct }));
-
-        if (pub.variants && pub.variants.length > 0) {
-          // O produto tem variantes configuradas no catálogo público
-          for (const variant of pub.variants) {
-            const vName = variant.name;
-            const targetStock = Number(variant.stock) || 0;
-            
-            // Encontrar lotes que têm esta variante
-            const matchingLots = lots.filter(l => normalizeVName(l.data.variant || '') === normalizeVName(vName));
-            
-            if (matchingLots.length > 0) {
-              // Ajustar o primeiro lote para ter o stock desejado (+ as unidades vendidas)
-              // E definir os restantes lotes adicionais/duplicados para quantityBought = quantitySold (stock = 0)
-              const firstLot = matchingLots[0];
-              const sold = Number(firstLot.data.quantitySold) || 0;
-              const newBought = targetStock + sold;
-              
-              if (firstLot.data.quantityBought !== newBought) {
-                currentBatch.update(firstLot.ref, { quantityBought: newBought });
-                operationsInBatch++;
-                totalUpdated++;
-              }
-              
-              // Definir restantes para stock 0
-              for (let i = 1; i < matchingLots.length; i++) {
-                const otherLot = matchingLots[i];
-                const otherSold = Number(otherLot.data.quantitySold) || 0;
-                if (otherLot.data.quantityBought !== otherSold) {
-                  currentBatch.update(otherLot.ref, { quantityBought: otherSold });
-                  operationsInBatch++;
-                  totalUpdated++;
-                }
-              }
-            } else {
-              // Se não existe lote para esta variante, criar um novo
-              const newDocRef = doc(collection(modularDb, 'products_inventory'));
-              const newLot: Omit<InventoryProduct, 'id'> = {
-                publicProductId: pub.id,
-                variant: vName,
-                quantityBought: targetStock,
-                quantitySold: 0,
-                name: pub.name,
-                category: pub.category || '',
-                purchasePrice: 0,
-                salePrice: variant.price || pub.price || 0,
-                purchaseDate: new Date().toISOString().split('T')[0],
-                description: `Lote automático sincronizado para variante ${vName}`,
-                status: targetStock > 0 ? 'IN_STOCK' : 'SOLD',
-                cashbackValue: 0,
-                cashbackStatus: 'NONE',
-              };
-              currentBatch.set(newDocRef, newLot);
-              operationsInBatch++;
-              totalUpdated++;
-            }
-          }
-          
-          // Tratar lotes de variantes que já não existem no catálogo público para este produto
-          const publicVariantNames = pub.variants.map((v: any) => normalizeVName(v.name));
-          const obsoleteLots = lots.filter(l => l.data.variant && !publicVariantNames.includes(normalizeVName(l.data.variant)));
-          for (const obs of obsoleteLots) {
-            const sold = Number(obs.data.quantitySold) || 0;
-            if (obs.data.quantityBought !== sold) {
-              currentBatch.update(obs.ref, { quantityBought: sold });
-              operationsInBatch++;
-              totalUpdated++;
-            }
-          }
-        } else {
-          // O produto não tem variantes
-          const targetStock = Number(pub.stock) || 0;
-          
-          if (lots.length > 0) {
-            const firstLot = lots[0];
-            const sold = Number(firstLot.data.quantitySold) || 0;
-            const newBought = targetStock + sold;
-            
-            if (firstLot.data.quantityBought !== newBought) {
-              currentBatch.update(firstLot.ref, { quantityBought: newBought });
-              operationsInBatch++;
-              totalUpdated++;
-            }
-            
-            // Definir restantes lotes para stock 0
-            for (let i = 1; i < lots.length; i++) {
-              const otherLot = lots[i];
-              const otherSold = Number(otherLot.data.quantitySold) || 0;
-              if (otherLot.data.quantityBought !== otherSold) {
-                currentBatch.update(otherLot.ref, { quantityBought: otherSold });
-                operationsInBatch++;
-                totalUpdated++;
-              }
-            }
-          } else {
-            // Criar um novo lote de inventário se nenhum existir
-            const newDocRef = doc(collection(modularDb, 'products_inventory'));
-            const newLot: Omit<InventoryProduct, 'id'> = {
-              publicProductId: pub.id,
-              variant: '',
-              quantityBought: targetStock,
-              quantitySold: 0,
-              name: pub.name,
-              category: pub.category || '',
-              purchasePrice: 0,
-              salePrice: pub.price || 0,
-              purchaseDate: new Date().toISOString().split('T')[0],
-              description: `Lote automático sincronizado para ${pub.name}`,
-              status: targetStock > 0 ? 'IN_STOCK' : 'SOLD',
-              cashbackValue: 0,
-              cashbackStatus: 'NONE',
-            };
-            currentBatch.set(newDocRef, newLot);
-            operationsInBatch++;
-            totalUpdated++;
-          }
+      const normalizeVariant = (value: unknown) => String(value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const toMillis = (value: any): number => {
+        if (typeof value === 'number') return value;
+        if (value?.toMillis) return value.toMillis();
+        if (value?.toDate) return value.toDate().getTime();
+        if (typeof value?.seconds === 'number') return value.seconds * 1000;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+      const getPhysical = (lot: InventoryProduct) => {
+        const units = Array.isArray(lot.units) ? lot.units : [];
+        if (units.length) {
+          return units.filter(unit => ['AVAILABLE', 'RESERVED', 'RETURNED', 'DEFECTIVE'].includes(unit.status)).length;
         }
-        
-        if (operationsInBatch >= 400) {
-          batches.push(currentBatch);
-          currentBatch = writeBatch(modularDb);
-          operationsInBatch = 0;
+        return Math.max(0, Number(lot.quantityBought || 0) - Number(lot.quantitySold || 0));
+      };
+
+      let updated = 0;
+      let batch = writeBatch(modularDb);
+      let operations = 0;
+
+      for (const product of publicProductsList) {
+        const productId = Number(product.id);
+        const [lotsSnapshot, reservationsSnapshot, publicSnapshot] = await Promise.all([
+          getDocs(query(collection(modularDb, 'products_inventory'), where('publicProductId', '==', productId))),
+          getDocs(query(collection(modularDb, 'stock_reservations'), where('productId', '==', productId))),
+          getDoc(doc(modularDb, 'products_public', String(productId))),
+        ]);
+
+        if (!publicSnapshot.exists()) continue;
+        const lots = lotsSnapshot.docs.map(item => item.data() as InventoryProduct);
+        const now = Date.now();
+        const activeReservations = reservationsSnapshot.docs
+          .map(item => item.data() as any)
+          .filter(reservation => toMillis(reservation.expiresAt) > now);
+
+        const physical = lots.reduce((sum, lot) => sum + getPhysical(lot), 0);
+        const reserved = activeReservations.reduce((sum, reservation) => sum + Math.max(0, Number(reservation.quantity || 0)), 0);
+        const available = Math.max(0, physical - reserved);
+
+        const current = publicSnapshot.data() as Product;
+        const payload: Partial<Product> = { stock: available };
+
+        if (Array.isArray(current.variants) && current.variants.length > 0) {
+          payload.variants = current.variants.map(variant => {
+            const variantKey = normalizeVariant(variant.name);
+            const variantPhysical = lots
+              .filter(lot => normalizeVariant(lot.variant) === variantKey)
+              .reduce((sum, lot) => sum + getPhysical(lot), 0);
+            const variantReserved = activeReservations
+              .filter(reservation => normalizeVariant(reservation.variantName || reservation.variantKey) === variantKey)
+              .reduce((sum, reservation) => sum + Math.max(0, Number(reservation.quantity || 0)), 0);
+            return { ...variant, stock: Math.max(0, variantPhysical - variantReserved) };
+          });
+        }
+
+        const stockChanged = Number(current.stock || 0) !== available;
+        const variantsChanged = JSON.stringify(current.variants || []) !== JSON.stringify(payload.variants || current.variants || []);
+        if (!stockChanged && !variantsChanged) continue;
+
+        batch.update(doc(modularDb, 'products_public', String(productId)), payload as any);
+        operations++;
+        updated++;
+
+        if (operations >= 400) {
+          await batch.commit();
+          batch = writeBatch(modularDb);
+          operations = 0;
         }
       }
 
-      if (operationsInBatch > 0) {
-        batches.push(currentBatch);
-      }
-
-      await Promise.all(batches.map(b => b.commit()));
-      console.log(`[Sync] Sincronização pública -> inventário concluída. total de updates realizados: ${totalUpdated}`);
-      alert(`Sincronização concluída com sucesso! Os stocks dos lotes foram todos ajustados para bater certo com a loja pública (${totalUpdated} correções efetuadas).`);
-    } catch (err) {
-      console.error("Erro na sincronização reversa:", err);
-      alert("Erro ao realizar sincronização: " + (err instanceof Error ? err.message : String(err)));
+      if (operations > 0) await batch.commit();
+      alert(updated
+        ? `Loja atualizada: ${updated} produto(s) receberam o stock calculado a partir dos lotes.`
+        : 'A loja já estava sincronizada com o inventário.');
+    } catch (error) {
+      console.error('Erro ao atualizar stock público:', error);
+      alert('Não foi possível atualizar o stock da loja: ' + (error instanceof Error ? error.message : String(error)));
     } finally {
       setIsSyncingStock(false);
     }
   };
+
   const handleOrderStatusChange = async (orderId: string, newStatus: string) => { 
       try { 
           const orderRef = doc(modularDb, 'orders', orderId); 
