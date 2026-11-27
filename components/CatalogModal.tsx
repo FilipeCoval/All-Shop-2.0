@@ -28,150 +28,18 @@ const CatalogModal: React.FC<CatalogModalProps> = ({ isOpen, onClose, product, o
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isReviewsLoading, setIsReviewsLoading] = useState(false);
 
-  const handleAddBlock = () => {
-    if (!formData) return;
-    const newBlock = {
-      id: Date.now().toString(),
-      type: 'square' as any,
-      title: 'Novo Bloco',
-      description: '',
-      image: '',
-      textColor: '#ffffff',
-      textAlign: 'center' as any,
-      textVerticalAlign: 'center' as any,
-      showIcon: true,
-      iconType: 'none' as any
-    };
-    
-    const currentBlocks = formData.premiumData?.blocks || [];
-    setFormData({
-      ...formData,
-      premiumData: {
-        ...(formData.premiumData || {}),
-        blocks: [...currentBlocks, newBlock]
-      }
-    });
-  };
-
-  const handleUpdateBlock = (id: string, updates: any) => {
-    if (!formData || !formData.premiumData?.blocks) return;
-    const updatedBlocks = formData.premiumData.blocks.map(b => 
-      b.id === id ? { ...b, ...updates } : b
-    );
-    setFormData({
-      ...formData,
-      premiumData: {
-        ...formData.premiumData,
-        blocks: updatedBlocks
-      }
-    });
-  };
-
-  const handleRemoveBlock = (id: string) => {
-    if (!formData || !formData.premiumData?.blocks) return;
-    const updatedBlocks = formData.premiumData.blocks.filter(b => b.id !== id);
-    setFormData({
-      ...formData,
-      premiumData: {
-        ...formData.premiumData,
-        blocks: updatedBlocks
-      }
-    });
-  };
-
-  const handleMoveBlock = (index: number, direction: 'up' | 'down') => {
-    if (!formData || !formData.premiumData?.blocks) return;
-    const blocks = [...formData.premiumData.blocks];
-    const newIndex = direction === 'up' ? index - 1 : index + 1;
-    if (newIndex < 0 || newIndex >= blocks.length) return;
-    
-    [blocks[index], blocks[newIndex]] = [blocks[newIndex], blocks[index]];
-    
-    setFormData({
-      ...formData,
-      premiumData: {
-        ...formData.premiumData,
-        blocks
-      }
-    });
-  };
-
-  const migrateToBlocks = () => {
-    if (!formData || !formData.premiumData) return;
-    const p = formData.premiumData;
-    const blocks: any[] = [];
-    
-    if (p.box1Title || p.box1Image) {
-      blocks.push({
-        id: 'box1',
-        type: 'rectangle',
-        title: p.box1Title,
-        description: p.box1Desc,
-        image: p.box1Image,
-        textColor: p.box1TextColor || '#ffffff',
-        textAlign: p.box1Align || 'left',
-        textVerticalAlign: 'bottom',
-        showIcon: false
-      });
-    }
-    
-    if (p.box2Title || p.box2Image) {
-      blocks.push({
-        id: 'box2',
-        type: 'square',
-        title: p.box2Title,
-        description: p.box2Desc,
-        image: p.box2Image,
-        textColor: p.box2TextColor || '#000000',
-        textAlign: p.box2Align || 'center',
-        textVerticalAlign: 'center',
-        showIcon: p.box2ShowIcon !== false,
-        iconType: 'cpu'
-      });
-    }
-
-    if (p.box3Title || p.box3Image) {
-      blocks.push({
-        id: 'box3',
-        type: 'square',
-        title: p.box3Title,
-        description: p.box3Desc,
-        image: p.box3Image,
-        textColor: p.box3TextColor || '#000000',
-        textAlign: p.box3Align || 'center',
-        textVerticalAlign: 'center',
-        showIcon: p.box3ShowIcon !== false,
-        iconType: 'wifi'
-      });
-    }
-
-    if (p.box4Title || p.box4Image) {
-      blocks.push({
-        id: 'box4',
-        type: 'rectangle',
-        title: p.box4Title,
-        description: p.box4Desc,
-        image: p.box4Image,
-        textColor: p.box4TextColor || '#ffffff',
-        textAlign: p.box4Align || 'left',
-        textVerticalAlign: 'center',
-        showIcon: p.box4ShowIcon !== false,
-        iconType: 'play'
-      });
-    }
-
-    setFormData({
-      ...formData,
-      premiumData: {
-        ...p,
-        blocks
-      }
-    });
-  };
+  // O editor premium antigo fica deliberadamente inacessível. Mantemos apenas
+  // os dados históricos guardados para não destruir configurações existentes.
+  const handleAddBlock = () => undefined;
+  const handleUpdateBlock = (_id: string, _updates: unknown) => undefined;
+  const handleRemoveBlock = (_id: string) => undefined;
+  const handleMoveBlock = (_index: number, _direction: 'up' | 'down') => undefined;
+  const migrateToBlocks = () => undefined;
 
   useEffect(() => {
     if (isOpen && product) {
       setFormData(JSON.parse(JSON.stringify(product)));
+      setActiveTab('info');
       if (product.id) {
         loadReviews(product.id);
       }
@@ -310,11 +178,6 @@ const CatalogModal: React.FC<CatalogModalProps> = ({ isOpen, onClose, product, o
           <button onClick={() => setActiveTab('images')} className={`whitespace-nowrap px-4 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'images' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>Imagens & Variantes</button>
           <button onClick={() => setActiveTab('features')} className={`whitespace-nowrap px-4 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'features' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>Destaques & Specs</button>
           <button onClick={() => setActiveTab('reviews')} className={`whitespace-nowrap px-4 py-3 text-sm font-bold border-b-2 transition-colors ${activeTab === 'reviews' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}>Avaliações ({reviews.length})</button>
-          {formData.isPremium && (
-            <button onClick={() => setActiveTab('premium')} className={`whitespace-nowrap px-4 py-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'premium' ? 'border-purple-600 text-purple-600 dark:text-purple-400' : 'border-transparent text-purple-500/70 hover:text-purple-600 dark:text-purple-400/70 dark:hover:text-purple-300'}`}>
-              <Star size={16} /> Layout Premium
-            </button>
-          )}
         </div>
 
         {/* Content */}
@@ -398,10 +261,6 @@ const CatalogModal: React.FC<CatalogModalProps> = ({ isOpen, onClose, product, o
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="checkbox" checked={formData.comingSoon || false} onChange={e => setFormData({...formData, comingSoon: e.target.checked})} className="w-5 h-5 text-indigo-600 rounded" />
                   <span className="font-bold text-gray-700 dark:text-gray-300">Marcar como "Em Breve"</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={formData.isPremium || false} onChange={e => setFormData({...formData, isPremium: e.target.checked})} className="w-5 h-5 text-purple-600 rounded" />
-                  <span className="font-bold text-gray-700 dark:text-gray-300 flex items-center gap-1"><Star size={16} className="text-purple-500" /> Layout Premium (Apple-style)</span>
                 </label>
               </div>
             </div>

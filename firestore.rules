@@ -9,10 +9,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == "filipe_coval_90@hotmail.com" ||
-        request.auth.token.email == "filipecoval90@gmail.com" ||
-        request.auth.token.email == "mcpoleca@gmail.com" ||
-        request.auth.token.email == "filipe@teste.com"
+        request.auth.uid == "l0mJV5eevUSuF7NQ6TnllQA3KFd2" ||
+        request.auth.uid == "cCreF8NjIHXhcFhQkTHLfEBuNS42" ||
+        request.auth.uid == "TR5zcBdlvBWamXT12MDjSjsGVOV2"
       );
     }
 
@@ -201,7 +200,19 @@ service cloud.firestore {
     }
 
     match /stock_alerts/{itemId} {
-      allow read, write: if isAdmin();
+      // O formulário “Avise-me quando chegar” é público, mas só pode criar
+      // o pequeno registo esperado. Ler, alterar ou fechar alertas continua
+      // reservado à administração autenticada.
+      allow create: if request.resource.data.keys().hasOnly(['email', 'productId', 'productName', 'variantName', 'date'])
+        && request.resource.data.email is string
+        && request.resource.data.email.size() >= 5
+        && request.resource.data.email.size() <= 180
+        && request.resource.data.productId is number
+        && request.resource.data.productName is string
+        && request.resource.data.productName.size() <= 180
+        && (request.resource.data.variantName == null || request.resource.data.variantName is string)
+        && request.resource.data.date is string;
+      allow read, update, delete: if isAdmin();
     }
   }
 }

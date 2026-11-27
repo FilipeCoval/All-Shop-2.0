@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, Suspense, lazy, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Component, ErrorInfo, ReactNode } from 'react';
 
 class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: Error | null, errorInfo: ErrorInfo | null}> {
   constructor(props: {children: ReactNode}) {
@@ -64,16 +64,26 @@ import { notifyNewOrder } from './services/telegramNotifier';
 import { supabaseSync } from './services/supabaseSync';
 import LoyaltyPage from './components/LoyaltyPage';
 import { trackVisit } from './services/analyticsService';
-import { reserveStock, finalizeOrder, syncCurrentUser } from './services/api';
-
-// LAZY LOADING DO DASHBOARD
-// O código do Dashboard (gráficos, tabelas grandes, scanners) só é baixado se o utilizador for admin e clicar na rota.
-const Dashboard = lazy(() => import('./components/Dashboard'));
+import { reserveStock, refreshExpiredCartStock, finalizeOrder, saveOrderDraft, syncCurrentUser } from './services/api';
+import { CART_STORAGE_KEY, restoreCart, isCartReservationExpired } from './src/domain/cartReservation';
+import { effectiveProductAvailability } from './src/domain/productAvailability';
 
 const App: React.FC = () => {
 
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
+    try { return restoreCart(localStorage.getItem(CART_STORAGE_KEY)); } catch { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems)); } catch { /* Storage may be unavailable in private browsing. */ }
+  }, [cartItems]);
+  useEffect(() => {
+    const updateCart = (event: StorageEvent) => {
+      if (event.key === CART_STORAGE_KEY) setCartItems(restoreCart(event.newValue));
+    };
+    window.addEventListener('storage', updateCart);
+    return () => window.removeEventListener('storage', updateCart);
+  }, []);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false); 
   
@@ -102,6 +112,9 @@ const App: React.FC = () => {
           document.documentElement.classList.remove('dark');
           localStorage.setItem('theme', 'light');
       }
+      document
+          .querySelector('meta[name="theme-color"]')
+          ?.setAttribute('content', isDarkMode ? '#111827' : '#f97316');
   }, [isDarkMode]);
 
   useEffect(() => {
@@ -121,17 +134,6 @@ const App: React.FC = () => {
         }
     } catch(e) {}
     
-    // Registrar o Service Worker para Push Notifications
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/firebase-messaging-sw.js')
-        .then(registration => {
-          console.log('SW registration successful:', registration.scope);
-        })
-        .catch(err => {
-          console.error('SW registration failed:', err);
-        });
-    }
-
     // Lucky Wheel Logic
     /* 
     const hasSpun = localStorage.getItem('lucky_wheel_spun');
@@ -159,6 +161,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [ordersError, setOrdersError] = useState('');
   const [reviews, setReviews] = useState<Review[]>([]);
   const [route, setRoute] = useState(window.location.hash || '#/');
   const [processingProductIds, setProcessingProductIds] = useState<number[]>([]); // Loading local por produto
@@ -172,6 +175,7 @@ const App: React.FC = () => {
   // --- LÓGICA DE STOCK ---
   const { loading: stockLoading } = useStock(isAdmin);
   const { products: dbProducts, loading: productsLoading } = usePublicProducts();
+  const catalogProductIdsKey = dbProducts.map(product => product.id).sort().join(',');
 
   const sessionId = useMemo(() => {
     let id = sessionStorage.getItem('session_id');
@@ -193,7 +197,12 @@ const App: React.FC = () => {
       return Math.max(0, Number(variant?.stock ?? 0));
     }
     if (!variantName && Array.isArray(product.variants) && product.variants.length > 0) {
-      return Math.max(0, product.variants.reduce((sum, variant) => sum + Math.max(0, Number(variant.stock || 0)), 0));
+      // O total do produto é publicado pelo servidor a partir dos lotes físicos.
+      // Não somamos variantes aqui porque um lote antigo sem variante pode servir
+      // de fallback e aparecer em mais do que uma opção.
+      return Number.isFinite(Number(product.stock))
+        ? Math.max(0, Number(product.stock))
+        : Math.max(0, product.variants.reduce((sum, variant) => sum + Math.max(0, Number(variant.stock || 0)), 0));
     }
     return Math.max(0, Number(product.stock || 0));
   };
@@ -323,6 +332,8 @@ const App: React.FC = () => {
         clearTimeout(authTimeout);
         userUnsubscribe();
         ordersUnsubscribe();
+        setOrders([]);
+        setOrdersError('');
 
         if (firebaseUser && firebaseUser.email) {
             setAuthLoading(true);
@@ -341,9 +352,10 @@ const App: React.FC = () => {
                         const response = await syncCurrentUser();
                         const safeOrders = Array.isArray(response?.orders) ? response.orders as Order[] : [];
                         setOrders(safeOrders);
+                        setOrdersError('');
                     } catch (e) {
                         console.error('Não foi possível sincronizar encomendas da conta:', e);
-                        setOrders([]);
+                        setOrdersError('Não foi possível atualizar os seus pedidos. Isto não significa que não existam encomendas. Tente novamente.');
                     }
                 };
                 await refreshOrders();
@@ -351,7 +363,17 @@ const App: React.FC = () => {
                 const ordersRefreshInterval = window.setInterval(() => {
                     refreshOrders();
                 }, 60_000);
-                ordersUnsubscribe = () => window.clearInterval(ordersRefreshInterval);
+                const refreshAfterOrderChange = () => { void refreshOrders(); };
+                window.addEventListener('allshop:orders-changed', refreshAfterOrderChange);
+                const refreshVisibleOrders = () => { if (document.visibilityState === 'visible') void refreshOrders(); };
+                window.addEventListener('focus', refreshVisibleOrders);
+                document.addEventListener('visibilitychange', refreshVisibleOrders);
+                ordersUnsubscribe = () => {
+                    window.clearInterval(ordersRefreshInterval);
+                    window.removeEventListener('allshop:orders-changed', refreshAfterOrderChange);
+                    window.removeEventListener('focus', refreshVisibleOrders);
+                    document.removeEventListener('visibilitychange', refreshVisibleOrders);
+                };
 
                 userUnsubscribe = onSnapshot(userDocRef, (docSnap) => {
                     if (docSnap.exists()) {
@@ -413,7 +435,7 @@ const App: React.FC = () => {
       });
   };
 
-  const updateReservationInFirebase = async (productId: number, variantName: string | undefined | null, newQuantity: number): Promise<boolean> => {
+  const updateReservationInFirebase = async (productId: number, variantName: string | undefined | null, newQuantity: number): Promise<{ expiresAt: number | null } | null> => {
       try {
           const response = await reserveStock(
               productId.toString(),
@@ -421,13 +443,30 @@ const App: React.FC = () => {
               newQuantity,
               localStorage.getItem('guestToken') || undefined,
           );
-          return response?.success === true;
+          return response?.success === true ? { expiresAt: response.expiresAt } : null;
       } catch (error: any) {
           console.error('Erro na reserva de stock:', error);
           alert(error?.message || 'Não foi possível reservar o stock. Atualize a página e tente novamente.');
-          return false;
+          return null;
       }
   };
+
+  // Fallback on arrival/return. Unlike quantity=0, this never cancels an active
+  // reservation belonging to the visitor. The server scheduler also runs closed-tab.
+  useEffect(() => {
+    const ids = catalogProductIdsKey.split(',').map(Number).filter(id => id > 0);
+    if (!ids.length) return;
+    let lastRefresh = 0;
+    const refresh = () => {
+      if (document.visibilityState === 'hidden' || Date.now() - lastRefresh < 60_000) return;
+      lastRefresh = Date.now();
+      void refreshExpiredCartStock(ids).catch(() => { lastRefresh = 0; });
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, [catalogProductIdsKey]);
 
   const addToCart = async (product: Product, variant?: ProductVariant) => {
     if (processingProductIds.includes(product.id)) return;
@@ -450,8 +489,9 @@ const App: React.FC = () => {
         }
 
         const availableStock = getStockForProduct(product.id, variant?.name);
-        if (availableStock < 1) {
-            alert("Produto esgotado.");
+        const availability = effectiveProductAvailability(product, availableStock);
+        if (availability !== 'AVAILABLE') {
+            alert(availability === 'COMING_SOON' ? 'Este produto estará disponível em breve.' : 'Produto esgotado.');
             setProcessingProductIds(prev => prev.filter(id => id !== product.id));
             return;
         }
@@ -459,7 +499,7 @@ const App: React.FC = () => {
         const success = await updateReservationInFirebase(product.id, variant?.name, newQty);
         if (!success) return;
 
-        const reservedUntil = !isAdmin ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : undefined;
+        const reservedUntil = new Date(success.expiresAt!).toISOString();
 
         // Check if promo ended
         const promoEnded = product.promoEndsAt ? new Date(product.promoEndsAt) <= new Date() : false;
@@ -480,7 +520,7 @@ const App: React.FC = () => {
           if (existing) {
             return prev.map(item => {
                 if (item.cartItemId === cartItemId) {
-                    return { ...item, quantity: newQty, reservedUntil: item.reservedUntil || reservedUntil };
+                    return { ...item, quantity: newQty, reservedUntil, price: finalPrice };
                 }
                 return item;
             });
@@ -506,6 +546,7 @@ const App: React.FC = () => {
   const updateQuantity = async (cartItemId: string, delta: number) => {
     const itemToUpdate = cartItems.find(i => i.cartItemId === cartItemId);
     if (!itemToUpdate) return;
+    if (isCartReservationExpired(itemToUpdate)) return;
     const newQty = itemToUpdate.quantity + delta;
 
     if (itemToUpdate.maxQuantityPerOrder && newQty > itemToUpdate.maxQuantityPerOrder) {
@@ -526,11 +567,12 @@ const App: React.FC = () => {
     }
 
     if (newQty < itemToUpdate.quantity) {
+        const result = await updateReservationInFirebase(itemToUpdate.id, itemToUpdate.selectedVariant, newQty);
+        if (!result) return;
         setCartItems(prev => {
             if (newQty < 1) return prev.filter(i => i.cartItemId !== cartItemId);
-            return prev.map(item => item.cartItemId === cartItemId ? { ...item, quantity: newQty } : item);
+            return prev.map(item => item.cartItemId === cartItemId ? { ...item, quantity: newQty, reservedUntil: new Date(result.expiresAt!).toISOString() } : item);
         });
-        updateReservationInFirebase(itemToUpdate.id, itemToUpdate.selectedVariant, newQty);
         return;
     }
     
@@ -546,10 +588,23 @@ const App: React.FC = () => {
     setCartItems(prev =>
         prev.map(item =>
           item.cartItemId === cartItemId
-            ? { ...item, quantity: newQty }
+            ? { ...item, quantity: newQty, reservedUntil: new Date(success.expiresAt!).toISOString() }
             : item
         )
     );
+  };
+
+  const renewCartReservation = async (cartItemId: string) => {
+    const item = cartItems.find(candidate => candidate.cartItemId === cartItemId);
+    if (!item) return;
+    const result = await reserveStock(String(item.id), item.selectedVariant, item.quantity, localStorage.getItem('guestToken') || undefined);
+    if (!result?.success || !result?.expiresAt) throw new Error('Não foi possível renovar a reserva. Tente novamente.');
+    const product = dbProducts.find(candidate => candidate.id === item.id);
+    const variant = product?.variants?.find(candidate => candidate.name === item.selectedVariant);
+    const currentPrice = product?.isFreebie ? 0 : variant?.price ?? (product?.promoEndsAt && new Date(product.promoEndsAt).getTime() <= Date.now() && product.originalPrice ? product.originalPrice : product?.price) ?? item.price;
+    setCartItems(current => current.map(candidate => candidate.cartItemId === cartItemId ? {
+      ...candidate, reservedUntil: new Date(result.expiresAt!).toISOString(), price: currentPrice,
+    } : candidate));
   };
 
   const handleUpdateUser = async (updatedData: Partial<User>) => {
@@ -580,15 +635,25 @@ const App: React.FC = () => {
   };
 
   const handleCheckout = async (newOrder: Order, isAutoSave: boolean = false): Promise<boolean> => {
-      // A encomenda só é criada quando o cliente confirma que enviou o pedido.
-      // Mantemos o argumento para compatibilidade, mas não gravamos rascunhos que prendem stock.
-      if (isAutoSave) return true;
-
       try {
           const cleanOrder = JSON.parse(JSON.stringify({
               ...newOrder,
               id: String(newOrder.id || '').trim().replace(/^#+/, ''),
           }));
+
+          if (isAutoSave) {
+              const response = await saveOrderDraft(cleanOrder, cleanOrder.guestToken || localStorage.getItem('guestToken') || undefined);
+              const savedDraft = (response?.order || cleanOrder) as Order;
+              setOrders(prev => {
+                  const exists = prev.some(order => order.id === savedDraft.id);
+                  return exists ? prev.map(order => order.id === savedDraft.id ? savedDraft : order) : [savedDraft, ...prev];
+              });
+
+              // Keep only the original 15-minute hold while the message is sent.
+              // The timer/scheduler releases it if the customer never confirms.
+              return true;
+          }
+
           const response = await finalizeOrder(cleanOrder, localStorage.getItem('guestToken') || undefined);
           const savedOrder = (response?.order || cleanOrder) as Order;
 
@@ -598,21 +663,27 @@ const App: React.FC = () => {
           });
           setCartItems([]);
 
-          try {
-              await notifyNewOrder(savedOrder, user ? user.name : savedOrder.shippingInfo.name);
-              supabaseSync.saveOrder(savedOrder);
-              await fetch('/api/send-push', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                      target: 'admins',
-                      title: 'Nova Encomenda! 💰',
-                      body: `Pedido ${savedOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(savedOrder.total)} recebido de ${savedOrder.shippingInfo.name}.`,
-                      link: 'https://www.all-shop.net/#dashboard'
-                  })
-              });
-          } catch (backgroundError) {
-              console.error('Tarefas posteriores ao checkout falharam:', backgroundError);
+          // A encomenda já está gravada. As notificações e o backup são tarefas
+          // independentes: a falha de uma nunca deve impedir as restantes.
+          const backgroundResults = await Promise.allSettled([
+              notifyNewOrder(savedOrder, user ? user.name : savedOrder.shippingInfo.name),
+              Promise.resolve().then(() => supabaseSync.saveOrder(savedOrder)),
+              fetch('/api/send-push', {
+                   method: 'POST',
+                   headers: { 'Content-Type': 'application/json' },
+                   body: JSON.stringify({
+                       target: 'admins',
+                       title: 'Nova Encomenda! 💰',
+                       body: `Pedido ${savedOrder.id} de ${new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(savedOrder.total)} recebido de ${savedOrder.shippingInfo.name}.`,
+                       link: 'https://www.all-shop.net/#dashboard'
+                   })
+               }).then((pushResponse) => {
+                   if (!pushResponse.ok) throw new Error(`Push devolveu ${pushResponse.status}`);
+               }),
+          ]);
+          const backgroundFailures = backgroundResults.filter((result) => result.status === 'rejected');
+          if (backgroundFailures.length) {
+              console.error('Algumas tarefas posteriores ao checkout falharam:', backgroundFailures);
           }
           return true;
       } catch (error: any) {
@@ -645,28 +716,18 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    // --- PROTEÇÃO DO DASHBOARD (Lazy Loaded) ---
+    // A administração moderna vive num bundle isolado. Assim, os estilos e a
+    // lógica da dashboard nunca interferem com a loja ou a área de cliente 2.0.
     if (route === '#dashboard') {
-        if (!isAdmin && !authLoading) {
-            // Se não for admin e já carregou, redireciona.
-            window.location.hash = '/';
-            return null;
-        }
-        return (
-            <Suspense fallback={
-                <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4">
-                    <Loader2 size={48} className="animate-spin text-primary"/>
-                    <p className="text-gray-500 font-medium">A carregar Painel de Administração...</p>
-                </div>
-            }>
-                <Dashboard user={user} isAdmin={isAdmin} />
-            </Suspense>
-        );
+        // O Vercel encaminha /admin para a página isolada. Em desenvolvimento,
+        // o ficheiro HTML é aberto diretamente porque não existem rewrites.
+        window.location.replace(import.meta.env.DEV ? '/admin.html' : '/admin');
+        return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 size={42} className="animate-spin text-primary" /></div>;
     }
     
-    if (route === '#account') {
+    if (route.startsWith('#account')) {
       if (!user) { setTimeout(() => { window.location.hash = '/'; setIsLoginOpen(true); }, 0); return null; }
-      return <ClientArea user={user} orders={orders} onLogout={handleLogout} onUpdateUser={handleUpdateUser} wishlist={wishlist} onToggleWishlist={toggleWishlist} onAddToCart={addToCart} publicProducts={dbProducts} onOpenSupportChat={() => setIsAIChatOpen(true)} onCheckout={handleCheckout} />;
+      return <>{ordersError && <div role="alert" className="mx-auto max-w-6xl rounded-xl bg-amber-50 p-4 text-amber-900">{ordersError} <button type="button" className="font-bold underline" onClick={() => window.dispatchEvent(new Event('allshop:orders-changed'))}>Voltar a tentar</button></div>}<ClientArea user={user} orders={orders} onLogout={handleLogout} onUpdateUser={handleUpdateUser} wishlist={wishlist} onToggleWishlist={toggleWishlist} onAddToCart={addToCart} publicProducts={dbProducts} onOpenSupportChat={() => setIsAIChatOpen(true)} onCheckout={handleCheckout} /></>;
     }
     if (route.startsWith('#product/')) {
         const id = parseInt(route.split('/')[1]);
@@ -788,7 +849,7 @@ const App: React.FC = () => {
             )}
         </div>
       </footer>
-      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemoveItem={removeFromCart} onUpdateQuantity={updateQuantity} total={cartTotal} onCheckout={handleCheckout} user={user} onOpenLogin={() => { setIsCartOpen(false); setIsLoginOpen(true); }} onAddFreebie={addToCart} publicProducts={dbProducts} />
+      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemoveItem={removeFromCart} onUpdateQuantity={updateQuantity} onRenewReservation={renewCartReservation} total={cartTotal} onCheckout={handleCheckout} user={user} onOpenLogin={() => { setIsCartOpen(false); setIsLoginOpen(true); }} onAddFreebie={addToCart} publicProducts={dbProducts} />
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} onLogin={(u) => { setUser(u); setIsLoginOpen(false); }} />
       
       <ProductComparator 

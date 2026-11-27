@@ -15,6 +15,9 @@ import {
   toReservationRecord,
   type ReservationRecord,
 } from '../services/server/stock-utils.js';
+import { normalizeProductAvailabilityMode } from '../src/domain/productAvailability.js';
+import { notifyAdminsOfNewOrder } from '../services/server/admin-push.js';
+import { adminAuditEntry } from '../src/server/adminAudit.js';
 
 type RequestedItem = {
   productId: number;
@@ -102,12 +105,24 @@ export default async function handler(req: Request, res: Response) {
     const result = await firestore.runTransaction(async (transaction) => {
       const orderRef = firestore.collection('orders').doc(orderId);
       const existingOrder = await transaction.get(orderRef);
+      let existingDraft: Record<string, any> | null = null;
       if (existingOrder.exists) {
         const existing = existingOrder.data() || {};
-        if (existing.userId && existing.userId !== identity.userId) {
-          throw new Error('Este número de encomenda já está em utilização. Volte ao carrinho e tente novamente.');
+        const isDraftAwaitingConfirmation = existing.awaitingCustomerConfirmation === true && existing.status === 'A confirmar';
+        if (isDraftAwaitingConfirmation) {
+          const belongsToCurrentOwner = existing.userId
+            ? existing.userId === identity.userId
+            : existing.ownerKey === identity.ownerKey;
+          if (!belongsToCurrentOwner) {
+            throw new Error('Este pedido pertence a outra sessão. Volte ao carrinho e tente novamente.');
+          }
+          existingDraft = existing;
+        } else {
+          if (existing.userId && existing.userId !== identity.userId) {
+            throw new Error('Este número de encomenda já está em utilização. Volte ao carrinho e tente novamente.');
+          }
+          return { order: { id: orderId, ...existing }, alreadyFinalized: true };
         }
-        return { order: { id: orderId, ...existing }, alreadyFinalized: true };
       }
 
       const productContexts = new Map<number, any>();
@@ -123,10 +138,18 @@ export default async function handler(req: Request, res: Response) {
         if (inventorySnapshot.empty || !publicSnapshot.exists) {
           throw new Error('Um dos produtos deixou de estar disponível. Atualize o carrinho.');
         }
+        const availabilityMode = normalizeProductAvailabilityMode(publicSnapshot.data() ?? {});
+        if (availabilityMode === 'COMING_SOON') {
+          throw new Error('Um dos produtos está marcado como “Em breve” e ainda não pode ser comprado.');
+        }
+        if (availabilityMode === 'OUT_OF_STOCK') {
+          throw new Error('Um dos produtos está temporariamente marcado como esgotado.');
+        }
         productContexts.set(productId, { inventorySnapshot, reservationsSnapshot, publicSnapshot, publicRef });
       }
 
       const now = Date.now();
+      const checkoutAt = new Date().toISOString();
       const canonicalItems: any[] = [];
       type SalePlan = { saleByBatch: Map<string, number>; remainingReservations: ReservationRecord[]; reservationIdsToDelete: string[] };
       const salePlans = new Map<number, SalePlan>();
@@ -258,7 +281,39 @@ export default async function handler(req: Request, res: Response) {
         for (const batch of context.inventorySnapshot.docs) {
           const soldNow = plan.saleByBatch.get(batch.id) || 0;
           if (soldNow > 0) {
-            transaction.update(batch.ref, { quantitySold: Number(batch.data().quantitySold || 0) + soldNow });
+            const beforeLot = batch.data();
+            const quantitySold = getBatchPhysical(beforeLot).sold + soldNow;
+            // A venda fica ligada à unidade concreta logo no checkout. Assim o
+            // inventário mostra a encomenda que lhe deu baixa, em vez de deixar
+            // S/N aparentemente disponíveis apesar de o stock já ter sido vendido.
+            let remainingUnitsToAssign = soldNow;
+            const units = Array.isArray(beforeLot.units)
+              ? beforeLot.units.map((unit: any) => {
+                if (remainingUnitsToAssign > 0 && String(unit?.status ?? '').trim().toUpperCase() === 'AVAILABLE') {
+                  remainingUnitsToAssign -= 1;
+                  return {
+                    ...unit,
+                    status: 'SOLD',
+                    soldAt: checkoutAt,
+                    soldToOrder: orderId,
+                    soldToCustomerName: shippingInfo.name,
+                    soldToCustomerEmail: shippingInfo.email,
+                  };
+                }
+                return unit;
+              })
+              : undefined;
+            const lotUpdate = { quantitySold, ...(units ? { units } : {}) };
+            transaction.update(batch.ref, lotUpdate);
+            transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({
+              action: 'checkout_stock_deducted',
+              actor: { uid: identity.userId, kind: 'CLIENT' },
+              target: { type: 'Lote', id: batch.id, label: String(beforeLot.name || `Lote ${batch.id}`) },
+              before: beforeLot,
+              after: { ...beforeLot, ...lotUpdate },
+              summary: `Stock abatido automaticamente pela encomenda #${orderId}.`,
+              details: { orderId, productId, quantity: soldNow },
+            }));
           }
         }
         for (const reservationId of [...new Set(plan.reservationIdsToDelete)]) {
@@ -271,10 +326,13 @@ export default async function handler(req: Request, res: Response) {
 
       const responseOrder = {
         id: orderId,
-        date: new Date().toISOString(),
+        date: existingDraft?.date || new Date().toISOString(),
         total,
         status: 'Processamento',
-        statusHistory: [{ status: 'Processamento', date: new Date().toISOString(), notes: 'Pedido confirmado pelo cliente.' }],
+        statusHistory: [
+          ...(Array.isArray(existingDraft?.statusHistory) ? existingDraft.statusHistory : []),
+          { status: 'Processamento', date: new Date().toISOString(), notes: 'Pedido confirmado pelo cliente.' },
+        ],
         items: canonicalItems,
         userId: identity.userId,
         shippingInfo,
@@ -286,11 +344,27 @@ export default async function handler(req: Request, res: Response) {
       };
       transaction.set(orderRef, {
         ...responseOrder,
-        createdAt: FieldValue.serverTimestamp(),
+        createdAt: existingDraft?.createdAt ?? FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
+      transaction.set(firestore.collection('admin_audit_log').doc(), adminAuditEntry({
+        action: 'checkout_order_confirmed',
+        actor: { uid: identity.userId, kind: 'CLIENT' },
+        target: { type: 'Encomenda', id: orderId, label: `#${orderId}` },
+        before: existingDraft,
+        after: responseOrder,
+        summary: 'Encomenda confirmada pelo cliente e stock reservado abatido.',
+      }));
       return { order: responseOrder, alreadyFinalized: false };
     });
+
+    if (!result.alreadyFinalized) {
+      try {
+        await notifyAdminsOfNewOrder(firestore, result.order);
+      } catch (pushError) {
+        console.warn('[new-order-push] A encomenda foi guardada, mas o aviso aos administradores falhou.', pushError instanceof Error ? pushError.message : pushError);
+      }
+    }
 
     return res.status(200).json({ success: true, ...result });
   } catch (error: any) {

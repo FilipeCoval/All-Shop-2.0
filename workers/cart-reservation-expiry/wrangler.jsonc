@@ -1,0 +1,11 @@
+{
+  "name": "allshop-cart-reservation-expiry",
+  "main": "index.ts",
+  "account_id": "8912dd4ab67f912fd006b54c60bf2ba7",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "triggers": { "crons": ["* * * * *"] },
+  "observability": { "enabled": true },
+  "vars": { "CLEANUP_URL": "https://www.all-shop.net/api/cleanup-reservations" }
+}

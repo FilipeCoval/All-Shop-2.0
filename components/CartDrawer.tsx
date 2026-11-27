@@ -1,11 +1,13 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { CartItem, UserCheckoutInfo, Order, Coupon, User, Product, ProductVariant } from '../types';
 import { X, Trash2, Check, Loader2, ChevronLeft, User as UserIcon, Clock, Tag, AlertCircle, Store, Truck, MapPin, Smartphone, Landmark, Banknote, Sparkles, PartyPopper, Info, Gift } from 'lucide-react';
 import { SELLER_PHONE, TELEGRAM_LINK } from '../constants';
 import { modularDb } from '../services/firebaseConfig';
 import { collection, query, where, getDocs, limit, doc, updateDoc } from 'firebase/firestore';
 import OrderTutorial from './OrderTutorial';
+import { isCartReservationExpired } from '../src/domain/cartReservation';
+import { refreshExpiredCartStock } from '../services/api';
 
 const ReservationBanner: React.FC<{ items: CartItem[] }> = ({ items }) => {
     const [displayTime, setDisplayTime] = useState<string | null>(null);
@@ -65,6 +67,7 @@ interface CartDrawerProps {
   cartItems: CartItem[];
   onRemoveItem: (id: string) => void;
   onUpdateQuantity: (id: string, delta: number) => void;
+  onRenewReservation: (id: string) => Promise<void>;
   total: number;
   onCheckout: (order: Order, isAutoSave?: boolean) => Promise<boolean>;
   user: User | null;
@@ -74,10 +77,43 @@ interface CartDrawerProps {
 }
 
 const CartDrawer: React.FC<CartDrawerProps> = ({ 
-  isOpen, onClose, cartItems, onRemoveItem, onUpdateQuantity, total, onCheckout, user, onOpenLogin, onAddFreebie, publicProducts
+  isOpen, onClose, cartItems, onRemoveItem, onUpdateQuantity, onRenewReservation, total, onCheckout, user, onOpenLogin, onAddFreebie, publicProducts
 }) => {
   const [checkoutStep, setCheckoutStep] = useState<'cart' | 'info' | 'platform' | 'tutorial' | 'success'>('cart');
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const [now, setNow] = useState(Date.now);
+  const [renewing, setRenewing] = useState<string | null>(null);
+  const [reservationError, setReservationError] = useState('');
+  const cleanupAttempt = useRef({ key: '', at: 0 });
+  const expiredItems = cartItems.filter(item => isCartReservationExpired(item, now));
+  const expiredKey = expiredItems.map(item => `${item.cartItemId}:${item.reservedUntil ?? 'legacy'}`).sort().join('|');
+  useEffect(() => {
+    const tick = () => setNow(Date.now());
+    const timer = window.setInterval(tick, 1000);
+    window.addEventListener('focus', tick);
+    document.addEventListener('visibilitychange', tick);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', tick); document.removeEventListener('visibilitychange', tick); };
+  }, []);
+  useEffect(() => {
+    if (!expiredKey) { cleanupAttempt.current = { key: '', at: 0 }; setReservationError(''); return; }
+    if (cleanupAttempt.current.key === expiredKey && now - cleanupAttempt.current.at < 60_000) return;
+    cleanupAttempt.current = { key: expiredKey, at: now };
+    void refreshExpiredCartStock(expiredItems.map(item => item.id)).catch(() => undefined);
+  }, [expiredKey, now]);
+  const ensureReservationsActive = () => {
+    if (!cartItems.some(item => isCartReservationExpired(item))) return true;
+    setReservationError('A reserva de um ou mais artigos expirou. Volte a reservar ou remova esses artigos para continuar.');
+    setCheckoutStep('cart');
+    return false;
+  };
+  const renew = async (id: string) => {
+    if (renewing) return;
+    setRenewing(id);
+    setReservationError('');
+    try { await onRenewReservation(id); }
+    catch (error) { setReservationError(error instanceof Error ? error.message : 'Não foi possível renovar. Tente novamente.'); }
+    finally { setNow(Date.now()); setRenewing(null); }
+  };
   const [currentOrderId, setCurrentOrderId] = useState(() => {
     const saved = localStorage.getItem('as_cart_order_id') || '';
     return saved.trim().replace(/^#+/, '');
@@ -278,6 +314,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
   const finalTotal = Math.max(0, total - discountAmount + shippingCost);
 
   const handleProceed = () => {
+    if (!ensureReservationsActive()) return;
     if (checkoutStep === 'cart') setCheckoutStep('info');
     else if (checkoutStep === 'info') {
         // Validação
@@ -300,6 +337,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
   };
 
   const handleStartCheckout = async (platform: 'wa' | 'tg') => {
+    if (!ensureReservationsActive()) return;
     setIsFinalizing(true);
     
     // O cupão é validado e registado pelo servidor apenas quando o pedido é confirmado.
@@ -325,7 +363,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
         id: currentOrderId,
         date: new Date().toISOString(),
         total: finalTotal,
-        status: 'Pendente',
+        status: 'A confirmar',
         stockDeducted: false,
         items: cartItems.map(i => ({ productId: i.id, name: i.name, price: i.price, quantity: i.quantity, selectedVariant: i.selectedVariant || '', image: i.image, addedAt: new Date().toISOString() })),
         shippingInfo: finalUserInfo,
@@ -358,17 +396,28 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
     msg += `Portes: ${shippingCost === 0 ? 'Grátis' : formatCurrency(shippingCost)}\n`;
     msg += `Total Final: *${formatCurrency(finalTotal)}*`;
     
+    // Regista primeiro a intenção de compra. Assim uma mensagem enviada para o
+    // Telegram/WhatsApp nunca fica sem rasto. Mantém apenas a reserva temporária
+    // original do carrinho; a venda só é registada após confirmar o envio.
+    const saved = await onCheckout(newOrder, true);
+    if (!saved) {
+        setIsFinalizing(false);
+        return;
+    }
+
     setPendingOrder(newOrder);
     setFinalMessage(msg);
     setSelectedPlatform(platform);
     setCheckoutStep('tutorial');
     setIsFinalizing(false);
     
-    // A encomenda ainda não é gravada: o stock mantém-se reservado até o cliente confirmar.
+    // O pedido fica em “A confirmar”; a confirmação final valida novamente o
+    // stock, o cupão e os preços atuais diretamente no servidor.
   };
 
   const handleConfirmSent = async (isAutoSave: boolean = false) => {
       if (!pendingOrder) return;
+      if (!ensureReservationsActive()) return;
       setIsFinalizing(true);
 
       let orderToSave = { ...pendingOrder };
@@ -437,26 +486,35 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
                 {cartItems.length === 0 ? (
                   <div className="text-center py-20 text-gray-400">O seu carrinho está vazio.</div>
                 ) : (
-                  cartItems.map(item => (
-                    <div key={item.cartItemId} className="py-4 flex gap-4">
-                      <img src={item.image} className="w-16 h-16 object-contain bg-gray-50 dark:bg-slate-800 rounded" alt="" />
-                      <div className="flex-1">
+                  cartItems.map(item => {
+                    const expired = isCartReservationExpired(item, now);
+                    return (
+                    <div key={item.cartItemId} className={`py-4 flex gap-4 ${expired ? 'bg-gray-100 dark:bg-slate-800/60 rounded-xl px-3 text-gray-500' : ''}`}>
+                      <img src={item.image} className={`w-16 h-16 object-contain bg-gray-50 dark:bg-slate-800 rounded ${expired ? 'grayscale opacity-50' : ''}`} alt="" />
+                      <div className="flex-1 min-w-0">
                         <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{item.name}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">{item.selectedVariant}</p>
                         <div className="flex items-center gap-3 mt-2">
-                          <button onClick={() => onUpdateQuantity(item.cartItemId, -1)} className="w-6 h-6 border dark:border-slate-700 rounded-full font-bold dark:text-white flex items-center justify-center">-</button>
+                          <button disabled={expired || renewing !== null} onClick={() => onUpdateQuantity(item.cartItemId, -1)} className="w-6 h-6 border dark:border-slate-700 rounded-full font-bold dark:text-white flex items-center justify-center disabled:opacity-30">-</button>
                           <span className="text-sm font-bold dark:text-white">{item.quantity}</span>
-                          <button onClick={() => onUpdateQuantity(item.cartItemId, 1)} className="w-6 h-6 border dark:border-slate-700 rounded-full font-bold dark:text-white flex items-center justify-center">+</button>
+                          <button disabled={expired || renewing !== null} onClick={() => onUpdateQuantity(item.cartItemId, 1)} className="w-6 h-6 border dark:border-slate-700 rounded-full font-bold dark:text-white flex items-center justify-center disabled:opacity-30">+</button>
                         </div>
+                        {expired && <div className="mt-3 space-y-2">
+                          <p className="text-xs font-bold text-gray-600 dark:text-gray-300 flex items-center gap-1"><Clock size={14} />Reserva expirada</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400">O artigo ficou guardado, mas já não está reservado.</p>
+                          <button type="button" disabled={renewing !== null} onClick={() => void renew(item.cartItemId)} className="text-xs font-bold border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 dark:text-white rounded-lg px-3 py-2 disabled:opacity-50">{renewing === item.cartItemId ? 'A reservar…' : 'Voltar a reservar'}</button>
+                        </div>}
                       </div>
                       <div className="text-right">
                         <p className="font-bold text-sm dark:text-white">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(item.price * item.quantity)}</p>
-                        <button onClick={() => onRemoveItem(item.cartItemId)} className="text-red-400 hover:text-red-600 mt-2"><Trash2 size={16} /></button>
+                        <button aria-label={`Remover ${item.name}`} disabled={renewing !== null} onClick={() => onRemoveItem(item.cartItemId)} className="text-red-400 hover:text-red-600 mt-2"><Trash2 size={16} /></button>
                       </div>
                     </div>
-                  ))
+                  ); })
                 )}
               </div>
+
+              {(expiredItems.length > 0 || reservationError) && <p role="status" className="rounded-xl bg-gray-100 dark:bg-slate-800 p-3 text-sm text-gray-600 dark:text-gray-300">{reservationError || 'Tem artigos com a reserva expirada. Volte a reservar, sujeito ao stock e preço atuais, ou remova-os para continuar.'}</p>}
 
               {/* Área de Cupão */}
               {cartItems.length > 0 && (
@@ -718,7 +776,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({
             )}
             <div className="flex justify-between text-gray-500 dark:text-gray-400 text-sm mb-4"><span>Portes</span><span>{shippingCost === 0 ? 'Grátis' : formatCurrency(shippingCost)}</span></div>
             <div className="flex justify-between text-xl font-black text-gray-900 dark:text-white mb-6 border-t dark:border-slate-800 pt-4"><span>Total</span><span>{formatCurrency(finalTotal)}</span></div>
-            <button onClick={handleProceed} className="w-full bg-primary text-white font-bold py-4 rounded-xl text-lg shadow-xl shadow-blue-100 dark:shadow-none hover:scale-[1.02] transition-transform">Continuar Compra</button>
+            <button disabled={expiredItems.length > 0 || renewing !== null} onClick={handleProceed} className="w-full bg-primary text-white font-bold py-4 rounded-xl text-lg shadow-xl shadow-blue-100 dark:shadow-none hover:scale-[1.02] transition-transform disabled:bg-gray-400 disabled:shadow-none disabled:cursor-not-allowed">{expiredItems.length ? 'Renove as reservas para continuar' : 'Continuar Compra'}</button>
           </div>
         )}
       </div>

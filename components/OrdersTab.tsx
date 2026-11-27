@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { BarChart2, ClipboardEdit, Trash2, Package } from 'lucide-react';
+import { BarChart2, ClipboardEdit, Trash2, Package, AlertTriangle, CheckCircle, XCircle, RotateCcw } from 'lucide-react';
 import { Order, InventoryProduct } from '../types';
 import { db } from '../services/firebaseConfig';
 
@@ -8,11 +8,12 @@ interface OrdersTabProps {
   orders: Order[];
   inventoryProducts: InventoryProduct[];
   isAdmin: boolean;
-  onStatusChange: (orderId: string, newStatus: string) => void;
+  onStatusChange: (orderId: string, newStatus: string) => Promise<void>;
   onDeleteOrder: (orderId: string) => void;
   onViewDetails: (order: Order) => void;
   onOpenManualOrder: () => void;
   onOpenFulfillment: (order: Order) => void;
+  onReviewRequest: (orderId: string, requestKind: 'cancellation' | 'return', decision: 'approve' | 'reject', reviewNote?: string) => Promise<void> | void;
 }
 
 const formatCurrency = (value: number) => 
@@ -20,10 +21,12 @@ const formatCurrency = (value: number) =>
 
 const OrdersTab: React.FC<OrdersTabProps> = ({ 
   orders, inventoryProducts, isAdmin, 
-  onStatusChange, onDeleteOrder, onViewDetails, onOpenManualOrder, onOpenFulfillment
+  onStatusChange, onDeleteOrder, onViewDetails, onOpenManualOrder, onOpenFulfillment, onReviewRequest
 }) => {
   const [chartTimeframe, setChartTimeframe] = useState<'7d' | '30d' | '1y'>('7d');
   const [searchTerm, setSearchTerm] = useState('');
+  const [reviewingRequest, setReviewingRequest] = useState<string | null>(null);
+  const [updatingStatusOrderId, setUpdatingStatusOrderId] = useState<string | null>(null);
 
   const filteredOrders = useMemo(() => {
     if (!searchTerm) return orders;
@@ -33,6 +36,58 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
       order.items.some(item => typeof item !== 'string' && item.serialNumbers?.some(sn => sn.includes(searchTerm)))
     );
   }, [orders, searchTerm]);
+
+  const pendingRequests = useMemo(() => orders.flatMap(order => {
+    const requests: Array<{ order: Order; kind: 'cancellation' | 'return'; title: string; reason: string; requestedAt?: string }> = [];
+    if (order.cancellationRequest?.status === 'Pendente') {
+      requests.push({
+        order,
+        kind: 'cancellation',
+        title: order.cancellationRequest.type === 'PARCIAL' ? 'Cancelamento parcial' : 'Cancelamento de encomenda',
+        reason: order.cancellationRequest.reason || 'Sem motivo indicado',
+        requestedAt: order.cancellationRequest.requestedAt,
+      });
+    }
+    if (order.returnRequest?.status === 'Pendente') {
+      requests.push({
+        order,
+        kind: 'return',
+        title: 'Pedido de devolução',
+        reason: order.returnRequest.reason || 'Sem motivo indicado',
+        requestedAt: order.returnRequest.requestedAt || order.returnRequest.date,
+      });
+    }
+    return requests;
+  }), [orders]);
+
+  const handleReviewRequest = async (order: Order, kind: 'cancellation' | 'return', decision: 'approve' | 'reject') => {
+    const label = kind === 'cancellation' ? 'pedido de cancelamento' : 'pedido de devolução';
+    const decisionLabel = decision === 'approve' ? 'aprovar' : 'recusar';
+    if (!window.confirm(`Pretende ${decisionLabel} este ${label} da encomenda ${order.id}?`)) return;
+    const reviewNote = window.prompt('Nota para o cliente (opcional):') || '';
+    setReviewingRequest(`${order.id}:${kind}`);
+    try {
+      await onReviewRequest(order.id, kind, decision, reviewNote);
+    } catch (error) {
+      console.error('Erro ao analisar pedido:', error);
+      alert(error instanceof Error ? error.message : 'Não foi possível atualizar o pedido.');
+    } finally {
+      setReviewingRequest(null);
+    }
+  };
+
+  const handleStatusChange = async (order: Order, newStatus: string) => {
+    if (order.status === newStatus) return;
+    setUpdatingStatusOrderId(order.id);
+    try {
+      await onStatusChange(order.id, newStatus);
+    } catch (error) {
+      console.error('Erro ao alterar estado da encomenda:', error);
+      alert(error instanceof Error ? error.message : 'Não foi possível alterar o estado da encomenda.');
+    } finally {
+      setUpdatingStatusOrderId(null);
+    }
+  };
 
   const chartData = useMemo(() => {
     const numDays = chartTimeframe === '1y' ? 365 : chartTimeframe === '30d' ? 30 : 7;
@@ -148,6 +203,35 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
             </div>
         </div>
         
+        {pendingRequests.length > 0 && (
+            <section className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                    <h3 className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-2"><AlertTriangle size={19}/> Pedidos de clientes pendentes</h3>
+                    <span className="text-xs font-black px-2.5 py-1 rounded-full bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100">{pendingRequests.length}</span>
+                </div>
+                <div className="space-y-3">
+                    {pendingRequests.map(({ order, kind, title, reason, requestedAt }) => {
+                        const key = `${order.id}:${kind}`;
+                        const loading = reviewingRequest === key;
+                        return (
+                            <div key={key} className="bg-white dark:bg-slate-900 rounded-lg border border-amber-100 dark:border-amber-900/70 p-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <div className="font-bold text-gray-900 dark:text-white">{title} · {order.id}</div>
+                                    <div className="text-sm text-gray-700 dark:text-gray-300 truncate">{order.shippingInfo?.name || 'Cliente'} — {reason}</div>
+                                    {requestedAt && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Pedido em {new Date(requestedAt).toLocaleString('pt-PT')}</div>}
+                                </div>
+                                <div className="flex gap-2 shrink-0">
+                                    <button disabled={loading} onClick={() => handleReviewRequest(order, kind, 'reject')} className="px-3 py-2 rounded-lg text-xs font-bold text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-950/40 hover:bg-red-200 dark:hover:bg-red-900/50 disabled:opacity-50 flex items-center gap-1"><XCircle size={15}/> Recusar</button>
+                                    <button disabled={loading} onClick={() => handleReviewRequest(order, kind, 'approve')} className="px-3 py-2 rounded-lg text-xs font-bold text-green-800 dark:text-green-200 bg-green-100 dark:bg-green-950/40 hover:bg-green-200 dark:hover:bg-green-900/50 disabled:opacity-50 flex items-center gap-1"><CheckCircle size={15}/> {loading ? 'A guardar…' : 'Aprovar'}</button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+                <p className="text-xs text-amber-800 dark:text-amber-300 mt-3"><RotateCcw size={13} className="inline mr-1"/>Ao aprovar um cancelamento, o stock é reposto. Aprovar uma devolução não repõe stock: primeiro confirma que o artigo regressou e está em condições de venda.</p>
+            </section>
+        )}
+
         <div className="flex justify-between gap-2">
                 <input 
                     type="text" 
@@ -177,12 +261,14 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
                         {filteredOrders.map(order => (
                             <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors">
                                 <td className="px-6 py-4 font-bold text-indigo-700 dark:text-indigo-400">{order.id}</td>
-                                <td className="px-6 py-4 text-gray-900 dark:text-white">{order.shippingInfo?.name || 'N/A'}</td>
+                                <td className="px-6 py-4 text-gray-900 dark:text-white"><div className="flex items-center gap-2"><span>{order.shippingInfo?.name || 'N/A'}</span>{(order.cancellationRequest?.status === 'Pendente' || order.returnRequest?.status === 'Pendente') && <span title="Pedido pendente" className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200"><AlertTriangle size={11}/> Pedido</span>}</div></td>
                                 <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{formatCurrency(order.total)}</td>
                                 <td className="px-6 py-4">
                                     <select 
                                         value={order.status} 
-                                        onChange={(e) => onStatusChange(order.id, e.target.value)} 
+                                        onChange={(e) => void handleStatusChange(order, e.target.value)}
+                                        disabled={updatingStatusOrderId === order.id}
+                                        aria-label={`Estado da encomenda ${order.id}`}
                                         className={`text-xs font-bold px-2 py-1 rounded-full border-none cursor-pointer outline-none ${
                                             order.status === 'Entregue' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300' : 
                                             order.status === 'Enviado' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300' : 
@@ -191,7 +277,7 @@ const OrdersTab: React.FC<OrdersTabProps> = ({
                                             ['Devolvido', 'Reclamação'].includes(order.status) ? 'bg-red-200 dark:bg-red-900/40 text-red-900 dark:text-red-200' :
                                             order.status === 'Levantamento em Loja' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300' : 
                                             'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300'
-                                        }`}
+                                        } disabled:cursor-wait disabled:opacity-60`}
                                     >
                                         <option value="Pendente">Pendente</option>
                                         <option value="Processamento">Processamento</option>

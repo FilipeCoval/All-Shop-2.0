@@ -12,9 +12,11 @@ import {   db, storage, requestPushPermission, messaging , modularDb } from '../
 import { collection, doc, updateDoc, addDoc, arrayUnion, arrayRemove, deleteField, onSnapshot, query, where, getDoc, runTransaction, getFirestore, writeBatch, getDocs } from 'firebase/firestore';
 import { ref, deleteObject, uploadBytes, getDownloadURL, uploadBytesResumable } from 'firebase/storage';
 
-import { cancelOrderItem } from '../services/returnService';
+import { redeemLoyaltyReward, requestOrderAction } from '../services/api';
 import LoyaltyPage from './LoyaltyPage';
 import RequestsTab from './RequestsTab';
+import PreorderMessageActions from './PreorderMessageActions';
+import PreorderEditModal from './PreorderEditModal';
 
 import SupportTicketModal from './SupportTicketModal';
 import ReturnRequestModal from './ReturnRequestModal';
@@ -36,6 +38,17 @@ type ActiveTab = 'overview' | 'orders' | 'profile' | 'addresses' | 'wishlist' | 
 
 const formatCurrency = (value: number) => 
   new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
+
+const isPreorderOrder = (order: Order) => order.preorder?.kind === 'PREORDER';
+const preorderLabel = (order: Order) => {
+  const status = order.preorder?.status;
+  if (status === 'DEPOSIT_RECEIVED') return 'Sinal recebido';
+  if (status === 'BALANCE_RECEIVED') return 'Pronta a expedir';
+  if (status === 'FULFILLED') return 'Pré-reserva concluída';
+  if (status === 'CANCELLED' || status === 'EXPIRED') return 'Pré-reserva cancelada';
+  if (order.preorder?.messagePending) return 'Mensagem por confirmar';
+  return 'Aguarda sinal';
+};
 
 const CircularProgress: React.FC<{ progress: number; size: number; strokeWidth: number }> = ({ progress, size, strokeWidth }) => {
     const radius = (size - strokeWidth) / 2;
@@ -71,7 +84,7 @@ const CircularProgress: React.FC<{ progress: number; size: number; strokeWidth: 
 };
 
 const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdateUser, wishlist, onToggleWishlist, onAddToCart, publicProducts, onOpenSupportChat, onCheckout }) => {
-  const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => window.location.hash.includes('tab=orders') ? 'orders' : 'overview');
   
   const [profileForm, setProfileForm] = useState({ 
     name: user?.name || '', 
@@ -90,6 +103,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
 
   const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [modalState, setModalState] = useState<{ type: 'cancel' | 'return'; order: Order | null }>({ type: 'cancel', order: null });
+  const [editingPreorder, setEditingPreorder] = useState<Order | null>(null);
   const [modalReason, setModalReason] = useState('');
   const [isProcessingAction, setIsProcessingAction] = useState(false);
   const [copyTrackingSuccess, setCopyTrackingSuccess] = useState('');
@@ -293,162 +307,50 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
     };
   
   const handleOrderAction = async () => {
-    if (!modalState.order || !modalReason.trim()) { alert("Por favor, preencha o motivo."); return; }
+    if (!modalState.order || !modalReason.trim()) {
+      alert("Por favor, preencha o motivo.");
+      return;
+    }
+
     setIsProcessingAction(true);
     try {
-        const orderRef = doc(modularDb, 'orders', modalState.order.id);
-        const now = new Date().toISOString();
-        if (modalState.type === 'cancel') {
-            // Prepare Matching Inventory Lots to restore stock on cancellation
-            const inventoryDocsToRead: any[] = [];
-            if (modalState.order && Array.isArray(modalState.order.items)) {
-                for (const item of modalState.order.items) {
-                    if (typeof item === 'object' && item !== null && item.productId) {
-                        const q = query(
-                            collection(modularDb, 'products_inventory'),
-                            where('publicProductId', '==', Number(item.productId))
-                        );
-                        const qSnap = await getDocs(q);
-                        qSnap.forEach(d => {
-                            const invData = d.data();
-                            const orderVariant = String(item.selectedVariant || '').trim().toLowerCase();
-                            const batchVariant = String(invData.variant || '').trim().toLowerCase();
-                            if (orderVariant === batchVariant) {
-                                inventoryDocsToRead.push({ ref: d.ref, id: d.id, itemQty: item.quantity, productId: item.productId });
-                            }
-                        });
-                    }
-                }
-            }
+      const action = modalState.type === 'return' ? 'request_return' : 'cancel_order';
+      const response = await requestOrderAction({
+        action,
+        orderId: modalState.order.id,
+        reason: modalReason.trim(),
+      });
 
-            await runTransaction(modularDb, async (transaction) => {
-                // 1. First, perform all reads
-                const updates: any[] = [];
-                const invSnaps: Record<string, any> = {};
-                for (const docToRead of inventoryDocsToRead) {
-                    const snap = await transaction.get(docToRead.ref);
-                    invSnaps[docToRead.id] = snap;
-                }
-                
-                if (modalState.order && modalState.order.items) {
-                    // Repor o stock no lote de inventário correspondente (products_inventory)
-                    for (const docToRead of inventoryDocsToRead) {
-                        const invSnap = invSnaps[docToRead.id];
-                        if (invSnap && invSnap.exists()) {
-                            const invData = invSnap.data() as any;
-                            let currentQtySold = Number(invData.quantitySold || 0);
-                            let newQtySold = currentQtySold;
-
-                            if (modalState.order?.stockDeducted) {
-                                newQtySold = Math.max(0, currentQtySold - docToRead.itemQty);
-                            }
-
-                            let updatedUnits = invData.units ? [...invData.units] : null;
-                            if (updatedUnits) {
-                                updatedUnits = updatedUnits.map((unit: any) => {
-                                    if (unit.soldToOrder === modalState.order?.id) {
-                                        return {
-                                            ...unit,
-                                            status: 'AVAILABLE',
-                                            soldAt: undefined,
-                                            soldToOrder: undefined
-                                        };
-                                    }
-                                    return unit;
-                                });
-                            }
-
-                            const invUpdateData: any = {
-                                quantitySold: newQtySold,
-                                status: newQtySold >= (invData.quantityBought || 0) ? 'SOLD' : (newQtySold > 0 ? 'PARTIAL' : 'AVAILABLE')
-                            };
-                            if (updatedUnits) {
-                                invUpdateData.units = updatedUnits;
-                            }
-
-                            updates.push({
-                                ref: docToRead.ref,
-                                data: invUpdateData
-                            });
-                        }
-                    }
-
-                    // Depois, repor stock na coleção principal (products_public)
-                    for (const item of modalState.order.items) {
-                        if (typeof item !== 'object' || item === null) continue;
-                        const productDocRef = doc(modularDb, 'products_public', item.productId.toString());
-                        const productDoc = await transaction.get(productDocRef);
-                        
-                        if (productDoc.exists()) {
-                            const productData = productDoc.data() as Product;
-                            
-                            let updatedVariants = productData.variants;
-                            if (item.selectedVariant && productData.variants) {
-                                const vIndex = productData.variants.findIndex((v: any) => v.name === item.selectedVariant);
-                                if (vIndex !== -1) {
-                                    updatedVariants = [...productData.variants];
-                                    updatedVariants[vIndex] = {
-                                        ...updatedVariants[vIndex],
-                                        stock: (updatedVariants[vIndex].stock || 0) + item.quantity
-                                    };
-                                }
-                            }
-                            
-                            const updateData: any = { stock: (productData.stock || 0) + item.quantity };
-                            if (updatedVariants) updateData.variants = updatedVariants;
-                            
-                            updates.push({
-                                ref: productDoc.ref,
-                                data: Object.fromEntries(Object.entries(updateData).filter(([_,v]) => v !== undefined))
-                            });
-                        }
-                    }
-                }
-
-                // 2. Then, perform all writes
-                transaction.update(orderRef, { 
-                    status: 'Cancelado', 
-                    statusHistory: arrayUnion({ status: 'Cancelado', date: now, notes: modalReason.trim() }) 
-                });
-
-                for (const update of updates) {
-                    transaction.update(update.ref, update.data);
-                }
-            });
-        } else if (modalState.type === 'return') {
-            await updateDoc(orderRef, { 
-                returnRequest: { date: now, reason: modalReason.trim(), status: 'Pendente' },
-                statusHistory: arrayUnion({ status: 'Pendente Devolução', date: now, notes: `Pedido Devolução: ${modalReason.trim()}` })
-            });
-        }
-        setModalState({ type: 'cancel', order: null });
-        setModalReason('');
-        alert("O seu pedido foi enviado com sucesso. A nossa equipa irá analisar e entrar em contacto.");
-    } catch (e) { 
-        console.error("Erro ao processar ação:", e); 
-        alert("Ocorreu um erro. Tente novamente."); 
-    } finally { 
-        setIsProcessingAction(false); 
+      setModalState({ type: 'cancel', order: null });
+      setModalReason('');
+      alert(response?.message || "O seu pedido foi enviado para análise.");
+    } catch (error: any) {
+      console.error("Erro ao enviar pedido de encomenda:", error);
+      alert(error?.message || "Não foi possível enviar o pedido. Tente novamente.");
+    } finally {
+      setIsProcessingAction(false);
     }
   };
 
   const handleCancelItem = async (order: Order, productId: number, quantity: number) => {
-      if (!window.confirm("Tem a certeza que quer cancelar este item da encomenda?")) return;
-      setIsProcessingAction(true);
-      
-      const item = order.items.find(i => typeof i === 'object' && i.productId === productId) as OrderItem | undefined;
-      const serials = item?.serialNumbers?.slice(0, quantity) || [];
-      
-      const result = await cancelOrderItem(order.id, productId, serials, "Cancelamento pelo cliente");
+    if (!window.confirm("Tem a certeza que quer pedir o cancelamento deste artigo? O pedido será analisado pela nossa equipa.")) return;
+    setIsProcessingAction(true);
+    try {
+      const response = await requestOrderAction({
+        action: 'cancel_item',
+        orderId: order.id,
+        productId,
+        quantity,
+        reason: 'Pedido de cancelamento de artigo pelo cliente',
+      });
+      alert(response?.message || "O pedido foi enviado para análise.");
+    } catch (error: any) {
+      console.error("Erro ao pedir cancelamento do artigo:", error);
+      alert(error?.message || "Não foi possível enviar o pedido. Tente novamente.");
+    } finally {
       setIsProcessingAction(false);
-      if (result.success) {
-          alert("Item cancelado com sucesso.");
-      } else {
-          alert(result.message);
-      }
+    }
   };
-  
-  // ... (Keep existing variables and helpers) ...
 
   const handleRedeemReward = async (reward: typeof LOYALTY_REWARDS[0]) => {
       const currentPoints = user.loyaltyPoints || 0;
@@ -456,15 +358,12 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
       if (!window.confirm(`Trocar ${reward.cost} pontos por um vale de ${reward.value}€?`)) return;
       setIsRedeeming(reward.id);
       try {
-          const code = `REWARD-${user.uid?.substring(0,4).toUpperCase()}-${Date.now().toString().substring(7)}`;
-          const newCoupon: Coupon = { code, type: 'FIXED', value: reward.value, minPurchase: reward.minPurchase, isActive: true, usageCount: 0 };
-          await addDoc(collection(modularDb, 'coupons'), newCoupon);
-          const newHistoryItem: PointHistory = { id: Date.now().toString(), date: new Date().toISOString(), amount: -reward.cost, reason: `Resgate: ${reward.title}` };
-          const updatedPoints = currentPoints - reward.cost;
-          const updatedHistory = [newHistoryItem, ...(user.pointsHistory || [])];
-          await updateDoc(doc(modularDb, 'users', user.uid), { loyaltyPoints: updatedPoints, pointsHistory: updatedHistory });
-          onUpdateUser({ loyaltyPoints: updatedPoints, pointsHistory: updatedHistory });
-          alert(`Parabéns! O seu código é: ${code}\n(Pode encontrá-lo no checkout)`);
+          const result = await redeemLoyaltyReward(reward.id);
+          onUpdateUser({
+              loyaltyPoints: Number(result.loyaltyPoints || 0),
+              pointsHistory: Array.isArray(result.pointsHistory) ? result.pointsHistory : user.pointsHistory,
+          });
+          alert(`Parabéns! O seu código é: ${result.code}\n(Pode encontrá-lo no checkout)`);
       } catch (error) { 
           console.error(error); 
           alert("Erro ao resgatar recompensa. Tente novamente."); 
@@ -507,8 +406,8 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
   const highestAffordableReward = affordableRewards.length > 0 ? affordableRewards[affordableRewards.length - 1] : null;
   
   const safeOrders = orders || [];
-  const totalSpentCount = safeOrders.reduce((acc, order) => acc + (order.status !== 'Cancelado' ? (order.total || 0) : 0), 0);
-  const totalOrdersCount = safeOrders.filter(o => o.status !== 'Cancelado').length;
+  const totalSpentCount = safeOrders.reduce((acc, order) => acc + (!isPreorderOrder(order) && !['Cancelado', 'A confirmar'].includes(order.status) ? (order.total || 0) : 0), 0);
+  const totalOrdersCount = safeOrders.filter(o => !isPreorderOrder(o) && !['Cancelado', 'A confirmar'].includes(o.status)).length;
   
   const displayOrderId = (id: string) => { 
     if (!id) return '#???'; 
@@ -666,7 +565,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
 
   const getStatusStep = (status: string) => {
       const steps = ['Processamento', 'Pago', 'Enviado', 'Entregue'];
-      if (status === 'Reclamação' || status === 'Devolvido' || status === 'Cancelado') return -1;
+      if (status === 'A confirmar' || status === 'Reclamação' || status === 'Devolvido' || status === 'Cancelado') return -1;
       return steps.indexOf(status);
   };
 
@@ -939,6 +838,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                   orders.map(order => {
                     const isExpanded = expandedOrderId === order.id;
                     const currentStep = getStatusStep(order.status);
+                    const preorder = isPreorderOrder(order) ? order.preorder : null;
 
                     return (
                       <div key={order.id} className="bg-white dark:bg-[#0f172a] rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-all duration-300">
@@ -958,7 +858,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                             </div>
                             <div className="flex items-center gap-4">
                                 <span className="font-bold text-lg text-gray-900 dark:text-white">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(order.total || 0)}</span>
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${order.status === 'Entregue' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : order.status === 'Enviado' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : order.status === 'Pago' ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400' : order.status === 'Cancelado' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>{order.status}</span>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${preorder ? (['CANCELLED', 'EXPIRED'].includes(preorder.status) ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : preorder.status === 'BALANCE_RECEIVED' || preorder.status === 'FULFILLED' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300') : order.status === 'Entregue' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : order.status === 'Enviado' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400' : order.status === 'Pago' ? 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400' : order.status === 'Cancelado' ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400' : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'}`}>{preorder ? preorderLabel(order) : order.status}</span>
                                 {isExpanded ? <ChevronUp className="text-gray-500" /> : <ChevronDown className="text-gray-500" />}
                             </div>
                         </div>
@@ -970,13 +870,24 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                             <div className="mb-10 bg-white dark:bg-[#0f172a] p-6 rounded-xl border border-gray-100 dark:border-slate-800 shadow-sm">
                                 <div className="flex justify-between items-center mb-6">
                                     <h4 className="font-bold text-gray-800 dark:text-white text-sm flex items-center gap-2"><Truck size={16} className="text-primary"/> Rastreio da Encomenda</h4>
-                                    {order.status !== 'Cancelado' && (
+                                    {!preorder && order.status !== 'Cancelado' && (
                                         <button onClick={() => { setSelectedOrderForReturn(order); setIsReturnModalOpen(true); }} className="text-primary font-bold text-xs hover:underline flex items-center gap-1">
                                             <Undo2 size={14} /> Devolução/Cancelamento
                                         </button>
                                     )}
                                 </div>
-                                {order.status === 'Cancelado' ? (
+                                {preorder ? (
+                                    <div className="rounded-xl border border-orange-200 bg-orange-50 p-5 dark:border-orange-900/70 dark:bg-orange-950/25">
+                                        <div className="flex items-start gap-3"><Clock className="mt-0.5 shrink-0 text-orange-600" size={21}/><div><p className="font-bold text-orange-950 dark:text-orange-100">{['CANCELLED', 'EXPIRED'].includes(preorder.status) ? 'Pré-reserva encerrada' : preorder.messagePending ? 'Pré-reserva guardada · confirme a mensagem' : 'Pré-reserva registada'}</p><p className="mt-1 text-sm text-orange-800 dark:text-orange-200">{['CANCELLED', 'EXPIRED'].includes(preorder.status) ? 'Esta pré-reserva já não mantém uma vaga reservada.' : 'A equipa pode consultar o pedido. A vaga é temporária; confirme o envio da mensagem e efetue o sinal dentro do prazo indicado.'}</p></div></div>
+                                        {preorder.messagePending && preorder.status === 'DEPOSIT_PENDING' && order.status !== 'Cancelado' && <PreorderMessageActions order={order} />}
+                                        <div className="mt-4 grid gap-3 border-t border-orange-200 pt-4 text-sm sm:grid-cols-3 dark:border-orange-900/70"><span><small className="block text-orange-700/80 dark:text-orange-300/80">Estado</small><strong className="text-orange-950 dark:text-orange-100">{preorderLabel(order)}</strong></span><span><small className="block text-orange-700/80 dark:text-orange-300/80">Sinal (50%)</small><strong className="text-orange-950 dark:text-orange-100">{formatCurrency(Number(preorder.depositDue || 0))}</strong></span><span><small className="block text-orange-700/80 dark:text-orange-300/80">Expedição prevista</small><strong className="text-orange-950 dark:text-orange-100">{preorder.estimatedDispatchDate ? new Date(preorder.estimatedDispatchDate).toLocaleDateString('pt-PT') : 'A confirmar'}</strong></span></div>
+                                        {preorder.status === 'DEPOSIT_PENDING' && preorder.depositDeadlineAt && <p className="mt-4 text-xs font-semibold text-orange-800 dark:text-orange-200">Sinal a confirmar até {new Date(preorder.depositDeadlineAt).toLocaleString('pt-PT')}. Se precisar de ajuda com o pagamento ou cancelamento, contacte-nos indicando esta referência.</p>}
+                                    </div>
+                                ) : order.status === 'A confirmar' ? (
+                                    <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg text-center text-amber-800 dark:text-amber-300 font-medium border border-amber-200 dark:border-amber-800">
+                                        O seu pedido foi registado e aguarda a confirmação de envio da mensagem. Ainda não foi efetuado qualquer pagamento nem baixa de stock.
+                                    </div>
+                                ) : order.status === 'Cancelado' ? (
                                     <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg text-center text-red-600 dark:text-red-400 font-bold border border-red-100 dark:border-red-800 flex items-center justify-center gap-2">
                                         <XCircle size={20} /> Encomenda Cancelada
                                     </div>
@@ -1102,7 +1013,7 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                                 <div className="text-right">
                                                     <p className="font-bold text-sm text-gray-900 dark:text-white">{typeof item === 'object' ? formatCurrency(item.price * item.quantity) : ''}</p>
                                                     <p className="text-xs text-gray-500 dark:text-gray-400">Qtd: {typeof item === 'object' ? item.quantity : 1}</p>
-                                                    {['Pendente', 'Processamento', 'Pago'].includes(order.status) && typeof item === 'object' && (
+                                                    {!preorder && ['Pendente', 'Processamento', 'Pago'].includes(order.status) && typeof item === 'object' && (
                                                        <button onClick={() => handleCancelItem(order, item.productId, item.quantity)} className="text-red-500 hover:text-red-700 text-xs font-bold mt-1">Cancelar Item</button>
                                                     )}
                                                 </div>
@@ -1113,16 +1024,22 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
                                     <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
                                         <button onClick={() => handlePrintOrder(order)} className="flex items-center gap-2 text-sm font-bold text-blue-600 bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 px-4 py-2 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/50 shadow-sm"><Printer size={16}/> Imprimir Fatura / Garantia</button>
                                         
-                                        {order.status === 'Pendente' && (
+                                        {!preorder && ['Pendente', 'A confirmar'].includes(order.status) && (
                                             <button 
                                                 onClick={() => handleConfirmSentFromClientArea(order)} 
                                                 className="flex items-center gap-2 text-sm font-bold text-green-600 bg-green-100 dark:bg-green-900/30 dark:text-green-400 px-4 py-2 rounded-lg hover:bg-green-200 dark:hover:bg-green-900/50 shadow-sm"
                                             >
-                                                <Send size={16}/> Confirmar Envio da Mensagem
+                                                <Send size={16}/> Confirmar envio da mensagem
                                             </button>
                                         )}
 
-                                        {['Pendente', 'Processamento', 'Pago'].includes(order.status) && <button onClick={() => setModalState({ type: 'cancel', order })} className="flex items-center gap-2 text-sm font-bold text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400 px-4 py-2 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50"><XCircle size={16}/> Cancelar Encomenda</button>}
+                                        {preorder?.status === 'DEPOSIT_PENDING' && preorder.capacityHeld && order.status !== 'Cancelado' && new Date(preorder.depositDeadlineAt).getTime() > Date.now() && (
+                                            <button onClick={() => setEditingPreorder(order)} className="flex items-center gap-2 rounded-lg bg-orange-100 px-4 py-2 text-sm font-bold text-orange-700 shadow-sm hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:hover:bg-orange-900/50">
+                                                <ClipboardEdit size={16}/> Editar artigos da pré-reserva
+                                            </button>
+                                        )}
+
+                                        {!preorder && ['Pendente', 'Processamento', 'Pago'].includes(order.status) && <button onClick={() => setModalState({ type: 'cancel', order })} className="flex items-center gap-2 text-sm font-bold text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400 px-4 py-2 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50"><XCircle size={16}/> Cancelar Encomenda</button>}
                                         
                                         {order.status === 'Entregue' && <button onClick={onOpenSupportChat} className="flex items-center gap-2 text-sm font-bold text-purple-700 bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 border border-purple-200 dark:border-purple-800 px-4 py-2 rounded-lg hover:bg-purple-200 dark:hover:bg-purple-900/50 shadow-sm"><Sparkles size={16} /> Ajuda / Garantia (IA)</button>}
                                     </div>
@@ -1269,6 +1186,8 @@ const ClientArea: React.FC<ClientAreaProps> = ({ user, orders, onLogout, onUpdat
         </div>
 
         {/* Modal Genérico para Ações de Encomenda */}
+        {editingPreorder && <PreorderEditModal order={editingPreorder} products={publicProducts} onClose={() => setEditingPreorder(null)} />}
+
         {modalState.order && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
               <div className="bg-white dark:bg-[#0f172a] rounded-2xl shadow-2xl w-full max-w-lg p-6 border dark:border-slate-800">
