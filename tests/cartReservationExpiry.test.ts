@@ -134,11 +134,12 @@ await runStockExpiry(env, (async (url, options) => {
   scheduledCalls++;
   assert.equal(url, env.CLEANUP_URL);
   assert.equal((options?.headers as any).Authorization, 'Bearer test-secret');
-  assert.equal(options?.redirect, 'error');
+  assert.equal(options?.redirect, 'manual');
   return Response.json({ success: true, expired: 0, updatedProducts: 0 });
 }) as typeof fetch);
 assert.equal(scheduledCalls, 1);
 await assert.rejects(runStockExpiry(env, (async () => new Response('', { status: 500 })) as typeof fetch), /HTTP 500/);
+await assert.rejects(runStockExpiry(env, (async () => new Response('', { status: 302, headers: { Location: 'https://other.invalid/' } })) as typeof fetch), /HTTP 302/);
 await assert.rejects(runStockExpiry({ ...env, STOCK_RESERVATION_CRON_SECRET: '' }), /not configured/);
 const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
 assert.ok(config.rewrites.some((r: any) => r.source === '/api/cleanup-reservations' && r.destination === '/api/admin?resource=cart-expiry'));

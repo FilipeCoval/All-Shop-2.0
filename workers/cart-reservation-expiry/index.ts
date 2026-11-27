@@ -4,7 +4,9 @@ export async function runStockExpiry(env: Env, request = fetch) {
   if (!env.STOCK_RESERVATION_CRON_SECRET) throw new Error('Stock expiry secret is not configured.');
   const response = await request(env.CLEANUP_URL, {
     method: 'GET',
-    redirect: 'error',
+    // Workers support manual/follow only. Reject 3xx below instead of forwarding
+    // the Authorization header to any redirect destination.
+    redirect: 'manual',
     headers: { Authorization: `Bearer ${env.STOCK_RESERVATION_CRON_SECRET}` },
     signal: AbortSignal.timeout(55_000),
   });
