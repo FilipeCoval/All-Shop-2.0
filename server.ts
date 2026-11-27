@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import sendPushHandler from './api/send-push.ts';
 import ogHandler from './api/og.ts';
 import reserveStockHandler from './api/reserve-stock.ts';
+import cleanupReservationsHandler from './src/server/cartReservationCleanup.ts';
 import finalizeOrderHandler from './api/finalize-order.ts';
 import createOrderDraftHandler from './api/create-order-draft.ts';
 import redeemLoyaltyRewardHandler from './api/redeem-loyalty-reward.ts';
@@ -91,7 +92,7 @@ async function startServer() {
   });
 
   app.all('/api/cleanup-reservations', async (req, res) => {
-    res.status(410).json({ error: 'Endpoint antigo desativado.' });
+    await cleanupReservationsHandler(req as any, res as any);
   });
 
   app.all('/api/update-order', async (req, res) => {

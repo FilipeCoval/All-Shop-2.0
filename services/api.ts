@@ -35,6 +35,18 @@ export async function reserveStock(
   return parseResponse(response);
 }
 
+export async function refreshExpiredCartStock(productIds: number[]) {
+  const unique = [...new Set(productIds)];
+  for (let offset = 0; offset < unique.length; offset += 10) {
+    const response = await fetch('/api/cleanup-reservations', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(30_000),
+      body: JSON.stringify({ productIds: unique.slice(offset, offset + 10) }),
+    });
+    await parseResponse(response);
+  }
+}
+
 export async function finalizeOrder(order: any, guestToken?: string) {
   const response = await fetch('/api/finalize-order', {
     method: 'POST',

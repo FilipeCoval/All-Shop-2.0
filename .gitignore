@@ -125,3 +125,5 @@ dist-admin
 .pnp.*
 .vercel
 .env*
+.wrangler/
+.dev.vars*

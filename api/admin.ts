@@ -16,6 +16,12 @@ export default async function handler(request: VercelRequest, response: VercelRe
   if (resource === 'legacy') {
     return response.status(410).json({ success: false, error: 'Endpoint antigo desativado.' });
   }
+  // Share the existing function slot; this route has its own scheduler auth and
+  // narrowly scoped public expiration trigger, not administrative permissions.
+  if (resource === 'cart-expiry') {
+    const selected = await import('../src/server/cartReservationCleanup.js');
+    return selected.default(request as any, response as any);
+  }
   const load = handlers[resource as keyof typeof handlers];
   if (!load) return response.status(404).json({ success: false, error: 'Área administrativa não encontrada.' });
   try {

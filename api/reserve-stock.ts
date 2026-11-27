@@ -12,10 +12,10 @@ import {
   toReservationRecord,
   getMatchingBatches,
   getBatchPhysical,
-  timestampToMillis,
   type ReservationRecord,
 } from '../services/server/stock-utils.js';
 import { normalizeProductAvailabilityMode } from '../src/domain/productAvailability.js';
+import { isExpiredCartReservation } from '../src/server/expireCartReservations.js';
 
 const MAX_QUANTITY_PER_ITEM = 20;
 
@@ -65,7 +65,7 @@ export default async function handler(req: Request, res: Response) {
       // recalculating keeps the published stock from remaining blocked after a
       // shopper leaves checkout without completing it.
       for (const reservationDoc of reservationsSnapshot.docs) {
-        if (timestampToMillis(reservationDoc.data()?.expiresAt) <= now) {
+        if (isExpiredCartReservation(reservationDoc.id, reservationDoc.data(), now)) {
           transaction.delete(reservationDoc.ref);
         }
       }

@@ -46,15 +46,15 @@
   ],
   "rewrites": [
     {
+      "source": "/api/cleanup-reservations",
+      "destination": "/api/admin?resource=cart-expiry"
+    },
+    {
       "source": "/api/admin/:resource",
       "destination": "/api/admin?resource=:resource"
     },
     {
       "source": "/api/checkout",
-      "destination": "/api/admin?resource=legacy"
-    },
-    {
-      "source": "/api/cleanup-reservations",
       "destination": "/api/admin?resource=legacy"
     },
     {

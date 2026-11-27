@@ -64,13 +64,26 @@ import { notifyNewOrder } from './services/telegramNotifier';
 import { supabaseSync } from './services/supabaseSync';
 import LoyaltyPage from './components/LoyaltyPage';
 import { trackVisit } from './services/analyticsService';
-import { reserveStock, finalizeOrder, saveOrderDraft, syncCurrentUser } from './services/api';
+import { reserveStock, refreshExpiredCartStock, finalizeOrder, saveOrderDraft, syncCurrentUser } from './services/api';
+import { CART_STORAGE_KEY, restoreCart, isCartReservationExpired } from './src/domain/cartReservation';
 import { effectiveProductAvailability } from './src/domain/productAvailability';
 
 const App: React.FC = () => {
 
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [cartItems, setCartItems] = useState<CartItem[]>(() => {
+    try { return restoreCart(localStorage.getItem(CART_STORAGE_KEY)); } catch { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cartItems)); } catch { /* Storage may be unavailable in private browsing. */ }
+  }, [cartItems]);
+  useEffect(() => {
+    const updateCart = (event: StorageEvent) => {
+      if (event.key === CART_STORAGE_KEY) setCartItems(restoreCart(event.newValue));
+    };
+    window.addEventListener('storage', updateCart);
+    return () => window.removeEventListener('storage', updateCart);
+  }, []);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAIChatOpen, setIsAIChatOpen] = useState(false); 
   
@@ -162,7 +175,7 @@ const App: React.FC = () => {
   // --- LÓGICA DE STOCK ---
   const { loading: stockLoading } = useStock(isAdmin);
   const { products: dbProducts, loading: productsLoading } = usePublicProducts();
-  const zeroStockReconciliationKey = useRef('');
+  const catalogProductIdsKey = dbProducts.map(product => product.id).sort().join(',');
 
   const sessionId = useMemo(() => {
     let id = sessionStorage.getItem('session_id');
@@ -422,7 +435,7 @@ const App: React.FC = () => {
       });
   };
 
-  const updateReservationInFirebase = async (productId: number, variantName: string | undefined | null, newQuantity: number): Promise<boolean> => {
+  const updateReservationInFirebase = async (productId: number, variantName: string | undefined | null, newQuantity: number): Promise<{ expiresAt: number | null } | null> => {
       try {
           const response = await reserveStock(
               productId.toString(),
@@ -430,36 +443,30 @@ const App: React.FC = () => {
               newQuantity,
               localStorage.getItem('guestToken') || undefined,
           );
-          return response?.success === true;
+          return response?.success === true ? { expiresAt: response.expiresAt } : null;
       } catch (error: any) {
           console.error('Erro na reserva de stock:', error);
           alert(error?.message || 'Não foi possível reservar o stock. Atualize a página e tente novamente.');
-          return false;
+          return null;
       }
   };
 
-  // A reserva é temporária. Quando uma página abre com um artigo a zero, pede ao
-  // servidor para recalcular esse artigo antes de o mostrar como esgotado. Isto
-  // liberta automaticamente carrinhos abandonados depois dos 15 minutos, sem
-  // que o cliente tenha de voltar a adicionar/remover o artigo.
+  // Fallback on arrival/return. Unlike quantity=0, this never cancels an active
+  // reservation belonging to the visitor. The server scheduler also runs closed-tab.
   useEffect(() => {
-    const targets = dbProducts.flatMap((product) => {
-      const productTargets: Array<{ id: number; variant: string }> = [];
-      if (Number(product.stock ?? 0) <= 0) productTargets.push({ id: product.id, variant: '' });
-      for (const variant of product.variants ?? []) {
-        if (Number(variant.stock ?? 0) <= 0) productTargets.push({ id: product.id, variant: variant.name || '' });
-      }
-      return productTargets;
-    });
-    const key = targets.map((target) => `${target.id}:${target.variant}`).sort().join('|');
-    if (!key) { zeroStockReconciliationKey.current = ''; return; }
-    if (zeroStockReconciliationKey.current === key) return;
-    zeroStockReconciliationKey.current = key;
-
-    const guestToken = localStorage.getItem('guestToken') || undefined;
-    void Promise.allSettled(targets.map((target) => reserveStock(String(target.id), target.variant, 0, guestToken)))
-      .catch(() => undefined);
-  }, [dbProducts]);
+    const ids = catalogProductIdsKey.split(',').map(Number).filter(id => id > 0);
+    if (!ids.length) return;
+    let lastRefresh = 0;
+    const refresh = () => {
+      if (document.visibilityState === 'hidden' || Date.now() - lastRefresh < 60_000) return;
+      lastRefresh = Date.now();
+      void refreshExpiredCartStock(ids).catch(() => { lastRefresh = 0; });
+    };
+    refresh();
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, [catalogProductIdsKey]);
 
   const addToCart = async (product: Product, variant?: ProductVariant) => {
     if (processingProductIds.includes(product.id)) return;
@@ -492,7 +499,7 @@ const App: React.FC = () => {
         const success = await updateReservationInFirebase(product.id, variant?.name, newQty);
         if (!success) return;
 
-        const reservedUntil = !isAdmin ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : undefined;
+        const reservedUntil = new Date(success.expiresAt!).toISOString();
 
         // Check if promo ended
         const promoEnded = product.promoEndsAt ? new Date(product.promoEndsAt) <= new Date() : false;
@@ -513,7 +520,7 @@ const App: React.FC = () => {
           if (existing) {
             return prev.map(item => {
                 if (item.cartItemId === cartItemId) {
-                    return { ...item, quantity: newQty, reservedUntil: item.reservedUntil || reservedUntil };
+                    return { ...item, quantity: newQty, reservedUntil, price: finalPrice };
                 }
                 return item;
             });
@@ -539,6 +546,7 @@ const App: React.FC = () => {
   const updateQuantity = async (cartItemId: string, delta: number) => {
     const itemToUpdate = cartItems.find(i => i.cartItemId === cartItemId);
     if (!itemToUpdate) return;
+    if (isCartReservationExpired(itemToUpdate)) return;
     const newQty = itemToUpdate.quantity + delta;
 
     if (itemToUpdate.maxQuantityPerOrder && newQty > itemToUpdate.maxQuantityPerOrder) {
@@ -559,11 +567,12 @@ const App: React.FC = () => {
     }
 
     if (newQty < itemToUpdate.quantity) {
+        const result = await updateReservationInFirebase(itemToUpdate.id, itemToUpdate.selectedVariant, newQty);
+        if (!result) return;
         setCartItems(prev => {
             if (newQty < 1) return prev.filter(i => i.cartItemId !== cartItemId);
-            return prev.map(item => item.cartItemId === cartItemId ? { ...item, quantity: newQty } : item);
+            return prev.map(item => item.cartItemId === cartItemId ? { ...item, quantity: newQty, reservedUntil: new Date(result.expiresAt!).toISOString() } : item);
         });
-        updateReservationInFirebase(itemToUpdate.id, itemToUpdate.selectedVariant, newQty);
         return;
     }
     
@@ -579,10 +588,23 @@ const App: React.FC = () => {
     setCartItems(prev =>
         prev.map(item =>
           item.cartItemId === cartItemId
-            ? { ...item, quantity: newQty }
+            ? { ...item, quantity: newQty, reservedUntil: new Date(success.expiresAt!).toISOString() }
             : item
         )
     );
+  };
+
+  const renewCartReservation = async (cartItemId: string) => {
+    const item = cartItems.find(candidate => candidate.cartItemId === cartItemId);
+    if (!item) return;
+    const result = await reserveStock(String(item.id), item.selectedVariant, item.quantity, localStorage.getItem('guestToken') || undefined);
+    if (!result?.success || !result?.expiresAt) throw new Error('Não foi possível renovar a reserva. Tente novamente.');
+    const product = dbProducts.find(candidate => candidate.id === item.id);
+    const variant = product?.variants?.find(candidate => candidate.name === item.selectedVariant);
+    const currentPrice = product?.isFreebie ? 0 : variant?.price ?? (product?.promoEndsAt && new Date(product.promoEndsAt).getTime() <= Date.now() && product.originalPrice ? product.originalPrice : product?.price) ?? item.price;
+    setCartItems(current => current.map(candidate => candidate.cartItemId === cartItemId ? {
+      ...candidate, reservedUntil: new Date(result.expiresAt!).toISOString(), price: currentPrice,
+    } : candidate));
   };
 
   const handleUpdateUser = async (updatedData: Partial<User>) => {
@@ -627,13 +649,8 @@ const App: React.FC = () => {
                   return exists ? prev.map(order => order.id === savedDraft.id ? savedDraft : order) : [savedDraft, ...prev];
               });
 
-              // O pedido ficou registado, mas ainda não é uma venda: deixa de
-              // prender o artigo no carrinho. A confirmação posterior volta a
-              // validar e a baixar o stock de forma atómica no servidor.
-              await Promise.allSettled(cleanOrder.items.map((item: OrderItem | string) => {
-                  if (typeof item === 'string') return Promise.resolve();
-                  return reserveStock(String(item.productId), item.selectedVariant || '', 0, cleanOrder.guestToken || localStorage.getItem('guestToken') || undefined);
-              }));
+              // Keep only the original 15-minute hold while the message is sent.
+              // The timer/scheduler releases it if the customer never confirms.
               return true;
           }
 
@@ -832,7 +849,7 @@ const App: React.FC = () => {
             )}
         </div>
       </footer>
-      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemoveItem={removeFromCart} onUpdateQuantity={updateQuantity} total={cartTotal} onCheckout={handleCheckout} user={user} onOpenLogin={() => { setIsCartOpen(false); setIsLoginOpen(true); }} onAddFreebie={addToCart} publicProducts={dbProducts} />
+      <CartDrawer isOpen={isCartOpen} onClose={() => setIsCartOpen(false)} cartItems={cartItems} onRemoveItem={removeFromCart} onUpdateQuantity={updateQuantity} onRenewReservation={renewCartReservation} total={cartTotal} onCheckout={handleCheckout} user={user} onOpenLogin={() => { setIsCartOpen(false); setIsLoginOpen(true); }} onAddFreebie={addToCart} publicProducts={dbProducts} />
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} onLogin={(u) => { setUser(u); setIsLoginOpen(false); }} />
       
       <ProductComparator 
